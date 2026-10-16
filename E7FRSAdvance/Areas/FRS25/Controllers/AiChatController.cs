@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Mvc;
+using AiCfg = E7FRSAdvance.AiCore.AiModelConfig;   // main port of 619 Haiku / AiModelConfig (engine, model, key from the API)
 
 using E7MRIWeb.Areas.FRS25.Controllers;   // Domain AI types (CauseCatalog, RdpmsMaps, OpenAiClient, DeepSeekClient) keep the 616 namespace
 
@@ -20,7 +21,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // AlertLive AI-Analyze -- component version (Major.Minor.Build.Revision)
         // Keep in lockstep with CHANGELOG.md at the project root.
         // ------------------------------------------------------------------
-        public const string ComponentVersion = "1.0.160.203";
+        public const string ComponentVersion = "1.0.160.206";   // 1.0.160.206: log folders via AiLogDir, AiLogStatic counts failed writes, AiDiag "L - LOGS" checks
+        // 1.0.160.205- AiDiag D2 reads history_get epoch "ts" arrays + shows the server's window echo (HistGetSendsUtc check)
+        // 1.0.160.204- Haiku / AiModelConfig GetAllWithKeys port of 619 (E7.AiCore 1.0.190-1.0.198)
         // 1.0.160.203- TRAIN CONTEXT: HARDCODED STATION FOR SITE 71 (Bhilai G Cabin). The site's own
         //            station code is not a totaltraininfo key (GCBC returns the ~1447-train generic
         //            page, rejected by Guard B), so train context was always empty there. Owner decision:
@@ -3226,8 +3229,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             ReadInt("AiToolLogMaxChars", 20000);
         private static readonly object _toolLogLock = new object();
         private static readonly string _toolLogDir =
-            System.IO.Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory, "App_Data", "AiToolLogs");
+            E7FRSAdvance.AiCore.AiLogPaths.AiToolLogs;   // AiLogDir in Web.config, else App_Data/AiToolLogs
 
         private static readonly Lazy<AnthropicClient> _ai =
             new Lazy<AnthropicClient>(CreateAiClient);
@@ -3261,7 +3263,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             return new OpenAiClient(
                 ConfigurationManager.AppSettings["OpenAiApiKey"],
-                ReadStr("OpenAiModel", "gpt-5.4"),
+                AiCfg.ModelFor("openai", ReadStr("OpenAiModel", "gpt-5.4")),
                 maxTokens,
                 ReadStr("OpenAiBaseUrl", "https://api.openai.com/v1"));
         }
@@ -3272,14 +3274,24 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             // adding 30-80s hidden reasoning billed as output). DeepSeekThinking=true re-enables.
             return new DeepSeekClient(
                 ConfigurationManager.AppSettings["DeepSeekApiKey"],
-                ReadStr("DeepSeekModel", "deepseek-v4-pro"),
+                AiCfg.ModelFor("deepseek", ReadStr("DeepSeekModel", "deepseek-v4-pro")),
                 maxTokens,
                 ReadStr("DeepSeekBaseUrl", "https://api.deepseek.com/v1"),
                 ReadBool("DeepSeekThinking", false));
         }
 
         // Default provider; a request may override it (UI toggle).
-        private static readonly string _aiProviderDefault = ReadStr("AiProvider", "quantum10");   // v1.0.160.202: QUANTUM (DeepSeek Pro) is the default for everyone
+        // main port of 619 (E7.AiCore 1.0.190.0): engine comes from the AiModelConfig API (IsDefault
+        // EngineCode); AiProvider is the fallback until the API has answered.
+        private static string _aiProviderDefault
+        {
+            get
+            {
+                return AiCfg.DefaultEngine(ReadStr("AiProvider", "quantum10"));   // v1.0.160.202: QUANTUM (DeepSeek Pro) is the default for everyone
+            }
+        }
+        // main port of 619 (1.0.198.0): low effort failed validation -> re-run once at full thinking
+        private bool _effortEscalated;
         private string _provider;   // resolved per request
         // v1.0.160.42: per-request THINK toggle (UI checkbox -> ctx.think). null = not specified
         // by the request, in which case the DeepSeekThinking config default applies.
@@ -3312,6 +3324,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             get
             {
                 string p = (_provider ?? _aiProviderDefault ?? "anthropic").Trim().ToLowerInvariant();
+                string apiKind = AiCfg.ProviderForEngine(p);   // main port (1.0.193.0): the API engine row decides the vendor
+                if (apiKind != null) { return apiKind; }
                 if (p.Contains("deep")) { return "deepseek"; }
                 if (p == "orion16" || p == "orion17") { return "openai"; }   // ORION variants = OpenAI transport
                 if (p == "nexus16" || p == "nexus19" || p == "nexus49") { return "anthropic"; }  // NEXUS variants = Anthropic transport
@@ -3339,6 +3353,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             get
             {
+                string apiModel = AiCfg.ModelForEngine(_provider ?? _aiProviderDefault);   // main port (1.0.193.0): picked engine's model
+                if (apiModel != null)
+                {
+                    return apiModel;
+                }
                 string p = (_provider ?? _aiProviderDefault ?? "").Trim().ToLowerInvariant();
                 if (p == "nexus16") { return ReadStr("ModelNexus16", "claude-opus-4-6"); }
                 if (p == "nexus19") { return ReadStr("ModelNexus19", "claude-opus-4-8"); }
@@ -3371,6 +3390,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             string key = ConfigurationManager.AppSettings["AnthropicApiKey"];
             string model = ConfigurationManager.AppSettings["AnthropicModel"];
             if (string.IsNullOrWhiteSpace(model)) { model = "claude-sonnet-4-6"; }
+            model = AiCfg.ModelFor("anthropic", model);
             return new AnthropicClient(key, model, ClampCfg(ReadInt("AnalyzeSynthesisMaxTokens", 1200), 400, 4000));
         }
 
@@ -3428,7 +3448,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private static AnthropicClient CreateAiClient()
         {
             string key = ConfigurationManager.AppSettings["AnthropicApiKey"];
-            string model = ConfigurationManager.AppSettings["AnthropicModel"] ?? "claude-sonnet-4-6";
+            string model = AiCfg.ModelFor("anthropic", ConfigurationManager.AppSettings["AnthropicModel"] ?? "claude-sonnet-4-6");
             int tokens = ReadInt("AnthropicMaxTokens", 8096);
             if (string.IsNullOrEmpty(key))
                 throw new Exception("AnthropicApiKey missing in web.config");
@@ -4972,7 +4992,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             _trModelMs = 0; _trToolMs = 0; _trDiscoveryMs = 0; _trTurns = 0; _circuitSkipReason = null;
             _trAnalysisTurns = 0; _trToolCallMsSum = 0; _trPrefetchWallMs = 0; _trInLoopWallMs = 0; _trSlowestTool = null; _trSlowestToolMs = 0; _trDistinctTools = 0; lock (_trendLock) { _trTagFetches.Clear(); }
             _trBytesSent = 0; _trBytesRecv = 0; _trToolBytes = 0; _trToolBytesKept = 0;
-            _trTokIn = 0; _trTokOut = 0; _trTokCacheRead = 0; _trTokCacheWrite = 0;
+            _trTokIn = 0; _trTokOut = 0; _trTokCacheRead = 0; _trTokCacheWrite = 0; _effortEscalated = false;
             _trToolCallCount = 0;
             JObject rs0 = new JObject();
             rs0["endpoint"] = "AnalyzeAlert"; rs0["alertId"] = GetCtx(ctx, "alertId");
@@ -5473,7 +5493,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 meta["mode"] = _synthesisMode ? "synthesis (1 turn, no tools)" : "agentic";
                 // v1.0.160.107 -- F1-response: opaque id only; the raw ProviderKind stays in the
                 // audit row and the server log, never in a browser response.
-                meta["provider"] = OpaqueProviderId(_provider != null ? _provider : ProviderKind);
+                // main port (1.0.195.0): "" (no provider sent) is not null -- report the engine that actually ran
+                string effEngine = !string.IsNullOrEmpty(_provider) ? _provider : AiCfg.DefaultEngine(ProviderKind);
+                meta["provider"] = OpaqueProviderId(effEngine);
                 if (_prefetchGap != null) { meta["prefetchGap"] = _prefetchGap; }
                 if (coverageDowngrade != null) { meta["coverageDowngrade"] = coverageDowngrade; }
                 if (AlertingTagId() != null)
@@ -5668,7 +5690,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             _trModelMs = 0; _trToolMs = 0; _trDiscoveryMs = 0; _trTurns = 0; _circuitSkipReason = null;
             _trAnalysisTurns = 0; _trToolCallMsSum = 0; _trPrefetchWallMs = 0; _trInLoopWallMs = 0; _trSlowestTool = null; _trSlowestToolMs = 0; _trDistinctTools = 0; lock (_trendLock) { _trTagFetches.Clear(); }
             _trBytesSent = 0; _trBytesRecv = 0; _trToolBytes = 0; _trToolBytesKept = 0;
-            _trTokIn = 0; _trTokOut = 0; _trTokCacheRead = 0; _trTokCacheWrite = 0;
+            _trTokIn = 0; _trTokOut = 0; _trTokCacheRead = 0; _trTokCacheWrite = 0; _effortEscalated = false;
             _trToolCallCount = 0;
             JObject rs = new JObject();
             rs["endpoint"] = "AnalyzeAlertJson"; rs["alertId"] = GetCtx(ctx, "alertId");
@@ -6537,6 +6559,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private string GateProviderForRole(string requested, bool siteKeep)
         {
             if (siteKeep) { return requested; }
+            if (AiCfg.HasValue)   // main port (1.0.193.0): normal users run the IsDefault engine
+            {
+                return AiCfg.DefaultEngine("deepseek");
+            }
             string p = (requested ?? "").Trim().ToLowerInvariant();
             // v1.0.160.42: PRESERVE DeepSeek/QUANTUM variants (quantum11 = Flash). Collapsing every
             // request to the bare "deepseek" string discarded the variant, so an ordinary user who
@@ -6609,6 +6635,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 case "anthropic": return "nexus10";
                 case "openai": return "orion10";
                 case "deepseek": return "quantum10";
+            }
+            // main port (1.0.193.0): any EngineCode of the AiModelConfig list is an opaque brand id too
+            if (AiCfg.IsKnownEngine(low))
+            {
+                return low;
             }
             return "unknown";
         }
@@ -8903,7 +8934,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // process-wide) and AiLog is an instance method using _traceId -- calling it from static
         // context is CS0120, which has already cost this arc three compile breaks. Same file, same
         // lock, no traceId.
-        private static void AiLogStatic(string level, string tag, string message)
+        internal static void AiLogStatic(string level, string tag, string message)   // main port: internal so E7FRSAdvance.AiCore.AiCoreLog can write ai-log
         {
             try
             {
@@ -8921,9 +8952,20 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 {
                     System.IO.File.AppendAllText(path, line + Environment.NewLine, Encoding.UTF8);
                 }
+                System.Threading.Interlocked.Increment(ref _aiLogWritten);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                // 1.0.160.206: was a bare catch -- a failed write (no App_Data permission) left no trace
+                // anywhere. Count it like AiLog does, so Status / AiDiag L1 can name the reason.
+                System.Threading.Interlocked.Increment(ref _aiLogDropped);
+                _aiLogLastError = ex.GetType().Name + ": " + ex.Message;
+                try { System.Diagnostics.Trace.TraceWarning("[AiLog] write failed: " + _aiLogLastError); } catch { }
+            }
         }
+
+        // 1.0.160.206: last ai-log write failure (null = none yet), for AiDiag L1.
+        internal static string AiLogLastError { get { return _aiLogLastError; } }
 
         private void AiLog(string level, string tag, string message)
         {
@@ -18940,12 +18982,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 a["where"] = where;
 
                 JObject which = new JObject();
-                which["engine"] = _provider ?? "";
+                which["engine"] = !string.IsNullOrEmpty(_provider) ? _provider : AiCfg.DefaultEngine(pk);   // main port (1.0.195.0): engine that ran
                 which["provider"] = pk;
                 string mo = AnalysisModelOverride;   // v1.0.160.62: PROPERTY, not a method
                 which["model"] = !string.IsNullOrEmpty(mo) ? mo
-                    : (pk == "deepseek" ? ReadStr("DeepSeekModel", "")
-                    : (pk == "openai" ? ReadStr("OpenAiModel", "") : ReadStr("AnthropicModel", "")));
+                    : AiCfg.ModelFor(pk, pk == "deepseek" ? ReadStr("DeepSeekModel", "")
+                    : (pk == "openai" ? ReadStr("OpenAiModel", "") : ReadStr("AnthropicModel", "")));   // main port (1.0.190.0)
                 which["thinking"] = ThinkOn;
                 which["roleGated"] = !sk;
                 a["which"] = which;
@@ -19835,6 +19877,33 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                                 _trTokCacheRead += ReadLong(u, "cache_read_input_tokens");
                                 _trTokCacheWrite += ReadLong(u, "cache_creation_input_tokens");
                             }
+                            // main port (1.0.196.0): what the vendor says it did -- model, why it stopped, thinking spend.
+                            // One MODEL line per call in ai-log; WARN when the reply hit the output limit.
+                            try
+                            {
+                                JObject rawObj = JObject.Parse(raw);
+                                string modelReturned = rawObj["model"] != null ? rawObj["model"].ToString() : "";
+                                string turnStop = rawObj["stop_reason"] != null ? rawObj["stop_reason"].ToString() : "";
+                                mt["modelReturned"] = modelReturned;
+                                mt["stopReason"] = turnStop;
+                                long outTok = u != null ? ReadLong(u, "output_tokens") : 0;
+                                long thinkTok = 0;
+                                JObject outDetails = u != null ? u["output_tokens_details"] as JObject : null;
+                                if (outDetails != null)
+                                {
+                                    thinkTok = ReadLong(outDetails, "thinking_tokens");
+                                }
+                                string modelSent = AnalysisModelOverride ?? "";
+                                AiLog(turnStop == "max_tokens" ? "WARN" : "INFO", "MODEL",
+                                    "turn=" + iter + " engine=" + (string.IsNullOrEmpty(_provider) ? AiCfg.DefaultEngine("?") : _provider)
+                                    + " provider=" + ProviderKind + " model=" + (modelSent.Length > 0 ? modelSent : "(config default)")
+                                    + " returned=" + modelReturned + " stop=" + turnStop + " out=" + outTok + " thinking=" + thinkTok
+                                    + " ms=" + _swModel.ElapsedMilliseconds
+                                    + (turnStop == "max_tokens" ? " -- OUTPUT LIMIT REACHED, reply is cut off" : ""));
+                            }
+                            catch
+                            {
+                            }
                             TraceAnalyze("model_turn", mt);
                         }
                         WriteSse("step", new
@@ -20557,16 +20626,43 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         }
                         else
                         {
-                            AiLog("WARN", "VERDICT", "popup verdict failed validation: " + vReason);
+                            // main port (1.0.198.0): a complete reply at low effort that misses the contract -> re-run
+                            // the SAME request once at full thinking (as Think ON). The failed reply is not added.
+                            if (stopReason != "max_tokens" && !ThinkOn && !_effortEscalated
+                                && ProviderKind == "anthropic" && AiCfg.IsHaiku55(AnalysisModelOverride) && iter + 1 < loopCap)   // Haiku 5.5 only
+                            {
+                                _effortEscalated = true;
+                                AiLog("WARN", "VERDICT", "popup verdict failed at effort=low (" + vReason
+                                    + ") -- re-running once with full thinking");
+                                LogRejectedReply(fullText);
+                                continue;
+                            }
+                            AiLog("WARN", "VERDICT", "popup verdict failed validation: " + vReason
+                                + (_effortEscalated ? " (after full-thinking re-run)" : ""));
                             LogRejectedReply(fullText);   // v1.0.137.0
                             WriteSse("error", new { message = "Verdict failed validation: " + vReason });
                         }
                     }
                     else
                     {
-                        AiLog("WARN", "VERDICT", "popup verdict was not JSON");
+                        // main port (1.0.198.0): same escalation when a complete low-effort reply is not JSON
+                        if (stopReason != "max_tokens" && !ThinkOn && !_effortEscalated
+                            && ProviderKind == "anthropic" && AiCfg.IsHaiku55(AnalysisModelOverride) && iter + 1 < loopCap)   // Haiku 5.5 only
+                        {
+                            _effortEscalated = true;
+                            AiLog("WARN", "VERDICT", "popup verdict was not JSON at effort=low (stop_reason=" + stopReason
+                                + ") -- re-running once with full thinking");
+                            LogRejectedReply(fullText);
+                            continue;
+                        }
+                        // main port (1.0.196.0): name the cause -- a reply cut off at the output limit
+                        AiLog("WARN", "VERDICT", "popup verdict was not JSON (stop_reason=" + stopReason
+                            + (stopReason == "max_tokens" ? " -- reply CUT OFF at the output limit" : "")
+                            + ", tokOut=" + _trTokOut + ")");
                         LogRejectedReply(fullText);   // v1.0.137.0
-                        WriteSse("error", new { message = "Verdict was not valid JSON." });
+                        WriteSse("error", new { message = stopReason == "max_tokens"
+                            ? "Verdict was cut off (output limit reached). Press Re-run."
+                            : "Verdict was not valid JSON." });
                     }
                 }
                     if (_jsonCapture != null)
@@ -21105,6 +21201,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private Task<string> CallModelOnceAsync(object[] messages, object[] tools, string systemPrompt)
         {
             string modelOverride = AnalysisModelOverride;   // v1.0.158.0: NEXUS/ORION variant model string, else null
+            // main port (1.0.190.0): no variant -> the AiModelConfig API model (when it names this provider).
+            if (string.IsNullOrEmpty(modelOverride))
+            {
+                modelOverride = AiCfg.LiveModelFor(ProviderKind);
+            }
+            string engineKey = AiCfg.KeyForEngine(_provider ?? _aiProviderDefault, null);   // main port (1.0.193.0): picked engine's key
+            string keyTag = AiCfg.KeyTag(engineKey);
             if (UseDeepSeek)
             {
                 // DeepSeek is OpenAI-compatible and caches repeated prefixes automatically.
@@ -21120,10 +21223,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 }
                 string dsModel = string.IsNullOrEmpty(modelOverride) ? ReadStr("DeepSeekModel", "deepseek-v4-pro") : modelOverride;
                 int dsMax = _synthesisMode ? ClampCfg(ReadInt("AnalyzeSynthesisMaxTokens", 1200), 400, 4000) : ReadInt("DeepSeekMaxTokens", 8096);
-                string dsKey = "ds:" + dsModel + ":" + (think ? "1" : "0") + ":" + dsMax;
+                string dsKey = "ds:" + dsModel + ":" + (think ? "1" : "0") + ":" + dsMax + ":" + keyTag;
                 DeepSeekClient dc = (DeepSeekClient)_variantClients.GetOrAdd(dsKey, k =>
                     new DeepSeekClient(
-                        ConfigurationManager.AppSettings["DeepSeekApiKey"],
+                        engineKey ?? ConfigurationManager.AppSettings["DeepSeekApiKey"],
                         dsModel,
                         dsMax,
                         ReadStr("DeepSeekBaseUrl", "https://api.deepseek.com/v1"),
@@ -21137,9 +21240,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 OpenAiClient oc;
                 if (!string.IsNullOrEmpty(modelOverride))   // ORION 1.6/1.7 -> GPT-5.6 / Sol (or configured)
                 {
-                    oc = (OpenAiClient)_variantClients.GetOrAdd("oai:" + modelOverride, k =>
+                    oc = (OpenAiClient)_variantClients.GetOrAdd("oai:" + modelOverride + ":" + keyTag, k =>
                         new OpenAiClient(
-                            ConfigurationManager.AppSettings["OpenAiApiKey"],
+                            engineKey ?? ConfigurationManager.AppSettings["OpenAiApiKey"],
                             modelOverride,
                             _synthesisMode ? ClampCfg(ReadInt("AnalyzeSynthesisMaxTokens", 1200), 400, 4000) : ReadInt("AnthropicMaxTokens", 8096),
                             ReadStr("OpenAiBaseUrl", "https://api.openai.com/v1")));
@@ -21151,11 +21254,21 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             AnthropicClient client;
             if (!string.IsNullOrEmpty(modelOverride))   // NEXUS 1.6/1.9/4.9 -> Opus 4.6 / 4.8 / Fable (or configured)
             {
-                client = (AnthropicClient)_variantClients.GetOrAdd("ant:" + modelOverride, k =>
+                // main port (1.0.196.0-1.0.198.0), HAIKU 5.5 ONLY: max_tokens = the model's own output cap (Haiku
+                // thinks by default and thinking counts against max_tokens); effort "low" (fast) unless Think is ON
+                // or the run was escalated after a low-effort verdict failed validation (then the model default).
+                // Every other Anthropic model keeps its original max_tokens and sends no effort.
+                bool haiku = AiCfg.IsHaiku55(modelOverride);
+                string antEffort = (!haiku || ThinkOn || _effortEscalated) ? null : "low";
+                int antMax = haiku
+                    ? AiCfg.AnthropicOutputTokens(modelOverride, engineKey ?? ConfigurationManager.AppSettings["AnthropicApiKey"])
+                    : (_synthesisMode ? ClampCfg(ReadInt("AnalyzeSynthesisMaxTokens", 1200), 400, 4000) : ReadInt("AnthropicMaxTokens", 8096));
+                client = (AnthropicClient)_variantClients.GetOrAdd("ant:" + modelOverride + ":" + keyTag + ":" + (antEffort ?? "default") + ":" + antMax, k =>
                     new AnthropicClient(
-                        ConfigurationManager.AppSettings["AnthropicApiKey"],
+                        engineKey ?? ConfigurationManager.AppSettings["AnthropicApiKey"],
                         modelOverride,
-                        _synthesisMode ? ClampCfg(ReadInt("AnalyzeSynthesisMaxTokens", 1200), 400, 4000) : ReadInt("AnthropicMaxTokens", 8096)));
+                        antMax,
+                        antEffort));
             }
             else { client = _synthesisMode ? _aiSynth.Value : _ai.Value; }
             if (!_aiCacheParamMissing)

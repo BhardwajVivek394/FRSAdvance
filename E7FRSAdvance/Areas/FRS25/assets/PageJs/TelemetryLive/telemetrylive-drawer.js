@@ -75,7 +75,11 @@
     function live() { return W.wsLiveData || {}; }
     function describe(aid) {
         if (W.TlHealthView && typeof W.TlHealthView.describe === 'function') {
-            try { return W.TlHealthView.describe(aid, String(aid) === D.aid ? D.typeHint : null); } catch (e) { /* fall through */ }
+            try {
+                var A = W.TlHealthView.describe(aid, String(aid) === D.aid ? D.typeHint : null);
+                /* point machine: live values + circuit cards bound from the site's GetUserAssetInfo */
+                return (A && String(aid) === D.aid && kind() === 'pm') ? pmDynamic(A) : A;
+            } catch (e) { /* fall through */ }
         }
         return null;
     }
@@ -83,7 +87,7 @@
        site), not the raw attribute names the WebSocket / history columns carry.
        byId[aid_attrId] and byName[aid|ATTRNAME] -> { alias, attr } */
     var UAI_URL = '/FRS25/Telemetry/GetUserAssetInfo?siteId=';
-    var AL = { site: null, byId: {}, byName: {} };
+    var AL = { site: null, byId: {}, byName: {}, assets: {} };   /* assets[aid] = configured attributes (GetUserAssetInfo rows) */
     function aliasSite(aid) {
         var s = siteId();
         if (s && s !== '0') return s;
@@ -93,7 +97,7 @@
     function loadAliases(aid) {
         var sid = aliasSite(aid);
         if (!sid || sid === '0' || AL.site === sid) return;
-        AL.site = sid; AL.byId = {}; AL.byName = {};
+        AL.site = sid; AL.byId = {}; AL.byName = {}; AL.assets = {};
         $.ajax({
             url: UAI_URL + encodeURIComponent(sid), type: 'GET', dataType: 'json', timeout: 30000,
             success: function (rows) {
@@ -103,6 +107,14 @@
                 rows.forEach(function (r) {
                     if (!r || r.AssetId === null || r.AssetId === undefined) return;
                     var al = String(r.AliasName || '').trim(), an = String(r.AttributeName || '').trim();
+                    /* every configured attribute of the asset (alias or not): Role "0" / empty = not wired */
+                    var rid = r.AssetAttributeId !== null && r.AssetAttributeId !== undefined ? r.AssetAttributeId : r.AttributeId;
+                    var rrole = String(r.Role == null ? '' : r.Role).trim();
+                    if (rid !== null && rid !== undefined && rrole && rrole !== '0') {
+                        (AL.assets[String(r.AssetId)] = AL.assets[String(r.AssetId)] || []).push({
+                            id: parseInt(rid, 10), name: an, alias: al, roleType: String(r.RoleType || '').toLowerCase()
+                        });
+                    }
                     if (!al) return;
                     var e = { alias: al, attr: an }, aid2 = String(r.AssetId);
                     var id = r.AssetAttributeId !== null && r.AssetAttributeId !== undefined ? r.AssetAttributeId : r.AttributeId;
@@ -992,6 +1004,239 @@
         return '<g><rect x="' + x + '" y="' + (y - 14) + '" width="' + w + '" height="28" rx="5" fill="' + P.card + '" stroke="' + col + '" stroke-width="1.8"></rect>' +
             '<text x="' + (x + 10) + '" y="' + (y + 5) + '" font-size="14" font-weight="800" fill="' + col + '">' + esc(name) + ' ' + (up === true ? '&#8593;' : up === false ? '&#8595;' : '') + '</text></g>';
     }
+    /* LAST OPERATION table (reading per row, A End / B End columns) -- rows come
+       only from the asset's configured attributes in GetUserAssetInfo (AL.assets,
+       Role not "0"):
+       - analog (RoleType "c"): end A / B from "A End - ..." / "A ..." alias,
+         direction from NW / RW / trailing N / R; only the attribute of the last
+         operation's direction is shown and its label keeps that letter
+         ("IPT N", "VPT 110 DC LOC R", "VPT RWKR"). A current channel (xW-C)
+         shows the operation Max / Avg plus the operation time, a 110 V channel
+         (xW-V) the operation average -- those statistics exist only in the PM
+         operation data -- any other attribute its live value by
+         AssetAttributeId. Vibration sensors are not operation readings: left out.
+       - DataLogger (RoleType "d", "Combined-NWKR" ...): Pickup / Drop from the
+         asset's relays, in a DataLogger section.
+       An end column shows only when that end has a configured reading. Until the
+       API answers, the rows follow the PM readings that have a value. */
+    var LOP_END_NAME_RX = /\b([AB])[\s\-_]*end\b/i;
+    var LOP_SKIP_RX = /vibration/i;
+    function lastOpParse(c) {
+        var nm = String(c.name || ''), al = String(c.alias || '').trim();
+        var m = LOP_END_NAME_RX.exec(nm), E = m ? m[1].toUpperCase() : '';
+        if (!E) { var ma = /^\s*([AB])\s+\S/i.exec(al); if (ma) E = ma[1].toUpperCase(); }
+        if (!E) return null;
+        var d = /\b(N|R)W(?:KR|CR)?\b|\b(N|R)W-/i.exec(nm);
+        var dirc = d ? (d[1] || d[2]).toUpperCase() : '';
+        if (!dirc) { var dt = /\s(N|R)\s*$/i.exec(al); if (dt) dirc = dt[1].toUpperCase(); }
+        /* label as configured (alias without the end), direction letter kept */
+        var label = al ? al.replace(/^\s*[AB]\s+/i, '') : (m ? nm.slice(0, m.index) + ' ' + nm.slice(m.index + m[0].length) : nm);
+        label = label.replace(/[\s\-_:]+/g, ' ').trim();
+        /* merge key: the same reading at either end */
+        var key = norm(label.replace(/\b(N|R)W(KR|CR)\b/gi, '$2').replace(/\s+(N|R)$/i, ''));
+        var kind = /W-C\b/i.test(nm) || /\bIPT\b/i.test(label) ? 'cur' : /W-V\b/i.test(nm) ? 'v110' : 'live';
+        return { E: E, dir: dirc, label: label, key: key, kind: kind, id: c.id };
+    }
+    function lastOpModel(A, dirName) {
+        var cfg = AL.assets[String(D.aid)] || null, rowsOf = A || { rows: [] };
+        var dl = dirName === 'Reverse' ? 'R' : 'N';
+        var rowVal = function (E, l) { var r = rowByLabel(rowsOf, E + ' End ' + l); return r && r.v !== null && r.v !== undefined ? r.v : null; };
+        /* operation time: the PM model's value of this operation, else the stream id (AC / BC + 5) */
+        var tptVal = function (E) { var v = rowVal(E, 'TPT N/R(ms)'); return v !== null ? v : pmOpValue(E === 'A' ? 'AC' : 'BC', dirName, 'OperationTime'); };
+        var attrs = (live()[D.aid] || {}).attrs || {};
+        var liveById = function (id) {
+            for (var k in attrs) {
+                if (!attrs.hasOwnProperty(k)) continue;
+                var at = attrs[k] || {};
+                if (parseInt(at.AttrId || at.AssetAttributeId, 10) === id) { var n = parseFloat(at.Value); return isNaN(n) ? null : n; }
+            }
+            return null;
+        };
+        var rows = [], byKey = {}, relays = [];
+        if (!cfg) {
+            rowsOf.rows.forEach(function (r) {
+                var m = /^([AB]) End (.+)$/.exec(r.label || '');
+                if (!m || r.v === null || r.v === undefined) return;
+                var key = norm(m[2]);
+                if (!byKey[key]) { byKey[key] = { h: m[2].replace(/N\/R/g, dl), has: {}, v: {} }; rows.push(byKey[key]); }
+                byKey[key].has[m[1]] = true;
+                byKey[key].v[m[1]] = fmt(r.v);
+            });
+            rows.forEach(function (c) { c.val = function (E) { return c.v[E] || '--'; }; });
+        } else {
+            cfg.forEach(function (c) {
+                if (c.roleType === 'd') { relays.push(c); return; }
+                if (c.roleType !== 'c' || LOP_SKIP_RX.test(c.name || '') || LOP_SKIP_RX.test(c.alias || '')) return;
+                var p = lastOpParse(c);
+                if (!p || (p.dir && p.dir !== dl)) return;
+                if (!byKey[p.key]) { byKey[p.key] = { label: p.label, kind: p.kind, has: {}, ids: {} }; rows.push(byKey[p.key]); }
+                byKey[p.key].has[p.E] = true;
+                byKey[p.key].ids[p.E] = p.id;
+            });
+            var out = [];
+            rows.forEach(function (c) {
+                if (c.kind === 'cur') {
+                    c.h = c.label + ' Max / Avg (A)';
+                    c.val = function (E) { return fmt(rowVal(E, 'IPT N/R(A) Max')) + ' / ' + fmt(rowVal(E, 'IPT N/R(A) Avg')); };
+                    out.push(c);
+                    if (!byKey.TPT) out.push(byKey.TPT = { h: 'TPT ' + dl + '(ms)', kind: 'tpt', has: c.has, val: function (E) { return fmt(tptVal(E)); } });
+                } else if (c.kind === 'v110') {
+                    c.h = c.label + ' Avg (V)';
+                    c.val = function (E) { var v = rowVal(E, 'VPT 110 DC LOC N/R(V)'); return fmt(v !== null ? v : liveById(c.ids[E])); };
+                    out.push(c);
+                } else {
+                    c.h = c.label;
+                    c.val = function (E) { return fmt(liveById(c.ids[E])); };
+                    out.push(c);
+                }
+            });
+            /* operation time ("TPT", 616 name) is the current channel's OperationTime --
+               shown for every end that has one, even without a configured IPT attribute */
+            if (!byKey.TPT) {
+                var th = {};
+                ['A', 'B'].forEach(function (E) { if (tptVal(E) !== null) th[E] = true; });
+                if (th.A || th.B) out.push(byKey.TPT = { h: 'TPT ' + dl + '(ms)', kind: 'tpt', has: th, val: function (E) { return fmt(tptVal(E)); } });
+            }
+            var rank = { cur: 0, tpt: 1, v110: 2, live: 3 };
+            rows = out.map(function (c, i) { return { c: c, i: i }; })
+                .sort(function (x, y) { return rank[x.c.kind] - rank[y.c.kind] || x.i - y.i; }).map(function (x) { return x.c; });
+        }
+        var ends = ['A', 'B'].filter(function (E) { return rows.some(function (c) { return c.has[E]; }); });
+        /* DataLogger relays: configured names, state from the asset's relays */
+        var rl = {};
+        ((A && A.relays) || []).forEach(function (r) { rl[norm(r.name)] = r.up; });
+        var stateOf = function (nm) {
+            var k = norm(nm), k2 = k.replace(/^COMBINED/, '');
+            if (rl.hasOwnProperty(k)) return rl[k];
+            for (var rk in rl) if (rl.hasOwnProperty(rk) && (rk === k2 || rk.slice(-k2.length) === k2)) return rl[rk];
+            return undefined;
+        };
+        var dls = cfg ? relays.map(function (c) { return { h: c.alias || c.name, up: stateOf(c.name) }; })
+            : ((A && A.relays) || []).map(function (r) { return { h: r.name, up: r.up }; });
+        return { rows: rows, ends: ends.length ? ends : ['A'], dls: dls };
+    }
+    /* POINT MACHINE live values (tiles + circuit cards) from the same configured
+       attributes as the Last Operation table: per end, the readings of the last
+       operation's direction, labelled with the API alias ("A IPT N Max (A)",
+       "B VPT 110 DC LOC R Avg (V)", "A VPT NWKR"); safe range by the
+       attribute's AssetAttributeId. Vibration is left out. Without the API yet,
+       the PM readings are returned unchanged. */
+    /* PM operation stream id (EdgeX): BaseCode + DataTypeOffset. Base: AC 1000 / 6000,
+       AV 2000 / 7000, BC 3000 / 8000, BV 4000 / 9000 (Normal / Reverse); offset:
+       Array 1, Avg 2, Min 3, Max 4, OperationTime 5, Count 6. Live attribute
+       name "NN-PM-NNNN-<metric>" carries that id. */
+    var PM_BASE = { AC: [1000, 6000], AV: [2000, 7000], BC: [3000, 8000], BV: [4000, 9000] };
+    var PM_OFFSET = { Array: 1, Avg: 2, Min: 3, Max: 4, OperationTime: 5, Count: 6 };
+    function pmOpValue(ch, dirName, metric) {
+        var code = PM_BASE[ch][dirName === 'Reverse' ? 1 : 0] + PM_OFFSET[metric];
+        var attrs = (live()[D.aid] || {}).attrs || {};
+        for (var k in attrs) {
+            if (!attrs.hasOwnProperty(k)) continue;
+            var m = /^0?\d+-PM-0?(\d+)-\w+$/i.exec(k);
+            if (!m || parseInt(m[1], 10) !== code) continue;
+            var n = parseFloat((attrs[k] || {}).Value);
+            return isNaN(n) ? null : n;
+        }
+        return null;
+    }
+    function pmLiveById(id) {
+        var attrs = (live()[D.aid] || {}).attrs || {};
+        for (var k in attrs) {
+            if (!attrs.hasOwnProperty(k)) continue;
+            var at = attrs[k] || {};
+            if (parseInt(at.AttrId || at.AssetAttributeId, 10) === id) { var n = parseFloat(at.Value); return isNaN(n) ? null : n; }
+        }
+        return null;
+    }
+    function pmDynamic(A) {
+        if (!AL.assets[String(D.aid)]) return A;
+        var dl = A.pmDir === 'Reverse' ? 'R' : 'N';
+        var M = lastOpModel(A, A.pmDir);
+        var cls = W.TlHealthView && typeof W.TlHealthView.classify === 'function' ? W.TlHealthView.classify : null;
+        var out = { A: [], B: [] };
+        var add = function (E, base, alias, attrId, isApi) {
+            var r = {}, k;
+            if (base) { for (k in base) if (base.hasOwnProperty(k)) r[k] = base[k]; }
+            else r = { k: '#API' + E + (attrId || norm(alias)), key: 'API' + E + (attrId || norm(alias)), label: alias, sub: '', v: null, st: 'none', stale: false, range: null };
+            if (isApi) { r.attrId = String(attrId); r.v = pmLiveById(attrId); }
+            r.alias = alias;
+            r.end = E;
+            if (attrId && cls && r.v !== null && r.v !== undefined) {
+                var c = cls(D.aid, alias, r.v, attrId);
+                if (c && c.range) r.range = c.range;
+            }
+            out[E].push(r);
+        };
+        M.rows.forEach(function (c) {
+            M.ends.forEach(function (E) {
+                if (!c.has[E]) return;
+                var pm = function (l) { return rowByLabel(A, E + ' End ' + l); };
+                if (c.kind === 'cur') {
+                    add(E, pm('IPT N/R(A) Max'), E + ' ' + c.label + ' Max (A)', c.ids[E]);
+                    add(E, pm('IPT N/R(A) Avg'), E + ' ' + c.label + ' Avg (A)', c.ids[E]);
+                } else if (c.kind === 'tpt') {
+                    /* 616 name "TPT N/R(ms)", with the operation's direction letter */
+                    add(E, pm('TPT N/R(ms)'), E + ' TPT ' + dl + '(ms)');
+                    var tr = out[E][out[E].length - 1];
+                    if (tr.v === null || tr.v === undefined) tr.v = pmOpValue(E === 'A' ? 'AC' : 'BC', A.pmDir, 'OperationTime');
+                } else if (c.kind === 'v110') {
+                    add(E, pm('VPT 110 DC LOC N/R(V)'), E + ' ' + c.label + ' Avg (V)', c.ids[E]);
+                } else {
+                    add(E, null, E + ' ' + c.label, c.ids[E], true);
+                }
+            });
+        });
+        var B = {}, k;
+        for (k in A) if (A.hasOwnProperty(k)) B[k] = A[k];
+        B.rows = out.A.concat(out.B);
+        B.pmDyn = true;
+        return B;
+    }
+    function lastOpTableSvg(P, A, dir) {
+        var M = lastOpModel(A, dir), rows = M.rows, ends = M.ends, dls = M.dls, s = [];
+        var a = function (t) { s.push(t); };
+        var tx = 600, ty = 60, W = 380, RH = 22, maxH = 370;
+        var ex = ends.length === 1 ? [tx + 250] : [tx + 214, tx + 300];
+        var nR = rows.length || 1, nD = dls.length ? dls.length + 1 : 0;
+        var H = Math.min(maxH, 66 + (nR + nD) * RH + 24);
+        var fit = Math.floor((H - 66 - 24) / RH);
+        a('<rect x="' + tx + '" y="' + ty + '" width="' + W + '" height="' + H + '" rx="6" fill="' + P.card + '" stroke="' + P.cedge + '"></rect>');
+        a('<text x="' + (tx + 14) + '" y="' + (ty + 26) + '" font-size="14" font-weight="800" fill="' + P.ink + '">LAST OPERATION</text>');
+        if (dir) a('<rect x="' + (tx + 250) + '" y="' + (ty + 10) + '" width="116" height="24" rx="12" fill="' + (dir === 'Reverse' ? '#CA8A04' : P.green) + '"></rect><text x="' + (tx + 308) + '" y="' + (ty + 27) + '" text-anchor="middle" font-size="13" font-weight="800" fill="#FFFFFF">' + esc(dir) + '</text>');
+        var hdr = function (x, t) { a('<text x="' + x + '" y="' + (ty + 56) + '" font-size="11" font-weight="700" fill="' + P.mut + '">' + esc(t) + '</text>'); };
+        var lab = function (y, t, col, w) { a('<text x="' + (tx + 10) + '" y="' + y + '" font-size="11.5" font-weight="' + (w || 700) + '" fill="' + (col || P.ink) + '">' + esc(t.length > 30 ? t.slice(0, 29) + '…' : t) + '</text>'); };
+        var val = function (x, y, t, col) { a('<text x="' + x + '" y="' + y + '" font-size="12.5" font-weight="700" fill="' + (col || P.val) + '" font-family="JetBrains Mono, monospace">' + esc(t) + '</text>'); };
+        var line = function (y) { a('<line x1="' + (tx + 8) + '" x2="' + (tx + W - 8) + '" y1="' + y + '" y2="' + y + '" stroke="' + P.cedge + '"></line>'); };
+        hdr(tx + 10, 'Reading');
+        ends.forEach(function (E, j) { hdr(ex[j], E + ' End'); });
+        var n = 0, y0 = ty + 78;
+        if (!rows.length) { lab(y0, 'No operation readings configured', P.mut, 400); n = 1; }
+        rows.forEach(function (c) {
+            if (n >= fit) return;
+            var y = y0 + n * RH;
+            line(y - 15);
+            lab(y, c.h);
+            ends.forEach(function (E, j) { val(ex[j], y, c.has[E] ? c.val(E) : '--'); });
+            n++;
+        });
+        if (dls.length && n < fit) {
+            var yh = y0 + n * RH;
+            line(yh - 15);
+            lab(yh, 'DATALOGGER', P.mut, 800);
+            n++;
+            dls.forEach(function (d) {
+                if (n >= fit) return;
+                var y = y0 + n * RH, col = d.up === true ? P.green : d.up === false ? '#CA8A04' : P.mut;
+                lab(y, d.h);
+                val(ex[0], y, d.up === true ? 'Pickup ↑' : d.up === false ? 'Drop ↓' : '--', col);
+                n++;
+            });
+        }
+        var total = (rows.length || 1) + (dls.length ? dls.length + 1 : 0);
+        if (total > n) a('<text x="' + (tx + W - 14) + '" y="' + (ty + H - 8) + '" text-anchor="end" font-size="11" fill="' + P.mut + '">+' + (total - n) + ' more</text>');
+        if (A && A.pmWhen && A.pmWhen !== '--') a('<text x="' + (tx + 14) + '" y="' + (ty + H - 8) + '" font-size="11" fill="' + P.mut + '">' + esc(A.pmWhen) + '</text>');
+        return s.join('');
+    }
     function pmCircuitSvg(A) {
         var P = pal(), s = [];
         var a = function (t) { s.push(t); };
@@ -1029,25 +1274,22 @@
         a(motor(1060, 560, "'A' END MOTOR") + motor(1360, 540, "'B' END MOTOR"));
         a('<path d="M980 560H1036M1210 480V540H1336" fill="none" stroke="' + P.ink + '" stroke-width="2" stroke-dasharray="5 4"></path>');
         /* value cards per end */
-        var lbl = ['VPT 24 DC LOC N/R(V)', 'VPT N/R(V)', 'IPT N/R(A) Max', 'IPT N/R(A) Avg', 'VPT 110 DC LOC N/R(V)', 'TPT N/R(ms)'];
-        lbl.forEach(function (l, i) {
-            a(ccard(P, A, norm('A End ' + l), 'A ' + l, 616 + (i % 2) * 182, 506 + Math.floor(i / 2) * 70, 170));
-            a(ccard(P, A, norm('B End ' + l), 'B ' + l, 1026 + (i % 2) * 190, 126 + Math.floor(i / 2) * 70, 178));
-        });
-        /* last operation table */
-        var tx = 600, ty = 60, XS = [10, 46, 172, 250, 312], hd = ['End', 'IPT Max / Avg (A)', 'VPT 110', 'TPT ms', 'VPT 24'];
-        a('<rect x="' + tx + '" y="' + ty + '" width="380" height="150" rx="6" fill="' + P.card + '" stroke="' + P.cedge + '"></rect>');
-        a('<text x="' + (tx + 14) + '" y="' + (ty + 26) + '" font-size="14" font-weight="800" fill="' + P.ink + '">LAST OPERATION</text>');
-        if (dir) a('<rect x="' + (tx + 250) + '" y="' + (ty + 10) + '" width="116" height="24" rx="12" fill="' + (dir === 'Reverse' ? '#CA8A04' : P.green) + '"></rect><text x="' + (tx + 308) + '" y="' + (ty + 27) + '" text-anchor="middle" font-size="13" font-weight="800" fill="#FFFFFF">' + esc(dir) + '</text>');
-        hd.forEach(function (h2, i) { a('<text x="' + (tx + XS[i]) + '" y="' + (ty + 56) + '" font-size="11" font-weight="700" fill="' + P.mut + '">' + h2 + '</text>'); });
-        ['A', 'B'].forEach(function (E, j) {
-            var v = function (l) { var r = rowByLabel(A || { rows: [] }, E + ' End ' + l); return r ? fmt(r.v) : '--'; };
-            var vals = [E, v('IPT N/R(A) Max') + ' / ' + v('IPT N/R(A) Avg'), v('VPT 110 DC LOC N/R(V)'), v('TPT N/R(ms)'), v('VPT 24 DC LOC N/R(V)')];
-            var y = ty + 86 + j * 30;
-            a('<line x1="' + (tx + 8) + '" x2="' + (tx + 372) + '" y1="' + (y - 18) + '" y2="' + (y - 18) + '" stroke="' + P.cedge + '"></line>');
-            vals.forEach(function (t, i) { a('<text x="' + (tx + XS[i]) + '" y="' + y + '" font-size="12.5" font-weight="' + (i ? 700 : 800) + '" fill="' + P.val + '" font-family="JetBrains Mono, monospace">' + esc(t) + '</text>'); });
-        });
-        if (A && A.pmWhen && A.pmWhen !== '--') a('<text x="' + (tx + 14) + '" y="' + (ty + 142) + '" font-size="11" fill="' + P.mut + '">' + esc(A.pmWhen) + '</text>');
+        if (A && A.pmDyn) {
+            /* configured readings of each end (GetUserAssetInfo), 2 per row, up to 10 per box */
+            ['A', 'B'].forEach(function (E) {
+                A.rows.filter(function (r) { return r.end === E; }).slice(0, 10).forEach(function (r, i) {
+                    a(E === 'A' ? ccard(P, A, r.key, r.alias, 616 + (i % 2) * 182, 506 + Math.floor(i / 2) * 70, 170)
+                        : ccard(P, A, r.key, r.alias, 1026 + (i % 2) * 190, 126 + Math.floor(i / 2) * 70, 178));
+                });
+            });
+        } else {
+            var lbl = ['VPT 24 DC LOC N/R(V)', 'VPT N/R(V)', 'IPT N/R(A) Max', 'IPT N/R(A) Avg', 'VPT 110 DC LOC N/R(V)', 'TPT N/R(ms)'];
+            lbl.forEach(function (l, i) {
+                a(ccard(P, A, norm('A End ' + l), 'A ' + l, 616 + (i % 2) * 182, 506 + Math.floor(i / 2) * 70, 170));
+                a(ccard(P, A, norm('B End ' + l), 'B ' + l, 1026 + (i % 2) * 190, 126 + Math.floor(i / 2) * 70, 178));
+            });
+        }
+        a(lastOpTableSvg(P, A, dir));
         return '<svg viewBox="0 0 1440 900" width="100%" role="img" aria-label="Point machine circuit with live values" style="display:block">' + s.join('') + '</svg>';
     }
     /* ======================================================================
@@ -1494,7 +1736,7 @@
             out += '<rect x="' + lab + '" y="' + y0 + '" width="' + gw + '" height="' + LH + '" fill="' + (k % 2 ? 'rgba(127,140,160,.07)' : 'rgba(127,140,160,.02)') + '"></rect>';
             var last = pts.length ? pts[pts.length - 1][1] : null;
             var cr = {};
-            if (cls && last !== null && !c.dl) { cr = cls(D.aid, c.name, last) || {}; if (!cr.range && name !== c.name) cr = cls(D.aid, name, last) || cr; }
+            if (cls && last !== null && !c.dl) { cr = cls(D.aid, c.name, last, c.attrId) || {}; if (!cr.range && name !== c.name) cr = cls(D.aid, name, last, c.attrId) || cr; }
             var rg = cr.range || null;
             var st = cr.st || 'ok';
             var vcol = st === 'high' ? '#C8323A' : st === 'low' ? '#B47B00' : 'currentColor';
@@ -2022,7 +2264,8 @@
         /* SIP signal/shunt mirrors are pruned by the host when their type is not the selected one */
         if (W.SipTelemetry && typeof W.SipTelemetry.restoreMirror === 'function') W.SipTelemetry.restoreMirror(D.aid);
         var A = describe(D.aid);
-        var sig = A ? (A.rows.map(function (r) { return r.v; }).join(',') + '|' + (A.derived || []).map(function (r) { return r.v; }).join(',') + '|' + A.occ + A.status + A.score + (A.pmDir || '') + (A.pmWhen || '') +
+        var sig = A ? (A.rows.concat(A.derived || []).map(function (r) { return r.range ? 1 : 0; }).join('') + '|' +   /* repaint once the FRS ranges arrive */
+            A.rows.map(function (r) { return r.v; }).join(',') + '|' + (A.derived || []).map(function (r) { return r.v; }).join(',') + '|' + A.occ + A.status + A.score + (A.pmDir || '') + (A.pmWhen || '') +
             (A.relays || []).map(function (r) { return r.up ? 1 : 0; }).join('') + '|' + isLight()) : 'none';
         var head = document.getElementById('tldHead');
         if (head) { var hh = headHtml(A); if (hh !== D.headHtml) { D.headHtml = hh; head.innerHTML = hh; } }
@@ -2032,14 +2275,25 @@
         var an = document.getElementById('tldAnalysis'); if (an) an.innerHTML = analysisHtml(A);
         var c = document.getElementById('tldCircuit'); if (c) c.innerHTML = circuitSvg(A);
     }
+    /* CSV status against the FRS safe range: below min = low, above max = high, else average */
+    function csvStatus(r) {
+        if (r.v === null || r.v === undefined) return 'no value';
+        var g = r.range;
+        if (!g || (g.min == null && g.max == null)) return r.derived ? 'calculated' : 'no range';
+        if (g.min != null && r.v < g.min) return 'low';
+        if (g.max != null && r.v > g.max) return 'high';
+        return 'average';
+    }
     function exportCsv() {
         var A = describe(D.aid), a = live()[D.aid] || {};
         if (!A) return;
-        var lines = ['Asset,Reading,Value,Safe min,Safe max,Status'];
+        var lines = ['Asset,Reading,Value,Safe min,Safe max,Average,Status'];
+        /* numbers: up to 3 decimals, unquoted so Excel reads them as numbers */
+        var n3 = function (v) { return (v === null || v === undefined || isNaN(v)) ? '' : String(Math.round(v * 1000) / 1000); };
+        var q = function (x) { return '"' + String(x).replace(/"/g, '""') + '"'; };
         A.rows.concat(A.derived || []).forEach(function (r) {
             var g = r.range || {};
-            lines.push([a.AssetName || D.aid, r.alias || r.label, r.v === null ? '' : r.v, g.min == null ? '' : g.min, g.max == null ? '' : g.max, r.derived ? 'calculated' : stOf(r)]
-                .map(function (x) { return '"' + String(x).replace(/"/g, '""') + '"'; }).join(','));
+            lines.push([q(a.AssetName || D.aid), q(r.alias || r.label), n3(r.v), n3(g.min), n3(g.max), n3(g.avg), q(csvStatus(r))].join(','));
         });
         var blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
         var link = document.createElement('a');

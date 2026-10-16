@@ -38,8 +38,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             ReadInt("AiToolLogMaxChars", 20000);
         private static readonly object _toolLogLock = new object();
         private static readonly string _toolLogDir =
-            System.IO.Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory, "App_Data", "AiToolLogs");
+            E7FRSAdvance.AiCore.AiLogPaths.AiToolLogs;   // AiLogDir in Web.config, else App_Data/AiToolLogs
 
         private static readonly Lazy<AnthropicClient> _ai =
             new Lazy<AnthropicClient>(CreateAiClient);
@@ -91,16 +90,26 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // All three clients take the SAME (apiKey, model, maxTokens) shape and return
         // Anthropic-shaped JSON, which is why this drops in without touching the agentic loop.
         private string _provider;   // resolved per request
+        private readonly System.Diagnostics.Stopwatch _chatSw = System.Diagnostics.Stopwatch.StartNew();   // FRSAdvance log: one controller per request, so this times the question
+        private string _chatOutcome = "ok";   // FRSAdvance log: ok | error | rate-limit | auth-failed
         private bool _chatPrivileged;   // v1.2.4.0: captured in Chat(), before any await
 
-        private static readonly string _aiProviderDefault =
-            (ConfigurationManager.AppSettings["AiProvider"] ?? "anthropic").Trim();
+        // 1.0.190.0: engine comes from the AiModelConfig API (EngineCode); AiProvider is the fallback.
+        private static string _aiProviderDefault
+        {
+            get
+            {
+                return E7FRSAdvance.AiCore.AiModelConfig.DefaultEngine((ConfigurationManager.AppSettings["AiProvider"] ?? "anthropic").Trim());
+            }
+        }
 
         private string ProviderKind
         {
             get
             {
                 string p = (_provider ?? _aiProviderDefault ?? "anthropic").Trim().ToLowerInvariant();
+                string apiKind = E7FRSAdvance.AiCore.AiModelConfig.ProviderForEngine(p);   // 1.0.190.0: API row decides the vendor of its own engine
+                if (apiKind != null) { return apiKind; }
                 if (p.Contains("deep") || p.Contains("quantum")) { return "deepseek"; }
                 if (p == "orion16" || p == "orion17" || p.Contains("orion")) { return "openai"; }
                 if (p == "nexus16" || p == "nexus19" || p == "nexus49" || p.Contains("nexus")) { return "anthropic"; }
@@ -114,6 +123,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             get
             {
+                string apiModel = E7FRSAdvance.AiCore.AiModelConfig.ModelForEngine(_provider ?? _aiProviderDefault);   // 1.0.193.0: picked engine's model
+                if (apiModel != null)
+                {
+                    return apiModel;
+                }
                 string p = (_provider ?? "").Trim().ToLowerInvariant();
                 if (p == "quantum11" || p.Contains("quantum 1.1")) { return ReadStr("ModelQuantum11", "deepseek-v4-flash"); }
                 if (p == "nexus16") { return ReadStr("ModelNexus16", ""); }
@@ -121,6 +135,49 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 if (p == "nexus49") { return ReadStr("ModelNexus49", ""); }
                 if (p == "orion16") { return ReadStr("ModelOrion16", ""); }
                 if (p == "orion17") { return ReadStr("ModelOrion17", ""); }
+                return "";
+            }
+        }
+
+        // 1.0.194.0: the model CallModelAsync will use for this request -- for the CHATBOT log line.
+        // Same order as CallModelAsync: engine row / variant, then default engine, then Web.config.
+        private string EffectiveModel()
+        {
+            string kind = ProviderKind;
+            string mo = ModelOverride;
+            if (string.IsNullOrEmpty(mo))
+            {
+                mo = E7FRSAdvance.AiCore.AiModelConfig.LiveModelFor(kind) ?? "";
+            }
+            if (mo.Length > 0)
+            {
+                return mo;
+            }
+            if (kind == "deepseek")
+            {
+                return ReadStr("DeepSeekModel", "deepseek-v4-pro");
+            }
+            if (kind == "openai")
+            {
+                return ReadStr("OpenAiModel", "");
+            }
+            return ReadStr("AnthropicModel", "");
+        }
+
+        // 1.0.194.0: login id for the CHATBOT log line; "" when not available.
+        private static string ChatUserId()
+        {
+            try
+            {
+                var lu = E7FRSAdvance.Utility.ClsHttpContent.LoginUser;
+                if (lu == null)
+                {
+                    return "";
+                }
+                return lu.Id.ToString();
+            }
+            catch
+            {
                 return "";
             }
         }
@@ -157,6 +214,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private string GateProviderForRole(string requested, bool privileged)
         {
             if (privileged) { return requested; }
+            if (E7FRSAdvance.AiCore.AiModelConfig.HasValue)   // 1.0.193.0: normal users run the IsDefault engine
+            {
+                return E7FRSAdvance.AiCore.AiModelConfig.DefaultEngine("deepseek");
+            }
             string p = (requested ?? "").Trim().ToLowerInvariant();
             if (p.Contains("quantum") || p.Contains("deep")) { return p; }
             return "deepseek";
@@ -175,8 +236,14 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             string kind = ProviderKind;
             string mo = ModelOverride;
+            // 1.0.190.0: no variant -> AiModelConfig API model; cacheKey carries it, so a change needs no restart.
+            if (string.IsNullOrEmpty(mo))
+            {
+                mo = E7FRSAdvance.AiCore.AiModelConfig.LiveModelFor(kind) ?? "";
+            }
             int maxTok = ReadInt("AnthropicMaxTokens", 8192);
-            string cacheKey = kind + ":" + mo;
+            string engineKey = E7FRSAdvance.AiCore.AiModelConfig.KeyForEngine(_provider ?? _aiProviderDefault, null);   // 1.0.193.0: picked engine's key
+            string cacheKey = kind + ":" + mo + ":" + E7FRSAdvance.AiCore.AiModelConfig.KeyTag(engineKey);
             object client;
             lock (_clientCacheLock)
             {
@@ -185,7 +252,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     if (kind == "deepseek")
                     {
                         client = new DeepSeekClient(
-                            ReadStr("DeepSeekApiKey", ""),
+                            engineKey ?? ReadStr("DeepSeekApiKey", ""),
                             string.IsNullOrEmpty(mo) ? ReadStr("DeepSeekModel", "deepseek-v4-pro") : mo,
                             ReadInt("DeepSeekMaxTokens", 8096),
                             ReadStr("DeepSeekBaseUrl", null));
@@ -193,7 +260,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     else if (kind == "openai")
                     {
                         client = new OpenAiClient(
-                            ReadStr("OpenAiApiKey", ""),
+                            engineKey ?? ReadStr("OpenAiApiKey", ""),
                             string.IsNullOrEmpty(mo) ? ReadStr("OpenAiModel", "") : mo,
                             maxTok,
                             ReadStr("OpenAiBaseUrl", null));
@@ -201,9 +268,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     else
                     {
                         client = new AnthropicClient(
-                            ReadStr("AnthropicApiKey", ""),
+                            engineKey ?? ReadStr("AnthropicApiKey", ""),
                             string.IsNullOrEmpty(mo) ? ReadStr("AnthropicModel", "") : mo,
-                            maxTok);
+                            E7FRSAdvance.AiCore.AiModelConfig.IsHaiku55(string.IsNullOrEmpty(mo) ? ReadStr("AnthropicModel", "") : mo)   // Haiku 5.5 only: model's own output cap + effort low
+                                ? E7FRSAdvance.AiCore.AiModelConfig.AnthropicOutputTokens(string.IsNullOrEmpty(mo) ? ReadStr("AnthropicModel", "") : mo, engineKey ?? ReadStr("AnthropicApiKey", ""))
+                                : maxTok,
+                            E7FRSAdvance.AiCore.AiModelConfig.IsHaiku55(string.IsNullOrEmpty(mo) ? ReadStr("AnthropicModel", "") : mo) ? "low" : null);   // Haiku 5.5 only: low thinking effort; other models unchanged
                     }
                     _clientCache[cacheKey] = client;
                 }
@@ -218,7 +288,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private static AnthropicClient CreateAiClient()
         {
             string key = ConfigurationManager.AppSettings["AnthropicApiKey"];
-            string model = ConfigurationManager.AppSettings["AnthropicModel"] ?? "claude-sonnet-4-6";
+            string model = E7FRSAdvance.AiCore.AiModelConfig.ModelFor("anthropic", ConfigurationManager.AppSettings["AnthropicModel"] ?? "claude-sonnet-4-6");
             int tokens = ReadInt("AnthropicMaxTokens", 8096);
             if (string.IsNullOrEmpty(key))
                 throw new Exception("AnthropicApiKey missing in web.config");
@@ -398,7 +468,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         //  GET /FRS25/ChatBotNew/Index — the fullscreen chat page itself
         // ═════════════════════════════════════════════════════════
         // v1.1.0: there was NO version constant in this file -- you could not tell what was deployed.
-        public const string ComponentVersion = "1.3.1.0";
+        public const string ComponentVersion = "1.3.1.2";   // 1.3.1.2: CHATBOT done/error log line per question, log folder via AiLogDir. 1.3.1.1: engine/model/key from AiModelConfig API, Haiku output cap + low effort, CHATBOT log (port of 619)
         // 1.3.1.0 - RENAMED ChatBotController -> ChatBotNewController so it runs beside the existing ChatBot
         //           (routes /FRS25/ChatBotNew/Index, /Status, /Chat; view Views/ChatBotNew/Index.cshtml). No logic
         //           change. 1.3.0.0 was handed over on 2026-10-08 and superseded before deployment.
@@ -716,6 +786,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             // safe because v1.1.0 also added the tool allowlist: a normal user reaches telemetry
             // tools only -- no bash, no logwatch.
             bool _privileged = ChatBotAllowed();
+            string chatUser = ChatUserId();   // 1.0.194.0: read before the first await (LoginUser is null after it)
             _chatPrivileged = _privileged;   // v1.2.4.0: the tool merge runs post-await
             CaptureFastPlanContext();   // v1.3.0.0: LoginUser and services, before the first await
             string body;
@@ -731,6 +802,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 string _reqProv = payload["provider"] != null ? payload["provider"].ToString() : "";
                 _reqProv = ResolveEngineAlias(_reqProv);   // v1.2.7.0: opaque id -> raw provider BEFORE gating
                 _provider = GateProviderForRole(_reqProv, _privileged);
+                E7FRSAdvance.AiCore.AiCoreLog.Write("INFO", "CHATBOT", "page=ChatBotNew engine=" + _provider
+                    + " provider=" + ProviderKind + " model=" + EffectiveModel() + " user=" + chatUser);   // 1.0.194.0
                 if (messagesRaw == null) messagesRaw = new JArray();
             }
             catch
@@ -773,11 +846,14 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
             catch (Exception ex)
             {
+                _chatOutcome = "error";
+                E7FRSAdvance.AiCore.AiCoreLog.Write("ERROR", "CHATBOT", "page=ChatBotNew failed: " + ex.GetType().Name + ": " + ex.Message);
                 WriteSse("error", new { message = FriendlyError(ex) });
             }
             finally
             {
                 try { Response.Write("data: [DONE]\n\n"); Response.Flush(); } catch { }
+                E7FRSAdvance.AiCore.AiCoreLog.Write(_chatOutcome == "ok" ? "INFO" : "WARN", "CHATBOT", "page=ChatBotNew done outcome=" + _chatOutcome + " ms=" + _chatSw.ElapsedMilliseconds);
             }
 
             return new EmptyResult();
@@ -897,11 +973,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 }
                 catch (AnthropicRateLimitException)
                 {
+                    _chatOutcome = "rate-limit";
                     WriteSse("error", new { message = "Rate limit. Wait ~60s." });
                     return;
                 }
                 catch (AnthropicAuthException)
                 {
+                    _chatOutcome = "auth-failed";
                     WriteSse("error", new { message = "AI auth failed." });
                     return;
                 }
@@ -1020,7 +1098,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     StringBuilder chunk = new StringBuilder();
                     for (int w = 0; w < words.Length; w++)
                     {
-                        if (chunk.Length > 0) chunk.Append(' ');
+                        if (w > 0)   // 1.0.195.0: was chunk.Length > 0 -- dropped the space at every piece boundary
+                        {
+                            chunk.Append(' ');
+                        }
                         chunk.Append(words[w]);
                         if (chunk.Length > 60 || w == words.Length - 1)
                         {

@@ -47,16 +47,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return Content(json, "application/json");
         }
 
-        // Models 1 & 3 AI summary: generated here with DeepSeek (DeepSeekApiKey/DeepSeekModel, same
+        // Models 1 & 3 AI summary: generated here on the AiModelConfig IsDefault engine (AiDefaultClient; DeepSeek keys are the fallback, same
         // keys Alert Analysis uses) instead of proxying the Historian service's Anthropic-backed
         // api/pm-ai-summary(3). The page posts {assetName, siteName, windowStart, windowEnd, machines[]}
         // and renders {verdict, points[], recommendation}.
-        private static readonly Lazy<DeepSeekClient> _deepseek = new Lazy<DeepSeekClient>(() => new DeepSeekClient(
-            ConfigurationManager.AppSettings["DeepSeekApiKey"],
-            ConfigurationManager.AppSettings["DeepSeekModel"] ?? "deepseek-v4-pro",
-            1500,
-            ConfigurationManager.AppSettings["DeepSeekBaseUrl"] ?? "https://api.deepseek.com/v1",
-            false));
 
         private const string AiSummarySystemPrompt =
             "You are a railway signalling maintenance engineer analysing point machine health for Indian Railways. " +
@@ -71,15 +65,19 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             Response.TrySkipIisCustomErrors = true;
             try
             {
-                if (string.IsNullOrWhiteSpace(ConfigurationManager.AppSettings["DeepSeekApiKey"]))
-                    return AiSummaryError(500, "DeepSeekApiKey is not configured.");
+                // API IsDefault engine (provider, model, key); DeepSeek + Web.config keys when the API has not answered.
+                bool aiHasKey;
+                string aiWhich = E7FRSAdvance.AiCore.AiDefaultClient.Describe("deepseek", out aiHasKey);
+                if (!aiHasKey)
+                    return AiSummaryError(500, "AI key is not configured (" + aiWhich + ").");
+                E7FRSAdvance.AiCore.AiCoreLog.Write("INFO", "AISUMMARY", "page=PointMachineOperation " + aiWhich);
 
                 Request.InputStream.Position = 0;
                 string body;
                 using (var rd = new System.IO.StreamReader(Request.InputStream, Encoding.UTF8)) { body = await rd.ReadToEndAsync(); }
 
                 var messages = new object[] { new { role = "user", content = "Point machine data:\n" + body } };
-                string reply = await _deepseek.Value.SendMessageAsync(messages, null, AiSummarySystemPrompt);
+                string reply = await E7FRSAdvance.AiCore.AiDefaultClient.SendAsync(messages, AiSummarySystemPrompt, 1500, "deepseek");
 
                 string text = string.Concat(((JArray)JObject.Parse(reply)["content"] ?? new JArray())
                     .Where(b => (string)b["type"] == "text").Select(b => (string)b["text"]));
@@ -100,6 +98,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         private ActionResult AiSummaryError(int status, string message)
         {
+            E7FRSAdvance.AiCore.AiCoreLog.Write("WARN", "AISUMMARY", "page=PointMachineOperation failed (HTTP " + status + "): " + message);
             Response.StatusCode = status;
             return Content(JsonConvert.SerializeObject(new { error = message }), "application/json");
         }

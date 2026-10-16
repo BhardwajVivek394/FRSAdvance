@@ -970,7 +970,7 @@
         return Object.keys(by).map(function (key) {
             var e = by[key], o = e.o;
             var v = (o.Value === null || o.Value === undefined) ? null : parseFloat(o.Value);
-            var c = cls ? cls(rec.id, e.label, v) : { st: 'ok' };
+            var c = cls ? cls(rec.id, e.label, v, o.attrId) : { st: 'ok' };
             return { k: e.label, v: v, c: c, stale: o.fresh === false };
         }).filter(function (r) {
             var sk = r.k.toUpperCase();

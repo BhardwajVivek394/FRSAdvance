@@ -1202,6 +1202,8 @@
                                             // loop rather than .Any(): this view has no @using System.Linq.
                                             var __aaLu = E7FRSAdvance.Utility.ClsHttpContent.LoginUser;
                                             var __aaPrivileged = (__aaLu != null && __aaLu.IsSiteKeeping);
+                                            var __aiEngines = E7FRSAdvance.AiCore.AiModelConfig.Engines();                    // 1.0.193.0: GetAllWithKeys rows (never render Key)
+                                            var __aiDefault = E7FRSAdvance.AiCore.AiModelConfig.DefaultEngine("quantum10");   // 1.0.193.0: IsDefault engine
                                             if (!__aaPrivileged && __aaLu != null && __aaLu.EmailAddress != null)
                                             {
                                             var __aaEmail = __aaLu.EmailAddress.Trim();
@@ -10206,15 +10208,11 @@ html:not([data-aurora="light"]) .aa-date { color-scheme: dark; }
                                                                         {
                                                                         <text>
                                                                             <select id="aiProvSel" class="ai-prov-sel" onchange="fnAiSetProvider(this.value)" aria-label="Model">
-                                                                                <option value="nexus10">ENERGY7 NEXUS</option>
-                                                                                <option value="nexus16">ENERGY7 NEXUS 1.6</option>
-                                                                                <option value="nexus19">ENERGY7 NEXUS 1.9</option>
-                                                                                <option value="nexus49">ENERGY7 NEXUS 4.9</option>
-                                                                                <option value="orion10">ENERGY7 ORION</option>
-                                                                                <option value="orion16">ENERGY7 ORION 1.6</option>
-                                                                                <option value="orion17">ENERGY7 ORION 1.7</option>
-                                                                                <option value="quantum10" selected>ENERGY7 QUANTUM</option>
-                                                                                <option value="quantum11">ENERGY7 QUANTUM 1.1</option>
+                                                                                @* 1.0.193.0: engines from AiModelConfig/GetAllWithKeys (EngineCode + DisplayName only), IsDefault selected *@
+                                                                                @foreach (var __e in __aiEngines)
+                                                                                {
+                                                                                    <option value="@__e.EngineCode" selected="@(string.Equals(__e.EngineCode, __aiDefault, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@__e.DisplayName</option>
+                                                                                }
                                                                             </select>
                                                                         </text>
                                                                         }
@@ -11781,23 +11779,10 @@ html:not([data-aurora="light"]) .aa-date { color-scheme: dark; }
     // v1.0.55.66 H3: ALWAYS-SERVED fallback. aiModelLabel is called UNGUARDED at the start-prompt
     // button (and in the push/rename paths); privileging it away throws a ReferenceError and breaks
     // Analyze for every ordinary user. Non-privileged sessions only ever run quantum11.
-    function aiModelLabel(prov) { return 'ENERGY7 QUANTUM 1.1'; }
-@if (__aaPrivileged)
-{
-    <text>
-    // privileged override: the full multi-engine label set
-    function aiModelLabel(prov) {
-        return prov === 'orion10' ? 'ENERGY7 ORION'
-             : (prov === 'quantum11' ? 'ENERGY7 QUANTUM 1.1'
-             : (prov === 'quantum10' ? 'ENERGY7 QUANTUM'
-             : (prov === 'nexus16' ? 'ENERGY7 NEXUS 1.6'
-             : (prov === 'nexus19' ? 'ENERGY7 NEXUS 1.9'
-             : (prov === 'nexus49' ? 'ENERGY7 NEXUS 4.9'
-             : (prov === 'orion16' ? 'ENERGY7 ORION 1.6'
-             : (prov === 'orion17' ? 'ENERGY7 ORION 1.7' : 'ENERGY7 NEXUS')))))));
-    }
-    </text>
-}
+    // 1.0.193.0: labels from AiModelConfig/GetAllWithKeys (EngineCode -> DisplayName only, no keys)
+    var _aiEngineLabels = @Html.Raw(E7FRSAdvance.AiCore.AiModelConfig.EngineLabelsJson());
+    var _aiThinkEngines = @Html.Raw(E7FRSAdvance.AiCore.AiModelConfig.HaikuEngineListJson());   // engine codes running Claude Haiku 5.5 (Think shown); no keys, no model names
+    function aiModelLabel(prov) { return _aiEngineLabels[prov] || _aiEngineLabels[_aiProvider] || 'ENERGY7'; }
     function aiShowStartPrompt() {
         $('#aiChatWrap').empty();
         $('#aiVerdictBody').html(
@@ -13765,7 +13750,7 @@ html:not([data-aurora="light"]) .aa-date { color-scheme: dark; }
     // Provider is chosen PER REQUEST and travels in the context, so the same alert
     // can be run through both and the envelopes compared directly. It is not a
     // global setting: switching does not disturb an analysis already in flight.
-    var _aiProvider = 'quantum10';   // v1.0.55.173: default is QUANTUM (DeepSeek Pro) for everyone (was quantum11/Flash since .66)
+    var _aiProvider = @Html.Raw(E7FRSAdvance.AiCore.AiModelConfig.JsString(__aiDefault));   // 1.0.193.0: IsDefault engine from AiModelConfig/GetAllWithKeys
 
     function aiWithProvider(ctx) {
         if (ctx) { ctx.provider = _aiProvider; ctx.think = _aiThink; }   // v1.0.55.37
@@ -13784,7 +13769,7 @@ html:not([data-aurora="light"]) .aa-date { color-scheme: dark; }
     function fnAiIsQuantum(p) { p = String(p || "").toLowerCase(); return p.indexOf("quantum") >= 0; }
     function fnAiSyncThinkUi(p) {
         var w = document.getElementById("aiThinkWrap");
-        if (w) { w.style.display = fnAiIsQuantum(p) ? "" : "none"; }
+        if (w) { w.style.display = (fnAiIsQuantum(p) || _aiThinkEngines.indexOf(p) >= 0) ? "" : "none"; }   // Think: QUANTUM engines + Claude Haiku 5.5 engines only
     }
     function fnAiSetThink(on) {
         _aiThink = !!on;
@@ -13912,7 +13897,7 @@ html:not([data-aurora="light"]) .aa-date { color-scheme: dark; }
         // 1) Model: force QUANTUM and hide the whole picker.
         // v1.0.55.66 H3: quantum11 is the approved unconditional default -- it is the only id that
         // carries its model override; the plain family id resolves to a different (slower) model.
-        try { if (typeof fnAiSetProvider === 'function') { fnAiSetProvider('quantum10'); } } catch (e) { }   // v1.0.55.173: Pro for ordinary users too
+        try { if (typeof fnAiSetProvider === 'function') { fnAiSetProvider(@Html.Raw(E7FRSAdvance.AiCore.AiModelConfig.JsString(__aiDefault))); } } catch (e) { }   // no dropdown: IsDefault engine from GetAllWithKeys (was hard-coded QUANTUM)
         var pv = document.getElementById('aiProvWrap');
         if (pv) { pv.style.display = 'none'; }
         // 2) Wisdom bar: keep only "Save last as wisdom".

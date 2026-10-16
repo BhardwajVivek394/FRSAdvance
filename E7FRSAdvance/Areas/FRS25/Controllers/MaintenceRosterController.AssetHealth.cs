@@ -275,7 +275,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
     public static class AssetHealthEngine
     {
-        public const string ComponentVersion = "1.0.0.0";
+        public const string ComponentVersion = "1.0.1.0";   // 1.0.1.0: provider/model/key from the AiModelConfig API (IsDefault engine), Haiku 5.5 output cap + effort low
 
         public const int DataDays = 2;
         public const int AlertDays = 15;
@@ -1129,28 +1129,28 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 ctxText = ctxText.Substring(0, MaxContextChars);
             }
 
-            string provider = (ConfigurationManager.AppSettings["AiProvider"] ?? "anthropic").Trim().ToLowerInvariant();
+            string provider = E7FRSAdvance.AiCore.AiModelConfig.DefaultProvider(ConfigurationManager.AppSettings["AiProvider"] ?? "anthropic").Trim().ToLowerInvariant();   // 1.0.1.0: API IsDefault engine first
             string apiKey;
             string model;
             string url;
             bool anthropicShape = false;
             if (provider == "openai")
             {
-                apiKey = (ConfigurationManager.AppSettings["OpenAiApiKey"] ?? "").Trim();
-                model = (ConfigurationManager.AppSettings["OpenAiModel"] ?? "gpt-5.4").Trim();
+                apiKey = E7FRSAdvance.AiCore.AiModelConfig.KeyFor("openai", (ConfigurationManager.AppSettings["OpenAiApiKey"] ?? "").Trim()).Trim();   // key from API
+                model = E7FRSAdvance.AiCore.AiModelConfig.ModelFor("openai", (ConfigurationManager.AppSettings["OpenAiModel"] ?? "gpt-5.4").Trim());   // model from API
                 url = (ConfigurationManager.AppSettings["OpenAiBaseUrl"] ?? "https://api.openai.com/v1").Trim().TrimEnd('/') + "/chat/completions";
             }
             else if (provider == "deepseek")
             {
-                apiKey = (ConfigurationManager.AppSettings["DeepSeekApiKey"] ?? "").Trim();
-                model = (ConfigurationManager.AppSettings["DeepSeekModel"] ?? "deepseek-v4-pro").Trim();
+                apiKey = E7FRSAdvance.AiCore.AiModelConfig.KeyFor("deepseek", (ConfigurationManager.AppSettings["DeepSeekApiKey"] ?? "").Trim()).Trim();   // key from API
+                model = E7FRSAdvance.AiCore.AiModelConfig.ModelFor("deepseek", (ConfigurationManager.AppSettings["DeepSeekModel"] ?? "deepseek-v4-pro").Trim());   // model from API
                 url = (ConfigurationManager.AppSettings["DeepSeekBaseUrl"] ?? "https://api.deepseek.com/v1").Trim().TrimEnd('/') + "/chat/completions";
             }
             else
             {
                 anthropicShape = true;
-                apiKey = (ConfigurationManager.AppSettings["AnthropicApiKey"] ?? "").Trim();
-                model = (ConfigurationManager.AppSettings["AnthropicModel"] ?? "claude-sonnet-4-6").Trim();
+                apiKey = E7FRSAdvance.AiCore.AiModelConfig.KeyFor("anthropic", (ConfigurationManager.AppSettings["AnthropicApiKey"] ?? "").Trim()).Trim();   // key from API
+                model = E7FRSAdvance.AiCore.AiModelConfig.ModelFor("anthropic", (ConfigurationManager.AppSettings["AnthropicModel"] ?? "claude-sonnet-4-6").Trim());   // model from API
                 url = "https://api.anthropic.com/v1/messages";
             }
 
@@ -1159,6 +1159,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 RosLog("WARN", "AssetHealth: provider key missing -- computed findings");
                 return Computed(result, deductions, evidence, sources, "not configured");
             }
+            RosLog("INFO", "AssetHealth AI provider=" + provider + " model=" + model);   // 1.0.1.0
 
             string sys =
                 "You are a senior Indian Railways signal and telecom (S&T) maintenance analyst. You receive the health context " +
@@ -1187,7 +1188,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             JObject payload = new JObject();
             payload["model"] = model;
-            payload["max_tokens"] = 900;
+            bool haiku = anthropicShape && E7FRSAdvance.AiCore.AiModelConfig.IsHaiku55(model);   // 1.0.1.0, Haiku 5.5 only: own output cap + effort low
+            payload["max_tokens"] = haiku ? E7FRSAdvance.AiCore.AiModelConfig.AnthropicOutputTokens(model, apiKey) : 900;
+            if (haiku)
+            {
+                payload["output_config"] = new JObject { ["effort"] = "low" };
+            }
             if (anthropicShape)
             {
                 payload["system"] = sys;

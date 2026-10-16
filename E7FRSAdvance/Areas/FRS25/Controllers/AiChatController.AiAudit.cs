@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using Newtonsoft.Json;
+using AiCfg = E7FRSAdvance.AiCore.AiModelConfig;   // main port of 619 Haiku / AiModelConfig
 using Newtonsoft.Json.Linq;
 
 namespace E7FRSAdvance.Areas.FRS25.Controllers
@@ -84,7 +85,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     if (which["thinking"] != null) { rq["ThinkingEnabled"] = which["thinking"]; }
                     if (which["roleGated"] != null) { rq["GatedByRole"] = which["roleGated"]; }
                 }
-                if (rq["ModelId"] == null) { rq["ModelId"] = ReadStr("DeepSeekModel", ""); }
+                if (rq["ModelId"] == null) { rq["ModelId"] = AiCfg.ModelFor("deepseek", ReadStr("DeepSeekModel", "")); }
                 rq["RequestType"] = "verdict";
                 rq["AlertId"] = CtxLong(ctx, "alertId");
                 rq["AlertType"] = GetCtx(ctx, "alertType");
@@ -314,7 +315,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 b["Provider"] = ProviderKind;
                 string mo = AnalysisModelOverride;
                 b["ModelId"] = !string.IsNullOrEmpty(mo) ? mo
-                    : (ProviderKind == "deepseek" ? ReadStr("DeepSeekModel", "")
+                    : AiCfg.ModelFor(ProviderKind, ProviderKind == "deepseek" ? ReadStr("DeepSeekModel", "")
                     : (ProviderKind == "openai" ? ReadStr("OpenAiModel", "") : ReadStr("AnthropicModel", "")));
                 // v1.0.160.100: the live row 37 came back with AssetId, AssetName, AssetType,
                 // UserName, UserRole and ServerNode ALL NULL. They were being sent on the REQUEST row

@@ -1293,34 +1293,35 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 bool chatMode = question.Length > 0;
 
                 // ---- provider config (same keys as the stable engine) ----
-                string provider = (System.Configuration.ConfigurationManager.AppSettings["AiProvider"] ?? "anthropic").Trim().ToLowerInvariant();
+                string provider = E7FRSAdvance.AiCore.AiModelConfig.DefaultProvider(System.Configuration.ConfigurationManager.AppSettings["AiProvider"] ?? "anthropic").Trim().ToLowerInvariant();   // API IsDefault engine first
                 string apiKey, model, url; bool anthropicShape = false;
                 if (provider == "openai")
                 {
-                    apiKey = (System.Configuration.ConfigurationManager.AppSettings["OpenAiApiKey"] ?? "").Trim();
-                    model = (System.Configuration.ConfigurationManager.AppSettings["OpenAiModel"] ?? "gpt-5.4").Trim();
+                    apiKey = E7FRSAdvance.AiCore.AiModelConfig.KeyFor("openai", (System.Configuration.ConfigurationManager.AppSettings["OpenAiApiKey"] ?? "").Trim()).Trim();   // key from API
+                    model = E7FRSAdvance.AiCore.AiModelConfig.ModelFor("openai", (System.Configuration.ConfigurationManager.AppSettings["OpenAiModel"] ?? "gpt-5.4").Trim());   // model from API
                     string ob = (System.Configuration.ConfigurationManager.AppSettings["OpenAiBaseUrl"] ?? "https://api.openai.com/v1").Trim().TrimEnd('/');
                     url = ob + "/chat/completions";
                 }
                 else if (provider == "deepseek")
                 {
-                    apiKey = (System.Configuration.ConfigurationManager.AppSettings["DeepSeekApiKey"] ?? "").Trim();
-                    model = (System.Configuration.ConfigurationManager.AppSettings["DeepSeekModel"] ?? "deepseek-v4-pro").Trim();
+                    apiKey = E7FRSAdvance.AiCore.AiModelConfig.KeyFor("deepseek", (System.Configuration.ConfigurationManager.AppSettings["DeepSeekApiKey"] ?? "").Trim()).Trim();   // key from API
+                    model = E7FRSAdvance.AiCore.AiModelConfig.ModelFor("deepseek", (System.Configuration.ConfigurationManager.AppSettings["DeepSeekModel"] ?? "deepseek-v4-pro").Trim());   // model from API
                     string db = (System.Configuration.ConfigurationManager.AppSettings["DeepSeekBaseUrl"] ?? "https://api.deepseek.com/v1").Trim().TrimEnd('/');
                     url = db + "/chat/completions";
                 }
                 else
                 {
                     anthropicShape = true;
-                    apiKey = (System.Configuration.ConfigurationManager.AppSettings["AnthropicApiKey"] ?? "").Trim();
-                    model = (System.Configuration.ConfigurationManager.AppSettings["AnthropicModel"] ?? "claude-sonnet-4-6").Trim();
+                    apiKey = E7FRSAdvance.AiCore.AiModelConfig.KeyFor("anthropic", (System.Configuration.ConfigurationManager.AppSettings["AnthropicApiKey"] ?? "").Trim()).Trim();   // key from API
+                    model = E7FRSAdvance.AiCore.AiModelConfig.ModelFor("anthropic", (System.Configuration.ConfigurationManager.AppSettings["AnthropicModel"] ?? "claude-sonnet-4-6").Trim());   // model from API
                     url = "https://api.anthropic.com/v1/messages";
                 }
                 if (apiKey.Length == 0)
                 {
-                    RosLog("WARN", "Diagnose: provider key missing");
+                    RosLog("WARN", "Diagnose: provider key missing (provider=" + provider + ")");
                     return Json(new { error = "not configured" });
                 }
+                RosLog("INFO", "Diagnose AI provider=" + provider + " model=" + model + " mode=" + (chatMode ? "chat" : "verdict") + RosWho());
 
                 // ---- prompts (grounded, advisory, strict output) ----
                 string sysVerdict =
@@ -1362,7 +1363,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 string sys = chatMode ? sysChat : sysVerdict;
                 var payload = new Newtonsoft.Json.Linq.JObject();
                 payload["model"] = model;
-                payload["max_tokens"] = chatMode ? 700 : 800;
+                bool haiku = anthropicShape && E7FRSAdvance.AiCore.AiModelConfig.IsHaiku55(model);   // Haiku 5.5 only: own output cap + effort low
+                payload["max_tokens"] = haiku ? E7FRSAdvance.AiCore.AiModelConfig.AnthropicOutputTokens(model, apiKey) : (chatMode ? 700 : 800);
+                if (haiku)   // low thinking effort -- fast; the cap keeps the answer whole
+                {
+                    payload["output_config"] = new Newtonsoft.Json.Linq.JObject { ["effort"] = "low" };
+                }
                 if (anthropicShape)
                 {
                     payload["system"] = sys;

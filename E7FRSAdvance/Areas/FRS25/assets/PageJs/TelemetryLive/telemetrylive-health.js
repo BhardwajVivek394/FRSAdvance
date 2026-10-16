@@ -47,20 +47,8 @@
     var RANGE_URL = '/FRS25/Telemetry/GetFRSAttributeRangeBySiteId?siteId=';
     var TREND_TTL_MS = 60000;
 
-    /* RDPMS default safe bands (by attribute Title), used when the site has
-       no FRS attribute range for that asset / attribute. */
-    var DEFAULT_RANGES = {
-        IFMA: { min: 250, max: 500 },
-        IRMA: { min: 210, max: 400 },
-        VR: { min: 2.5, max: 4.2 },   /* VTC RELAY END(V): e7mriv2web danger rule (Vr in 0.1-2.5 or >4.2); near-zero handled by OCC_SUPPRESS */
-        CHOKEV: { min: 0.6, max: 1.4 },
-        TPRV: { min: 21, max: 32 },
-        TPRVLOC: { min: 23, max: 40 },
-        VF: { min: 2.5, max: 6 },
-        CHARGERMA: { min: 100, max: 2500 },
-        CHARGERV: { min: 90, max: 125 },
-        CHARGEROPV: { min: 4.5, max: 10 }
-    };
+    /* Safe bands come only from the FRS Attribute Range API (MinSafeValue /
+       MaxSafeValue / AverageValue) -- no hard-coded defaults. */
     var TRACK_ORDER = ['CHARGERV', 'CHARGEROPV', 'CHARGERMA', 'IFMA', 'VF', 'CHOKEV', 'VR', 'IRMA', 'TPRV', 'TPRVLOC'];
     var OCC_SUPPRESS = { VR: 1, IRMA: 1, TPRV: 1 };   /* low is normal while a train is on the track */
 
@@ -138,8 +126,18 @@
     /* ======================================================================
        SAFE RANGES  (FRS attribute range per asset, else RDPMS default)
        ====================================================================== */
-    function loadRanges() {
-        var sid = siteId();
+    /* the page's site, else the asset's own site (drawer / SIP opened with no site picked) */
+    function rangeSite(aid) {
+        var s = siteId();
+        if ((s && s !== '0') || !aid) return s;
+        aid = String(aid);
+        var sm = window.sipMetaAll && window.sipMetaAll.assets && window.sipMetaAll.assets[aid];
+        var bm = window.bulkAssetMap && window.bulkAssetMap[aid];
+        var lv = live()[aid] || {};
+        return String((sm && sm.SiteId) || (bm && bm.SiteId) || lv.SiteId || '');
+    }
+    function loadRanges(aid) {
+        var sid = rangeSite(aid);
         if (!sid || sid === '0' || H.rangesSite === sid) return;
         H.rangesSite = sid;
         H.ranges = {};
@@ -160,14 +158,15 @@
                         var r = rows[i] || {};
                         if (r.AssetId === null || r.AssetId === undefined) continue;
                         var name = r.AttributeName || r.AttributeTitle || r.Title || r.Name || '';
-                        var mn = pickNum(r, ['MinValue', 'MinimumValue', 'LowerLimit', 'LowerValue', 'MinRange', 'RangeMin', 'LowValue', 'Min']);
-                        var mx = pickNum(r, ['MaxValue', 'MaximumValue', 'UpperLimit', 'UpperValue', 'MaxRange', 'RangeMax', 'HighValue', 'Max']);
-                        if (mn === null && mx === null) continue;
-                        map[String(r.AssetId) + '|' + norm(name)] = {
-                            min: mn, max: mx,
-                            avg: pickNum(r, ['AverageValue', 'AvgValue', 'Average']),
-                            src: 'FRS range'
-                        };
+                        /* API fields (Domain.FRSAttributeRange): MinSafeValue / MaxSafeValue / AverageValue / MinFailValue */
+                        var mn = pickNum(r, ['MinSafeValue', 'MinValue', 'Min']);
+                        var mx = pickNum(r, ['MaxSafeValue', 'MaxValue', 'Max']);
+                        var av = pickNum(r, ['AverageValue', 'AvgValue', 'Average']);
+                        if (mn === null && mx === null && av === null) continue;
+                        var rg = { min: mn, max: mx, avg: av, fail: pickNum(r, ['MinFailValue']), src: 'FRS range' };
+                        var aat = r.AssetAttributeId;
+                        if (aat !== null && aat !== undefined && aat !== '' && aat !== 0) map[String(r.AssetId) + '_' + aat] = rg;   /* attribute id first */
+                        if (name) map[String(r.AssetId) + '|' + norm(name)] = rg;
                         n++;
                     }
                 }
@@ -176,14 +175,12 @@
                 H.sig = '';
                 if (H.on) render(true);
             },
-            error: function () { /* defaults are used */ }
+            error: function () { if (H.rangesSite === sid) H.rangesSite = null; /* retry on the next call */ }
         });
     }
-    function rangeFor(aid, title, alias) {
-        var r = H.ranges[aid + '|' + norm(title)] || H.ranges[aid + '|' + norm(alias)];
-        if (r && (r.min !== null || r.max !== null)) return r;
-        var d = DEFAULT_RANGES[norm(title)] || DEFAULT_RANGES[norm(alias)];
-        return d ? { min: d.min, max: d.max, avg: null, src: 'RDPMS default' } : null;
+    function rangeFor(aid, title, alias, attrId) {
+        return (attrId ? H.ranges[aid + '_' + attrId] : null) ||
+            H.ranges[aid + '|' + norm(title)] || H.ranges[aid + '|' + norm(alias)] || null;
     }
 
     /* ======================================================================
@@ -346,7 +343,7 @@
                 label: alias || title, sub: '',   /* v618.16: AliasName only, everywhere */
                 v: v, stale: a.IsFresh === false, ipsTab: ipsTabOf(aid, k, title + ' ' + alias),
                 scaleMin: num(m.minValue), scaleMax: num(m.maxValue),
-                range: rangeFor(aid, title, alias)
+                range: rangeFor(aid, title, alias, attrId)
             });
         }
         /* IPS: data-logger relays are the DIGITAL readings (e7mriv2web IPS
@@ -427,13 +424,16 @@
             var dv = null;
             try { dv = window.calculateDerivedValues(attrs, aid); } catch (ex) { dv = null; }
             if (dv) {
-                var DL = [['itcBattCharg', 'ITCBATTCHARG', 'ITC BATT CHARG(mA)'], ['vtcVarRes', 'VTCVARRES', 'VTC VAR RES(V)'],
-                    ['rtcChFeedEnd', 'RTCCHFEEDEND', 'RTC CH FEED END(Ohm)'], ['rtcVarRes', 'RTCVARRES', 'RTC VAR RES(Ohm)'],
-                    ['vtcTr', 'VTCTR', 'VTC TR(V)'], ['ibalst', 'IBALST', 'IBALST(mA)'], ['rrail', 'RRAIL', 'RRAIL(Ohm)']];
+                /* [calc field, key, label, FRS AssetAttributeId (API: ITC BATT CHARG 585, VTC VAR RES 586,
+                   RTC CH FEED END 587, RTC VAR RES 588, IBlAST 684, RRAIL 590)] */
+                var DL = [['itcBattCharg', 'ITCBATTCHARG', 'ITC BATT CHARG(mA)', 585], ['vtcVarRes', 'VTCVARRES', 'VTC VAR RES(V)', 586],
+                    ['rtcChFeedEnd', 'RTCCHFEEDEND', 'RTC CH FEED END(Ohm)', 587], ['rtcVarRes', 'RTCVARRES', 'RTC VAR RES(Ohm)', 588],
+                    ['vtcTr', 'VTCTR', 'VTC TR(V)', ''], ['ibalst', 'IBALST', 'IBALST(mA)', 684], ['rrail', 'RRAIL', 'RRAIL(Ohm)', 590]];
                 for (var di = 0; di < DL.length; di++) {
                     var dvv = dv[DL[di][0]];
                     derived.push({ k: '#' + DL[di][1], key: DL[di][1], label: DL[di][2], alias: DL[di][2], sub: '',
-                        v: (dvv === null || dvv === undefined || isNaN(dvv)) ? null : num(dvv), st: 'none', derived: true });
+                        v: (dvv === null || dvv === undefined || isNaN(dvv)) ? null : num(dvv), st: 'none', derived: true,
+                        range: rangeFor(aid, DL[di][1], DL[di][2], DL[di][3]) });
                 }
             }
         }
@@ -2045,9 +2045,10 @@
     else boot();
 
     /* v618.18: health of one reading, for the SIP inspector panel */
-    function classify(aid, label, v) {
+    function classify(aid, label, v, attrId) {
         if (v === null || v === undefined || isNaN(v)) return { st: 'none' };
-        var g = rangeFor(String(aid || ''), label, label);
+        loadRanges(aid);
+        var g = rangeFor(String(aid || ''), label, label, attrId);
         if (!g || g.min === null || g.max === null || !(g.max > g.min)) return { st: 'ok', range: null };
         var span = g.max - g.min;
         var st = v < g.min ? 'low' : v > g.max ? 'high' : (v < g.min + span * 0.08 || v > g.max - span * 0.08) ? 'near' : 'ok';
@@ -2058,7 +2059,7 @@
         classify: classify, ensureRanges: function () { loadRanges(); }, _h: H,
         /* v618.30: one asset's readings, derived values, relays, health -- for the asset drawer */
         describe: function (aid, typeHint) {
-            loadRanges();
+            loadRanges(aid);
             var prev = H.forType;
             H.forType = assetTypeOf(aid, typeHint);   /* track / PM / signal rules follow the asset, not the page */
             try { return readAsset(String(aid)); } finally { H.forType = prev; }

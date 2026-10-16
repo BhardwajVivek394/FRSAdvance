@@ -32,7 +32,7 @@ namespace Domain
         // The API only accepts cache_control on a system CONTENT BLOCK, not on a
         // plain string, so system is emitted as an array when caching is on.
         // ------------------------------------------------------------------
-        public const string ComponentVersion = "1.0.3.0";
+        public const string ComponentVersion = "1.0.4.0";   // 1.0.4.0: optional output_config.effort
 
         private static readonly HttpClient _http = new HttpClient();
 
@@ -50,11 +50,22 @@ namespace Domain
             _http.Timeout = TimeSpan.FromSeconds(300);
         }
 
+        // 1.0.4.0: optional thinking effort -> output_config.effort ("low", "medium", "high", ...).
+        // null = not sent, the model uses its own default. Claude 5-family models think by default,
+        // and effort is the control that sets how much.
+        private readonly string _effort;
+
         public AnthropicClient(string apiKey, string model, int maxTokens)
+            : this(apiKey, model, maxTokens, null)
+        {
+        }
+
+        public AnthropicClient(string apiKey, string model, int maxTokens, string effort)
         {
             _apiKey = apiKey;
             _model = model;
             _maxTokens = maxTokens;
+            _effort = string.IsNullOrWhiteSpace(effort) ? null : effort.Trim();
         }
 
         // Returns raw JSON string from Anthropic.
@@ -99,29 +110,20 @@ namespace Domain
                 systemField = systemPrompt ?? string.Empty;
             }
 
-            object body;
+            // 1.0.4.0: a dictionary so output_config is only present when an effort is set
+            var body = new System.Collections.Generic.Dictionary<string, object>();
+            body["model"] = _model;
+            body["max_tokens"] = _maxTokens;
+            body["stream"] = false;
+            body["system"] = systemField;
+            body["messages"] = messages;
             if (tools != null && tools.Length > 0)
             {
-                body = new
-                {
-                    model = _model,
-                    max_tokens = _maxTokens,
-                    stream = false,
-                    system = systemField,
-                    messages = messages,
-                    tools = tools
-                };
+                body["tools"] = tools;
             }
-            else
+            if (_effort != null)
             {
-                body = new
-                {
-                    model = _model,
-                    max_tokens = _maxTokens,
-                    stream = false,
-                    system = systemField,
-                    messages = messages
-                };
+                body["output_config"] = new { effort = _effort };
             }
 
             // Keep json as a plain string — reused on retry without re-serialising

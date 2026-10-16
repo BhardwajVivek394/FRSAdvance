@@ -71,7 +71,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private static readonly string _wisdomLockPath = Path.Combine(_wisdomDir, "ai-wisdom.lock");
         private static readonly string _wisdomQuarantine = Path.Combine(_wisdomDir, "ai-wisdom.quarantine.jsonl");
         private static readonly string _wisdomChatDir =
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "App_Data", "AiToolLogs");
+            E7FRSAdvance.AiCore.AiLogPaths.AiToolLogs;   // AiLogDir in Web.config, else App_Data/AiToolLogs
         private static readonly object _wisdomProcLock = new object();
 
         // Dedicated distillation client + lock (ISOLATED from the verdict clients).
@@ -469,7 +469,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 if (!AiDebugAllowed() && !IsWisdomReviewer()) { return WisdomDenied("DownloadAiLogs"); }
                 string d = string.IsNullOrWhiteSpace(date) ? DateTime.Now.ToString("yyyyMMdd") : date.Trim();
                 if (!System.Text.RegularExpressions.Regex.IsMatch(d, "^\\d{8}$")) { return WisdomReject(400, "date must be yyyyMMdd"); }
-                string dir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "App_Data", "AiToolLogs");
+                string dir = E7FRSAdvance.AiCore.AiLogPaths.AiToolLogs;   // AiLogDir in Web.config, else App_Data/AiToolLogs
                 string[] names = { "ai-log-" + d + ".txt", "ai-analyze-" + d + ".jsonl", "ai-tool-" + d + ".jsonl", "ai-chat-" + d + ".txt" };
                 using (System.IO.MemoryStream ms = new System.IO.MemoryStream())
                 {

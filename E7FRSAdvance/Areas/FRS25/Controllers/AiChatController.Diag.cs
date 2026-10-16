@@ -140,6 +140,179 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return t.Length > max ? t.Substring(0, max) : t;
         }
 
+        // 1.0.160.206: L1-L4 -- the log folders (AiLogDir / RosLogDir, else App_Data), a real write
+        // test, today's files, and the two settings that silently suppress lines.
+        private static void DiagAddLogChecks(List<DiagCheck> checks)
+        {
+            string today = DateTime.Now.ToString("yyyyMMdd");
+
+            // L1: ai-log folder (alert analysis MODEL, ChatBot / ChatBotNew CHATBOT, AIMODEL, AISUMMARY, DIAG).
+            {
+                DiagCheck l1 = new DiagCheck { Id = "L1", Group = "L", Name = "AI log folder (alert analysis, ChatBot, AI summaries)" };
+                string dir = E7FRSAdvance.AiCore.AiLogPaths.AiToolLogs;
+                string why = E7FRSAdvance.AiCore.AiLogPaths.ProbeWrite(dir);
+                int droppedBefore = AiLogDroppedLines;
+                AiLogStatic("INFO", "DIAG", "log write test from AiDiag");   // a real line through the real writer
+                bool lineFailed = AiLogDroppedLines > droppedBefore;
+                if (why != null || lineFailed)
+                {
+                    l1.Status = "FAIL";
+                    l1.Detail = dir + " -- cannot write: " + (why ?? AiLogLastError ?? "unknown")
+                        + " -- give the IIS app pool user Modify on this folder, or set AiLogDir in Web.config";
+                }
+                else
+                {
+                    l1.Status = "OK";
+                    l1.Detail = dir + " -- writable; today: " + DiagFileSizes(dir, new[] {
+                        "ai-log-" + today + ".txt", "ai-tool-" + today + ".jsonl",
+                        "ai-analyze-" + today + ".jsonl", "ai-chat-" + today + ".txt" })
+                        + "; lines written since start " + AiLogWrittenLines + ", dropped " + AiLogDroppedLines
+                        + (AiLogLastError != null ? " (last error: " + AiLogLastError + ")" : "");
+                    if (AiLogDroppedLines > 0)
+                    {
+                        l1.Status = "WARN";
+                    }
+                }
+                checks.Add(l1);
+            }
+
+            // L2: roster log folder (Diagnose, Asset Health, roster page).
+            {
+                DiagCheck l2 = new DiagCheck { Id = "L2", Group = "L", Name = "Roster log folder (Diagnose, Asset Health)" };
+                string dir = E7FRSAdvance.AiCore.AiLogPaths.RosterLogs;
+                string why = E7FRSAdvance.AiCore.AiLogPaths.ProbeWrite(dir);
+                if (why != null)
+                {
+                    l2.Status = "FAIL";
+                    l2.Detail = dir + " -- cannot write: " + why
+                        + " -- give the IIS app pool user Modify on this folder, or set RosLogDir in Web.config";
+                }
+                else
+                {
+                    l2.Status = "OK";
+                    l2.Detail = dir + " -- writable; today: " + DiagFileSizes(dir, new[] { "roster-" + today + ".log" });
+                }
+                checks.Add(l2);
+            }
+
+            // L3: AiLogMinLevel above INFO drops the MODEL / CHATBOT / AIMODEL / AISUMMARY lines.
+            {
+                bool ok = LevelRank(_aiLogMinLevel) <= LevelRank("INFO");
+                checks.Add(new DiagCheck
+                {
+                    Id = "L3", Group = "L", Name = "AI log level (AiLogMinLevel)",
+                    Status = ok ? "OK" : "WARN",
+                    Detail = "AiLogMinLevel=" + _aiLogMinLevel + (ok ? " -- INFO lines are written"
+                        : " -- INFO lines (MODEL, CHATBOT, AIMODEL, AISUMMARY, DIAG) are NOT written; set INFO or remove the key")
+                });
+            }
+
+            // L4: per-tool-call jsonl (ai-tool-*.jsonl) is opt-in.
+            checks.Add(new DiagCheck
+            {
+                Id = "L4", Group = "L", Name = "Tool-call log (AiToolLoggingEnabled)",
+                Status = _toolLoggingEnabled ? "OK" : "WARN",
+                Detail = _toolLoggingEnabled ? "on -- every MCP tool call goes to ai-tool-*.jsonl"
+                    : "off -- ai-tool-*.jsonl is not written; set AiToolLoggingEnabled=true to record tool calls"
+            });
+        }
+
+        private static string DiagFileSizes(string dir, string[] names)
+        {
+            List<string> parts = new List<string>();
+            foreach (string n in names)
+            {
+                try
+                {
+                    System.IO.FileInfo fi = new System.IO.FileInfo(System.IO.Path.Combine(dir, n));
+                    parts.Add(n + (fi.Exists ? " " + fi.Length + " B" : " (none yet)"));
+                }
+                catch
+                {
+                    parts.Add(n + " (unreadable)");
+                }
+            }
+            return string.Join(", ", parts.ToArray());
+        }
+
+        // 1.0.160.205: UTC epoch (sec or ms) -> IST wall clock, the clock DateTime.Now reads on the server.
+        private static DateTime DiagEpochToIst(double ep)
+        {
+            if (ep > 1e12)
+            {
+                ep = ep / 1000.0;
+            }
+            return new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Unspecified).AddSeconds(ep).Add(_istOffset);
+        }
+
+        // 1.0.160.205: newest sample in every {"ts":[epoch..]} array of a history_get result
+        // (one array per tag when the fetch is by AssetId). MinValue when there is none.
+        private static DateTime DiagNewestTsEpochIst(string res)
+        {
+            DateTime best = DateTime.MinValue;
+            try
+            {
+                JToken root = JToken.Parse(res);
+                foreach (JToken tok in root.SelectTokens("$..ts"))
+                {
+                    JArray arr = tok as JArray;
+                    if (arr == null)
+                    {
+                        continue;
+                    }
+                    foreach (JToken v in arr)
+                    {
+                        double ep;
+                        if (double.TryParse(v.ToString(), System.Globalization.NumberStyles.Any,
+                                System.Globalization.CultureInfo.InvariantCulture, out ep) && ep > 1e9)
+                        {
+                            DateTime t = DiagEpochToIst(ep);
+                            if (t > best)
+                            {
+                                best = t;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+            return best;
+        }
+
+        // 1.0.160.205: the window start the server says it applied ("from", UTC epoch) against the
+        // IST start we asked for. Returns a detail fragment; contains "SKEW" when they differ by > 2 min.
+        private static string DiagWindowEcho(string res, DateTime wantStartIst)
+        {
+            try
+            {
+                JToken root = JToken.Parse(res);
+                foreach (JToken tok in root.SelectTokens("$..from"))
+                {
+                    double ep;
+                    if (tok.Type == JTokenType.Array || tok.Type == JTokenType.Object)
+                    {
+                        continue;
+                    }
+                    if (!double.TryParse(tok.ToString(), System.Globalization.NumberStyles.Any,
+                            System.Globalization.CultureInfo.InvariantCulture, out ep) || ep < 1e9)
+                    {
+                        continue;
+                    }
+                    DateTime got = DiagEpochToIst(ep);
+                    double diff = (got - wantStartIst).TotalMinutes;
+                    string head = "; window: asked from " + wantStartIst.ToString("HH:mm") + " IST, server applied "
+                        + got.ToString("HH:mm") + " IST";
+                    if (Math.Abs(diff) > 2.0)
+                    {
+                        return head + " -- SKEW " + Math.Round(diff) + " min (flip HistGetSendsUtc)";
+                    }
+                    return head + " -- window OK";
+                }
+            }
+            catch { }
+            return "; window: server sent no \"from\" echo";
+        }
+
         // Shared classification: the same three failure classes this week produced.
         // FAIL: E7-API failure text (session/403), unusable result (schema rejection text),
         //       no result at all. WARN: usable but thin. OK: everything else.
@@ -350,10 +523,27 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                                 best = t;
                             }
                         }
+                        // 1.0.160.205: history_get returns {"ts":[epochSec..],"v":[..]} -- epoch numbers, not
+                        // ISO strings, so the regex above never matched and D2 always said "no timestamps".
+                        // Read the epoch arrays too (UTC epoch -> IST wall clock, same _istOffset as the rest).
+                        DateTime bestEp = DiagNewestTsEpochIst(rHist);
+                        if (bestEp > best)
+                        {
+                            best = bestEp;
+                        }
+                        // 1.0.160.205: the server echoes the window it applied ("from", UTC epoch). Comparing it
+                        // with the hour we asked for answers HistGetSendsUtc directly, even when the asset has
+                        // no samples in that hour. Correct setting -> ~0 min; wrong setting -> ~330 min.
+                        string echo = DiagWindowEcho(rHist, now.AddHours(-1));
                         if (best == DateTime.MinValue)
                         {
                             d2.Status = "WARN";
-                            d2.Detail = "no timestamps in response -- site may be stale (" + rHist.Length + " B)";
+                            d2.Detail = "no samples in the 1-h window (" + rHist.Length + " B)" + echo
+                                + " (HistGetSendsUtc=" + _histGetSendsUtc + ")";
+                            if (echo.IndexOf("SKEW", StringComparison.Ordinal) >= 0)
+                            {
+                                d2.Status = "FAIL";
+                            }
                         }
                         else
                         {
@@ -362,12 +552,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                             {
                                 d2.Status = "FAIL";
                                 d2.Detail = "freshest sample " + Math.Round(Math.Abs(offMin)) + " min "
-                                    + (offMin > 0 ? "IN THE FUTURE" : "old") + " for a 1-h window -- timezone/window skew class (HistGetSendsUtc=" + _histGetSendsUtc + ")";
+                                    + (offMin > 0 ? "IN THE FUTURE" : "old") + " for a 1-h window -- timezone/window skew class" + echo + " (HistGetSendsUtc=" + _histGetSendsUtc + ")";
                             }
                             else
                             {
                                 d2.Status = offMin < -10.0 ? "WARN" : "OK";
-                                d2.Detail = "freshest sample " + Math.Round(Math.Abs(offMin)) + " min old (HistGetSendsUtc=" + _histGetSendsUtc + ")";
+                                if (echo.IndexOf("SKEW", StringComparison.Ordinal) >= 0)
+                                {
+                                    d2.Status = "FAIL";
+                                }
+                                d2.Detail = "freshest sample " + Math.Round(Math.Abs(offMin)) + " min old" + echo + " (HistGetSendsUtc=" + _histGetSendsUtc + ")";
                             }
                         }
                     }
@@ -382,6 +576,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             // ---- E group: honest SKIPs until the DataAPI list endpoint exists.
             checks.Add(new DiagCheck { Id = "E1", Group = "E", Name = "Runs last 24 h (count, success, orphans)", Status = "SKIP", Ms = 0, Detail = "needs /api/AIAnalysis list-by-date endpoint -- pending DataAPI" });
             checks.Add(new DiagCheck { Id = "E2", Group = "E", Name = "Degraded runs last 24 h", Status = "SKIP", Ms = 0, Detail = "needs the DegradedInputs column whitelisted server-side (.154 sends it)" });
+
+            // ---- L group (1.0.160.206): can this server write its logs? Every log writer swallows
+            // its own failures (logging must never break a page), so an empty log folder used to look
+            // like "nothing happened". These checks name the folder and the reason.
+            DiagAddLogChecks(checks);
 
             swAll.Stop();
             List<object> outChecks = new List<object>();
