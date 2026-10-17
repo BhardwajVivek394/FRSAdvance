@@ -667,14 +667,15 @@ html:not([data-aurora="light"]) {
         color: var(--rhl-text) !important;
     }
 
-    /* faulty rows carry their own rail + wash, matching the pictorial cards */
-    #tblRDPMSHealthLive tbody tr:has(.badge-danger) > td {
-        background: var(--rhl-bad-soft) !important;
+    /* faulty rows: no red background, at rest or on hover -- they keep the normal zebra and the
+       normal hover colour. The row is marked only by a thin red rail and a red Sr.No; the red
+       "Faulty" badge in its cell says what is faulty. (The old full --rhl-bad-soft wash on every
+       cell made the whole row read as an error banner.) */
+    #tblRDPMSHealthLive tbody tr:has(.badge-danger) > td:first-child {
+        box-shadow: inset 3px 0 0 var(--rhl-bad);
+        color: var(--rhl-bad) !important;
+        font-weight: 700;
     }
-
-        #tblRDPMSHealthLive tbody tr:has(.badge-danger) > td:first-child {
-            box-shadow: inset 3px 0 0 var(--rhl-bad);
-        }
 
     #tblRDPMSHealthLive tbody tr.rhl-hide {
         display: none !important;
@@ -2181,4 +2182,208 @@ above and the existing markup hooks. CSS-only; no .cshtml changes.
     color: var(--rhl-bad);
     border: 1px solid var(--rhl-bad-line);
     border-radius: 999px;
+}
+
+/* ===================================================== PICTORIAL CARD REDESIGN ===
+   Indoor / Outdoor RDPMS cards. Loaded last and scoped to the two grids, so it
+   replaces the earlier tile rules above (228-278px tiles, wrapping flex rows).
+   - Bigger cards: min 340px, more padding, larger text and icons.
+   - Every health row is the same 4-column grid
+       icon | LABEL | Wired/Wireless tag | status pill
+     so all pills line up in one right-hand column on every card and never wrap
+     onto a stray line. The time (when present) sits on its own line under the pill.
+   - Wired + Wireless are grouped under Network (the Wireless row's ghost icon and
+     label hold the columns); rows are split by hairline dividers.
+   - Faulty card: red rail + red border only, no pink wash (same as the table).
+   CSS only: markup ids/classes are untouched, so the live painters keep working.
+   ============================================================================== */
+#picIndoorGrid,
+#picOutdoorGrid {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr)) !important;
+    gap: 16px !important;
+    align-items: stretch !important;
+}
+
+#picIndoorGrid .pic-modem-card,
+#picOutdoorGrid .pic-modem-card {
+    border-radius: 14px !important;
+}
+
+    #picIndoorGrid .pic-modem-card::before,
+    #picOutdoorGrid .pic-modem-card::before {
+        width: 4px;
+    }
+
+    #picIndoorGrid .pic-modem-card[data-rhl-status="faulty"],
+    #picOutdoorGrid .pic-modem-card[data-rhl-status="faulty"] {
+        background-image: none !important;
+    }
+
+/* header */
+#picIndoorGrid .pic-modem-header,
+#picOutdoorGrid .pic-modem-header {
+    padding: 12px 16px 12px 18px !important;
+}
+
+#picIndoorGrid .pic-modem-title,
+#picOutdoorGrid .pic-modem-title {
+    font-size: 13.5px !important;
+    letter-spacing: 0;
+}
+
+#picIndoorGrid .pic-status-dot,
+#picOutdoorGrid .pic-status-dot {
+    width: 10px !important;
+    height: 10px !important;
+}
+
+/* body: thumbnail + rows */
+#picIndoorGrid .pic-modem-health,
+#picOutdoorGrid .pic-modem-health {
+    align-items: flex-start;
+    gap: 14px !important;
+    padding: 14px 16px 14px 18px !important;
+}
+
+#picIndoorGrid .pic-asset-thumb,
+#picOutdoorGrid .pic-asset-thumb {
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 12px;
+}
+
+    #picIndoorGrid .pic-asset-thumb svg,
+    #picOutdoorGrid .pic-asset-thumb svg {
+        width: 26px !important;
+        height: 26px !important;
+    }
+
+#picIndoorGrid .pic-health-rows-wrap,
+#picOutdoorGrid .pic-health-rows-wrap {
+    gap: 0 !important;
+}
+
+/* one row = icon | label | leg tag | pill  (+ time on a second line) */
+#picIndoorGrid .pic-health-row,
+#picOutdoorGrid .pic-health-row {
+    display: grid !important;
+    /* fixed, compact columns packed to the left: the pill sits right after the tag column
+       (wide enough for "WIRELESS"), so wide cards don't open a gap before the verdict and
+       the pills still line up row to row */
+    grid-template-columns: 24px 66px 96px max-content;
+    justify-content: start;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 2px !important;
+    padding: 6px 0;
+    flex-wrap: nowrap;
+}
+
+    /* hairline between groups; the Wireless row stays tucked under Wired */
+    #picIndoorGrid .pic-health-row + .pic-health-row:not(:has(.pic-ghost)),
+    #picOutdoorGrid .pic-health-row + .pic-health-row:not(:has(.pic-ghost)) {
+        border-top: 1px dashed var(--rhl-border);
+    }
+
+    #picIndoorGrid .pic-health-row:has(.pic-ghost),
+    #picOutdoorGrid .pic-health-row:has(.pic-ghost) {
+        padding-top: 0;
+    }
+
+    #picIndoorGrid .pic-health-row:has(+ .pic-health-row .pic-ghost),
+    #picOutdoorGrid .pic-health-row:has(+ .pic-health-row .pic-ghost) {
+        padding-bottom: 4px;
+    }
+
+    #picIndoorGrid .pic-health-row:first-child,
+    #picOutdoorGrid .pic-health-row:first-child {
+        padding-top: 0;
+    }
+
+    #picIndoorGrid .pic-health-row:last-child,
+    #picOutdoorGrid .pic-health-row:last-child {
+        padding-bottom: 0;
+    }
+
+#picIndoorGrid .pic-hi,
+#picOutdoorGrid .pic-hi {
+    grid-column: 1;
+    width: 24px !important;
+    height: 24px !important;
+    border-radius: 7px;
+}
+
+    #picIndoorGrid .pic-hi svg,
+    #picOutdoorGrid .pic-hi svg {
+        width: 13px !important;
+        height: 13px !important;
+    }
+
+#picIndoorGrid .pic-hl,
+#picOutdoorGrid .pic-hl {
+    grid-column: 2;
+    width: auto !important;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--rhl-text-faint) !important;
+    white-space: nowrap;
+}
+
+#picIndoorGrid .pic-leg-tag,
+#picOutdoorGrid .pic-leg-tag {
+    grid-column: 3;
+    justify-self: start;
+    font-size: 10px !important;
+    padding: 2px 9px !important;
+}
+
+#picIndoorGrid .pic-health-row .pic-val,
+#picOutdoorGrid .pic-health-row .pic-val {
+    grid-column: 4;
+    justify-self: start;
+    margin-left: 0 !important;
+    padding: 2px 11px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+
+/* a plain value with no verdict class ("N/A", "--") is neutral, not green */
+#picIndoorGrid .pic-health-row .pic-val:not(.pic-val--healthy):not(.pic-val--faulty):not(.pic-val--masked),
+#picOutdoorGrid .pic-health-row .pic-val:not(.pic-val--healthy):not(.pic-val--faulty):not(.pic-val--masked) {
+    color: var(--rhl-text-faint) !important;
+    background: transparent !important;
+    border-color: var(--rhl-border) !important;
+}
+
+#picIndoorGrid .pic-health-row .pic-time,
+#picOutdoorGrid .pic-health-row .pic-time {
+    display: block !important;
+    grid-column: 4;
+    justify-self: start;
+    margin: 0;
+    padding: 0;
+    font-size: 10.5px !important;
+}
+
+    #picIndoorGrid .pic-health-row .pic-time:empty,
+    #picOutdoorGrid .pic-health-row .pic-time:empty {
+        display: none !important;
+    }
+
+/* fault list under the rows */
+#picIndoorGrid .pic-sensor-section,
+#picOutdoorGrid .pic-sensor-section {
+    padding: 12px 16px 14px 18px;
+}
+
+/* narrow phones: drop the thumbnail so the rows keep their width */
+@media (max-width: 420px) {
+    #picIndoorGrid .pic-asset-thumb,
+    #picOutdoorGrid .pic-asset-thumb {
+        display: none !important;
+    }
 }
