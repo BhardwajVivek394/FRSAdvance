@@ -21,7 +21,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // AlertLive AI-Analyze -- component version (Major.Minor.Build.Revision)
         // Keep in lockstep with CHANGELOG.md at the project root.
         // ------------------------------------------------------------------
-        public const string ComponentVersion = "1.0.160.206";   // 1.0.160.206: log folders via AiLogDir, AiLogStatic counts failed writes, AiDiag "L - LOGS" checks
+        public const string ComponentVersion = "1.0.160.207";   // 1.0.160.207: prompt cache -- date anchor moved after the cached block, automatic messages cache, CACHE log line per call (Web.config AiChatCacheMessages). 1.0.160.206: log folders via AiLogDir, AiLogStatic counts failed writes, AiDiag "L - LOGS" checks
         // 1.0.160.205- AiDiag D2 reads history_get epoch "ts" arrays + shows the server's window echo (HistGetSendsUtc check)
         // 1.0.160.204- Haiku / AiModelConfig GetAllWithKeys port of 619 (E7.AiCore 1.0.190-1.0.198)
         // 1.0.160.203- TRAIN CONTEXT: HARDCODED STATION FOR SITE 71 (Bhilai G Cabin). The site's own
@@ -5486,6 +5486,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     }
                     if (_trTokCacheRead > 0) { meta["tokensCacheRead"] = _trTokCacheRead; }
                     if (_trTokCacheWrite > 0) { meta["tokensCacheWrite"] = _trTokCacheWrite; }
+                    LogAiCacheSummary();   // v1.0.160.207: one CACHE total line per analysis
                 }
                 if (status == "timeout") { meta["timingPartial"] = true; } // in-flight phases may not have recorded yet
                 if (_jsonEvidenceArgs != null) { meta["evidenceArgs"] = _jsonEvidenceArgs; }
@@ -6427,6 +6428,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // AnthropicPromptCache is also true. Costs 2x on cache WRITES, but you read far more than
         // you write at this cadence.
         private static readonly bool _promptCache1h = ReadBool("AnthropicPromptCache1h", false);
+        // v1.0.160.207: <add key="AiChatCacheMessages" value="true" /> (needs AnthropicPromptCache=true and
+        // AnthropicClient 1.0.5.0+). Sends system as TWO blocks -- the stable rules with the cache marker, then
+        // the hour-rounded date anchor uncached -- and adds the automatic messages cache, so analysis turn N
+        // reads turns 1..N-1 from cache. Every Anthropic call then writes a CACHE line (page=AiChat) to ai-log.
+        private static readonly bool _aiMsgCache = ReadBool("AiChatCacheMessages", false);
+        private static bool _aiCacheLegendLogged;
+        private string _sysStable, _sysDynamic, _sysComposed;
         // v1.0.108.0 / 1.0.111.0: emit a Hinglish translation alongside the English verdict.
         // DEFAULT OFF (per review) - enable via appSettings "BilingualHindi"=true only after the
         // bilingual canary passes. The translation runs on the ALREADY-SANITIZED verdict, under
@@ -19620,17 +19628,27 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                           "- For site/division/zone: roll up per asset type (Track/Signal/Point Machine/Power Supply).\n" +
                           "=== END PERFORMANCE / HEALTH EVALUATION ===";
             }
-            string systemPrompt = !string.IsNullOrWhiteSpace(systemPromptOverride)
-                ? systemPromptOverride + BuildDateAnchor()
+            // v1.0.160.207 PROMPT CACHE: the date anchor (rounded to the hour) is built ONCE. systemPrompt keeps
+            // the original order, byte-identical to 1.0.160.206; _sysStable / _sysDynamic carry the same text
+            // with the date anchor moved AFTER the cached block, so the cache no longer breaks every hour.
+            string pDate = BuildDateAnchor();
+            bool hasOverride = !string.IsNullOrWhiteSpace(systemPromptOverride);
+            string pBody = hasOverride ? "" : LoadTrainingText() + RailwayScopeRule() + MaintenancePlanRule();
+            string systemPrompt = hasOverride
+                ? systemPromptOverride + pDate
                 // v1.0.160.167: the follow-up is free text -- a plan can be asked for here, so it
                 // carries the same scope and plan-format rules as the ChatBot. Override paths (the
                 // verdict) keep their own schema and are deliberately excluded.
-                : sysBase + BuildDateAnchor() + LoadTrainingText() + RailwayScopeRule() + MaintenancePlanRule();
+                : sysBase + pDate + pBody;
             // v1.0.160.107 -- F7. Append the protection rule, and record the INSTRUCTION part as the
             // protected corpus for the echo backstop. LoadTrainingText() is deliberately EXCLUDED:
             // it is domain knowledge answers are supposed to use, and scrubbing it would redact
             // legitimate railway doctrine.
-            systemPrompt = systemPrompt + InstructionProtectionRule();
+            string pProtect = InstructionProtectionRule();
+            systemPrompt = systemPrompt + pProtect;
+            _sysStable = (hasOverride ? systemPromptOverride : sysBase + pBody) + pProtect;
+            _sysDynamic = pDate;
+            _sysComposed = systemPrompt;   // CallModelOnceAsync splits only when it is sent exactly this prompt
             _protectedCorpus = (!string.IsNullOrWhiteSpace(systemPromptOverride) ? systemPromptOverride : sysBase)
                              + InstructionProtectionRule();
 
@@ -19900,6 +19918,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                                     + " returned=" + modelReturned + " stop=" + turnStop + " out=" + outTok + " thinking=" + thinkTok
                                     + " ms=" + _swModel.ElapsedMilliseconds
                                     + (turnStop == "max_tokens" ? " -- OUTPUT LIMIT REACHED, reply is cut off" : ""));
+                                LogAiCacheUsage(u, iter);   // v1.0.160.207: one CACHE line per Anthropic call
                             }
                             catch
                             {
@@ -21198,6 +21217,70 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _variantClients
             = new System.Collections.Concurrent.ConcurrentDictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
+        // ─────────────────────────────────────────────────────────────────────────────
+        // v1.0.160.207 CACHE LOG (same format as ChatBot / ChatBotNew). From the call's usage:
+        //   input_tokens -> full (1x) | cache_creation_input_tokens -> write (1.25x 5m / 2x 1h) |
+        //   cache_read_input_tokens -> read (0.1x) | prompt = full + write + read
+        // cost-units = full + write*1.25|2 + read*0.1, compared with prompt (what it costs uncached).
+        // Written only when the call returned Anthropic cache fields (DeepSeek / OpenAI report none).
+        // ─────────────────────────────────────────────────────────────────────────────
+        private long _aiCqRead, _aiCqWrite, _aiCqFull;
+        private int _aiCqCalls;
+
+        private void LogAiCacheUsage(JObject u, int iter)
+        {
+            try
+            {
+                if (u == null || (u["cache_read_input_tokens"] == null && u["cache_creation_input_tokens"] == null)) { return; }
+                if (!_aiCacheLegendLogged)
+                {
+                    _aiCacheLegendLogged = true;
+                    AiLog("INFO", "CACHE", "LEGEND (AiChat) read=from cache (0.1x price) | write=saved to cache (1.25x for 5m, 2x for 1h) | "
+                        + "full=not cached (1x) | prompt=read+write+full | hit=read/prompt | result: HIT=cached prefix reused, "
+                        + "HIT+WRITE=reused and a new part saved, WRITE=nothing reused (first call, TTL expired, or the prompt start changed), "
+                        + "NONE=nothing cached (cache off, or prefix below the model minimum) | cost-units=billed weight vs prompt (uncached)");
+                }
+                long full = ReadLong(u, "input_tokens"), write = ReadLong(u, "cache_creation_input_tokens"), read = ReadLong(u, "cache_read_input_tokens");
+                long prompt = full + write + read;
+                bool oneHour = _promptCache && _promptCache1h;
+                double wMul = oneHour ? 2.0 : 1.25;
+                double units = full + write * wMul + read * 0.1;
+                string result = read > 0 && write > 0 ? "HIT+WRITE (reused, new part saved)"
+                              : read > 0 ? "HIT (cached prefix reused)"
+                              : write > 0 ? "WRITE (nothing reused: first call, TTL expired or prompt start changed)"
+                              : "NONE (nothing cached)";
+                _aiCqRead += read; _aiCqWrite += write; _aiCqFull += full; _aiCqCalls++;
+                AiLog("INFO", "CACHE", "page=AiChat turn=" + iter + " synthesis=" + _synthesisMode
+                    + " cache=" + (_promptCache ? "ON" : "OFF") + " msgCache=" + (_aiMsgCache && _promptCache ? "ON" : "OFF")
+                    + " ttl=" + (oneHour ? "1h" : "5m")
+                    + " | prompt=" + prompt + " tok = read " + read + " (from cache, 0.1x) + write " + write + " (saved to cache, " + wMul + "x) + full " + full + " (not cached, 1x)"
+                    + " | hit=" + AiPct(read, prompt) + " | result=" + result
+                    + " | cost-units " + Math.Round(units) + " vs " + prompt + " uncached (saved " + AiPct((long)Math.Round(prompt - units), prompt) + ")");
+            }
+            catch { /* logging must never break the analysis */ }
+        }
+
+        private void LogAiCacheSummary()
+        {
+            try
+            {
+                if (_aiCqCalls == 0) { return; }
+                long prompt = _aiCqRead + _aiCqWrite + _aiCqFull;
+                double units = _aiCqFull + _aiCqWrite * (_promptCache && _promptCache1h ? 2.0 : 1.25) + _aiCqRead * 0.1;
+                AiLog("INFO", "CACHE", "page=AiChat analysis total calls=" + _aiCqCalls
+                    + " | prompt=" + prompt + " tok = read " + _aiCqRead + " + write " + _aiCqWrite + " + full " + _aiCqFull
+                    + " | hit=" + AiPct(_aiCqRead, prompt) + " | cost-units " + Math.Round(units) + " vs " + prompt
+                    + " uncached (saved " + AiPct((long)Math.Round(prompt - units), prompt) + ")");
+                _aiCqCalls = 0; _aiCqRead = _aiCqWrite = _aiCqFull = 0;   // the meta block can run more than once per request
+            }
+            catch { }
+        }
+
+        private static string AiPct(long part, long whole)
+        {
+            return whole <= 0 ? "0%" : Math.Round(100.0 * part / whole) + "%";
+        }
+
         private Task<string> CallModelOnceAsync(object[] messages, object[] tools, string systemPrompt)
         {
             string modelOverride = AnalysisModelOverride;   // v1.0.158.0: NEXUS/ORION variant model string, else null
@@ -21271,6 +21354,22 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         antEffort));
             }
             else { client = _synthesisMode ? _aiSynth.Value : _ai.Value; }
+            // v1.0.160.207: stable/dynamic system blocks + automatic messages cache, only for the analysis
+            // prompt itself (other calls, e.g. the Hindi translation, send their own prompt and keep the old path).
+            if (_aiMsgCache && _promptCache && !_aiCacheParamMissing && _sysStable != null
+                && string.Equals(systemPrompt, _sysComposed, StringComparison.Ordinal))
+            {
+                try
+                {
+                    return client.SendMessageAsync(messages, tools, _sysStable, _sysDynamic,
+                        true, _promptCache1h, true);
+                }
+                catch (MissingMethodException)
+                {
+                    AiLog("WARN", "CACHE", "AiChatCacheMessages is on but Domain.dll has no 2-block overload "
+                        + "(needs AnthropicClient 1.0.5.0) -- using the system-only cache");
+                }
+            }
             if (!_aiCacheParamMissing)
             {
                 try

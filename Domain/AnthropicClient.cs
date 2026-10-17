@@ -32,7 +32,7 @@ namespace Domain
         // The API only accepts cache_control on a system CONTENT BLOCK, not on a
         // plain string, so system is emitted as an array when caching is on.
         // ------------------------------------------------------------------
-        public const string ComponentVersion = "1.0.4.0";   // 1.0.4.0: optional output_config.effort
+        public const string ComponentVersion = "1.0.5.0";   // 1.0.5.0: 2-block system (cached stable + uncached dynamic) + optional automatic messages cache. 1.0.4.0: optional output_config.effort
 
         private static readonly HttpClient _http = new HttpClient();
 
@@ -126,6 +126,78 @@ namespace Domain
                 body["output_config"] = new { effort = _effort };
             }
 
+            return await SendBodyAsync(body, extendedCacheTtl).ConfigureAwait(false);
+        }
+
+        // 1.0.5.0: PROMPT CACHING WITH A DYNAMIC TAIL.
+        // A prompt cache is a PREFIX match: render order is tools -> system -> messages, and one changed
+        // byte invalidates everything after it. A system prompt that mixes fixed rules with per-request
+        // text (current time, page context, the user's stations) therefore never caches as one string.
+        // This overload sends system as TWO blocks:
+        //   [0] systemStable  -- carries cache_control = breakpoint 1: caches tools + this block
+        //   [1] systemDynamic -- no marker: re-read at full price every request, but it no longer
+        //                        breaks the cached part in front of it
+        // cacheMessages adds the TOP-LEVEL cache_control (automatic caching = breakpoint 2): the API
+        // puts it on the last message block and moves it forward, so in a tool loop step N reads steps
+        // 1..N-1 from cache. Both breakpoints use the same TTL (a longer TTL may not follow a shorter one).
+        // With cacheSystem=false and cacheMessages=false the request is the plain string
+        // systemStable + systemDynamic, i.e. no caching at all.
+        public async Task<string> SendMessageAsync(
+            object[] messages,
+            object[] tools,
+            string systemStable,
+            string systemDynamic,
+            bool cacheSystem,
+            bool extendedCacheTtl,
+            bool cacheMessages)
+        {
+            object cacheControl = extendedCacheTtl
+                ? (object)new { type = "ephemeral", ttl = "1h" }
+                : (object)new { type = "ephemeral" };
+
+            object systemField;
+            if (cacheSystem && !string.IsNullOrEmpty(systemStable))
+            {
+                var blocks = new List<object>
+                {
+                    new { type = "text", text = systemStable, cache_control = cacheControl }
+                };
+                if (!string.IsNullOrEmpty(systemDynamic))
+                {
+                    blocks.Add(new { type = "text", text = systemDynamic });
+                }
+                systemField = blocks.ToArray();
+            }
+            else
+            {
+                systemField = (systemStable ?? string.Empty) + (systemDynamic ?? string.Empty);
+            }
+
+            var body = new System.Collections.Generic.Dictionary<string, object>();
+            body["model"] = _model;
+            body["max_tokens"] = _maxTokens;
+            body["stream"] = false;
+            body["system"] = systemField;
+            body["messages"] = messages;
+            if (tools != null && tools.Length > 0)
+            {
+                body["tools"] = tools;
+            }
+            if (_effort != null)
+            {
+                body["output_config"] = new { effort = _effort };
+            }
+            if (cacheMessages)
+            {
+                body["cache_control"] = cacheControl;
+            }
+
+            return await SendBodyAsync(body, extendedCacheTtl).ConfigureAwait(false);
+        }
+
+        // Serialise once, POST, one retry on 429/529 -- shared by both SendMessageAsync overloads.
+        private async Task<string> SendBodyAsync(System.Collections.Generic.Dictionary<string, object> body, bool extendedCacheTtl)
+        {
             // Keep json as a plain string — reused on retry without re-serialising
             var json = JsonConvert.SerializeObject(body);
 

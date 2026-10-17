@@ -102,6 +102,18 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private bool _chatPrivileged;   // v1.2.4.0: captured in Chat(), before any await
         private List<string> _chatStations;   // v1.2.9.6 (#2): captured in Chat() before any await (LoginUser is null post-await)
         private JObject _pageContext;          // v1.2.9.6 (#5): current web sub-page context sent on the POST
+        // v1.3.4.0 PROMPT CACHE (Anthropic only). Web.config:
+        //   ChatBotPromptCache    true|false  -- cache tools + the stable system block (breakpoint 1)
+        //   ChatBotPromptCacheTtl 5m|1h       -- cache lifetime; every hit resets the timer
+        //   ChatBotCacheMessages  true|false  -- automatic cache on the growing message list (breakpoint 2)
+        private static readonly bool _promptCacheOn = ReadStr("ChatBotPromptCache", "false").Equals("true", StringComparison.OrdinalIgnoreCase);
+        private static readonly bool _promptCache1h = ReadStr("ChatBotPromptCacheTtl", "5m").Equals("1h", StringComparison.OrdinalIgnoreCase);
+        private static readonly bool _cacheMessagesOn = ReadStr("ChatBotCacheMessages", "false").Equals("true", StringComparison.OrdinalIgnoreCase);
+        private static bool _cacheLegendLogged;
+        private string _sysStable, _sysDynamic;   // built once per question in RunAgenticLoop
+        private long _cqRead, _cqWrite, _cqFull;   // per-question totals for the CACHE summary line
+        private int _cqCalls;
+        private string _lastCallKind = "";        // provider of the last model call ("anthropic" = cache usage present)
 
         // v1.2.9.7: default mode = Pro. The AiProvider web.config key still overrides; the hard
         // fallback is now quantum10 (ENERGY7 QUANTUM = deepseek-v4-pro) instead of anthropic, so a
@@ -174,6 +186,96 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 return ReadStr("OpenAiModel", "");
             }
             return ReadStr("AnthropicModel", "");
+        }
+
+        // ─────────────────────────────────────────────────────────────────────────────
+        // v1.3.4.0 CACHE LOG. Every Anthropic response carries usage:
+        //   input_tokens                 -> "full"  : not cached, billed at 1x (the tail after the last breakpoint)
+        //   cache_creation_input_tokens  -> "write" : saved to cache this call, billed 1.25x (5m) / 2x (1h)
+        //   cache_read_input_tokens      -> "read"  : served from cache, billed 0.1x
+        //   prompt = full + write + read (the whole input)
+        // cost-units = full*1 + write*1.25|2 + read*0.1, compared with prompt*1 (what it costs uncached),
+        // so the saving shows without a per-model price table.
+        // ─────────────────────────────────────────────────────────────────────────────
+        private void LogCacheUsage(JObject resp, int step, bool noTools)
+        {
+            try
+            {
+                if (_lastCallKind != "anthropic") { return; }
+                JObject u = resp["usage"] as JObject;
+                if (u == null) { return; }
+                if (!_cacheLegendLogged)
+                {
+                    _cacheLegendLogged = true;
+                    E7FRSAdvance.AiCore.AiCoreLog.Write("INFO", "CACHE", "LEGEND read=from cache (0.1x price) | write=saved to cache (1.25x for 5m, 2x for 1h) | "
+                        + "full=not cached (1x) | prompt=read+write+full | hit=read/prompt | result: HIT=cached prefix reused, "
+                        + "HIT+WRITE=reused and a new part saved, WRITE=nothing reused (first call, TTL expired, or the prompt start changed), "
+                        + "NONE=nothing cached (cache off, or prefix below the model minimum e.g. 1024 tokens on Sonnet 4.6) | "
+                        + "cost-units=billed weight vs prompt (uncached)");
+                }
+                long full = UsageLong(u, "input_tokens"), write = UsageLong(u, "cache_creation_input_tokens"), read = UsageLong(u, "cache_read_input_tokens");
+                long prompt = full + write + read;
+                double wMul = _promptCache1h ? 2.0 : 1.25;
+                double units = full + write * wMul + read * 0.1;
+                string result = read > 0 && write > 0 ? "HIT+WRITE (reused, new part saved)"
+                              : read > 0 ? "HIT (cached prefix reused)"
+                              : write > 0 ? "WRITE (nothing reused: first call, TTL expired or prompt start changed)"
+                              : "NONE (nothing cached)";
+                _cqRead += read; _cqWrite += write; _cqFull += full; _cqCalls++;
+                E7FRSAdvance.AiCore.AiCoreLog.Write("INFO", "CACHE", "page=" + CachePageLabel() + " step=" + step + " model=" + EffectiveModel()
+                    + " cache=" + (_promptCacheOn ? "ON" : "OFF") + " msgCache=" + (_cacheMessagesOn ? "ON" : "OFF")
+                    + " ttl=" + (_promptCache1h ? "1h" : "5m") + (noTools ? " tools=none(last step: tools prefix differs)" : "")
+                    + " | prompt=" + prompt + " tok = read " + read + " (from cache, 0.1x) + write " + write + " (saved to cache, " + wMul + "x) + full " + full + " (not cached, 1x)"
+                    + " | hit=" + Pct(read, prompt) + " | result=" + result
+                    + " | cost-units " + Math.Round(units) + " vs " + prompt + " uncached (saved " + Pct((long)Math.Round(prompt - units), prompt) + ")");
+            }
+            catch { /* logging must never break the chat */ }
+        }
+
+        private void LogCacheSummary()
+        {
+            try
+            {
+                if (_cqCalls == 0) { return; }
+                long prompt = _cqRead + _cqWrite + _cqFull;
+                double units = _cqFull + _cqWrite * (_promptCache1h ? 2.0 : 1.25) + _cqRead * 0.1;
+                E7FRSAdvance.AiCore.AiCoreLog.Write("INFO", "CACHE", "page=" + CachePageLabel() + " question total calls=" + _cqCalls
+                    + " | prompt=" + prompt + " tok = read " + _cqRead + " + write " + _cqWrite + " + full " + _cqFull
+                    + " | hit=" + Pct(_cqRead, prompt) + " | cost-units " + Math.Round(units) + " vs " + prompt
+                    + " uncached (saved " + Pct((long)Math.Round(prompt - units), prompt) + ")");
+            }
+            catch { }
+        }
+
+        // v1.3.4.1: Ask AI in the Telemetry Live asset drawer posts to this same endpoint with
+        // pageContext.page = "Telemetry Live - asset dashboard" -- label its CACHE lines so the two
+        // callers can be told apart. Both share one cached prefix (the page context is in the
+        // uncached dynamic block), so a drawer question can read a cache the ChatBot page wrote.
+        private string CachePageLabel()
+        {
+            try
+            {
+                string pg = _pageContext != null && _pageContext["page"] != null ? _pageContext["page"].ToString() : "";
+                if (pg.IndexOf("Telemetry Live", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    string asset = _pageContext["asset"] != null ? _pageContext["asset"].ToString() : "";
+                    return "TelemetryDrawer" + (asset.Length > 0 ? " asset=" + asset.Replace(" ", "_") : "");
+                }
+            }
+            catch { }
+            return "ChatBot";
+        }
+
+        private static long UsageLong(JObject u, string name)
+        {
+            JToken t = u[name];
+            long v;
+            return t != null && long.TryParse(t.ToString(), out v) ? v : 0;
+        }
+
+        private static string Pct(long part, long whole)
+        {
+            return whole <= 0 ? "0%" : Math.Round(100.0 * part / whole) + "%";
         }
 
         // 1.0.194.0: login id for the CHATBOT log line; "" when not available.
@@ -290,10 +392,18 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     _clientCache[cacheKey] = client;
                 }
             }
+            _lastCallKind = client is AnthropicClient ? "anthropic" : kind;   // v1.3.4.0: the CACHE log line is written for Anthropic responses only
             DeepSeekClient ds = client as DeepSeekClient;
             if (ds != null) { return await ds.SendMessageAsync(messages, tools, systemPrompt).ConfigureAwait(false); }
             OpenAiClient oa = client as OpenAiClient;
             if (oa != null) { return await oa.SendMessageAsync(messages, tools, systemPrompt).ConfigureAwait(false); }
+            // v1.3.4.0: prompt cache ON -> two system blocks (cached stable + uncached dynamic) and the
+            // optional automatic messages cache. OFF -> the original single-string call, unchanged.
+            if ((_promptCacheOn || _cacheMessagesOn) && _sysStable != null)
+            {
+                return await ((AnthropicClient)client).SendMessageAsync(messages, tools, _sysStable, _sysDynamic,
+                    _promptCacheOn, _promptCache1h, _cacheMessagesOn).ConfigureAwait(false);
+            }
             return await ((AnthropicClient)client).SendMessageAsync(messages, tools, systemPrompt).ConfigureAwait(false);
         }
 
@@ -480,7 +590,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         //  GET /FRS25/ChatBot/Index — the fullscreen chat page itself
         // ═════════════════════════════════════════════════════════
         // v1.1.0: there was NO version constant in this file -- you could not tell what was deployed.
-        public const string ComponentVersion = "1.3.3.2";   // 1.3.3.2: CHATBOT done/error log line per question, log folder via AiLogDir. 1.3.3.1: engine/model/key from AiModelConfig API, Haiku 5.5 output cap + low effort, CHATBOT log (port of main / 619)
+        public const string ComponentVersion = "1.3.4.1";   // 1.3.4.1: CACHE lines labelled page=TelemetryDrawer asset=... for Ask AI in the Telemetry Live drawer. 1.3.4.0: Anthropic prompt cache (stable/dynamic system blocks, automatic messages cache, CACHE log lines; Web.config ChatBotPromptCache / ChatBotPromptCacheTtl / ChatBotCacheMessages). 1.3.3.2: CHATBOT done/error log line per question, log folder via AiLogDir. 1.3.3.1: engine/model/key from AiModelConfig API, Haiku 5.5 output cap + low effort, CHATBOT log (port of main / 619)
         // 1.2.9.5 - MAINTENANCE PLANS: 15-day evidence rule + CARD output (owner spec, 18.08).
         //           A plan answers one of two shapes -- a STATION plan (rank the assets) or a
         //           SINGLE ASSET plan -- and every asset in it must carry the same five pieces of
@@ -1014,6 +1124,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             {
                 try { Response.Write("data: [DONE]\n\n"); Response.Flush(); } catch { }
                 E7FRSAdvance.AiCore.AiCoreLog.Write(_chatOutcome == "ok" ? "INFO" : "WARN", "CHATBOT", "page=ChatBot done outcome=" + _chatOutcome + " ms=" + _chatSw.ElapsedMilliseconds);
+                LogCacheSummary();   // v1.3.4.0: one CACHE total line per question
             }
 
             return new EmptyResult();
@@ -1110,10 +1221,23 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                           "You MUST use the available tools to answer — never make up data. " +
                           "Always call a tool first. Never answer from memory.";
             }
-            string systemPrompt = sysBase + BuildDateAnchor() + LoadTrainingText() + MaintenanceScopeRule() + MaintenancePlanRule()
-                                + TrackConditionRules() + LiveValuePresentationRule() + ActiveSubjectPin(messages) + BuildStationScopeRule()
-                                + BuildPageContextRule() + BuildCauseConditionRule(messages) + BuildSiteWisdomRule(messages)
-                                + FrsToolRoutingRule() + InstructionProtectionRule();
+            // v1.3.4.0 PROMPT CACHE: every section is built ONCE, then composed two ways.
+            //   systemPrompt  -- the original order, byte-identical to v1.3.3.2 (cache OFF, DeepSeek, OpenAI)
+            //   _sysStable    -- sections that are the same for every user and request -> cached block
+            //   _sysDynamic   -- per-request / per-user sections (current time to the second, subject pin,
+            //                    stations, page context, cause, site wisdom) -> uncached block AFTER the
+            //                    cached one, so they no longer invalidate it (prefix match)
+            string pDate = BuildDateAnchor(), pTrain = LoadTrainingText(), pMaintScope = MaintenanceScopeRule(),
+                   pMaintPlan = MaintenancePlanRule(), pTrack = TrackConditionRules(), pLive = LiveValuePresentationRule(),
+                   pSubject = ActiveSubjectPin(messages), pStations = BuildStationScopeRule(), pPage = BuildPageContextRule(),
+                   pCause = BuildCauseConditionRule(messages), pWisdom = BuildSiteWisdomRule(messages),
+                   pFrs = FrsToolRoutingRule(), pProtect = InstructionProtectionRule();
+            string systemPrompt = sysBase + pDate + pTrain + pMaintScope + pMaintPlan
+                                + pTrack + pLive + pSubject + pStations
+                                + pPage + pCause + pWisdom
+                                + pFrs + pProtect;
+            _sysStable = sysBase + pTrain + pMaintScope + pMaintPlan + pTrack + pLive + pFrs + pProtect;
+            _sysDynamic = pDate + pSubject + pStations + pPage + pCause + pWisdom;
 
             List<object> workMessages = TrimHistory(messages, _maxHistory).Cast<object>().ToList();
             object[] toolsArray = loaded.Tools.ToObject<object[]>();
@@ -1188,6 +1312,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 }
 
                 JObject resp = JObject.Parse(raw);
+                LogCacheUsage(resp, iter + 1, turnTools == null);   // v1.3.4.0: one CACHE line per model call
                 string stopReason = resp["stop_reason"] != null ? resp["stop_reason"].ToString() : "";
                 JArray content = resp["content"] as JArray;
                 if (content == null) content = new JArray();
