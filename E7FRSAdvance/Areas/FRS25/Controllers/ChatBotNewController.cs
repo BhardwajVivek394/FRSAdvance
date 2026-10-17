@@ -107,11 +107,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         private string _lastCallKind = "";        // provider of the last model call ("anthropic" = cache usage present)
 
         // 1.0.190.0: engine comes from the AiModelConfig API (EngineCode); AiProvider is the fallback.
+        // Hard fallback (API not answered, no AiProvider key) is quantum10, the same as ChatBot and AiChat
+        // (was "anthropic", so ChatBotNew alone ran a different engine while the API was down).
         private static string _aiProviderDefault
         {
             get
             {
-                return E7FRSAdvance.AiCore.AiModelConfig.DefaultEngine((ConfigurationManager.AppSettings["AiProvider"] ?? "anthropic").Trim());
+                return E7FRSAdvance.AiCore.AiModelConfig.DefaultEngine((ConfigurationManager.AppSettings["AiProvider"] ?? "quantum10").Trim());
             }
         }
 

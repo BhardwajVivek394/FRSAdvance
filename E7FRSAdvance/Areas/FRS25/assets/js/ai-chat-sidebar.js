@@ -17,11 +17,22 @@
     const CHAT_ENDPOINT = '/FRS25/ChatBot/Chat';
     const STATUS_ENDPOINT = '/FRS25/ChatBot/Status';
 
-    // The Chatbot page's engine picker saves sessionStorage.e7ChatEngine (default quantum10 = ENERGY7
-    // QUANTUM). Send the same so both answer with the same model; the server still forces QUANTUM for
-    // non-privileged users.
+    // Same engine order as the Chatbot page (and the Telemetry drawer):
+    //   1) the Chatbot picker's saved choice (sessionStorage.e7ChatEngine), only if that engine is
+    //      still in the API list;
+    //   2) the API's IsDefault engine (window.E7_DEFAULT_ENGINE, set by _Layout.cshtml);
+    //   3) quantum10 only when the API gave nothing.
+    // The server still forces the IsDefault engine for non-privileged users.
     function chatEngine() {
-        try { const s = sessionStorage.getItem('e7ChatEngine'); if (s && /^[a-z0-9]+$/i.test(s)) return s; } catch (e) { }
+        const ok = function (id) { return !!id && /^[a-z0-9]+$/i.test(id); };
+        const list = Array.isArray(window.E7_ENGINES) && window.E7_ENGINES.length ? window.E7_ENGINES : null;
+        const inList = function (id) {
+            if (!list) return true;
+            for (let i = 0; i < list.length; i++) if (list[i] && list[i].id === id) return true;
+            return false;
+        };
+        try { const s = sessionStorage.getItem('e7ChatEngine'); if (ok(s) && inList(s)) return s; } catch (e) { }
+        if (ok(window.E7_DEFAULT_ENGINE)) return window.E7_DEFAULT_ENGINE;
         return 'quantum10';
     }
 
