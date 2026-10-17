@@ -81,7 +81,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
                         mDivisions = JsonConvert.DeserializeObject<List<Division>>(jsonString);
-                        mDivisions.Insert(0, new Division { Id = 0, Name = "Select Divison" });
+                        mDivisions.Insert(0, new Division { Id = 0, Name = "Select Division" });
                     }
                     else
                     {

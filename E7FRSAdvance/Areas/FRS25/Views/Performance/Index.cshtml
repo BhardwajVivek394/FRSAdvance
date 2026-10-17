@@ -2507,8 +2507,8 @@
         rdpms: '#22c55e'         // Green
     };
 
-    // Consistent date format: MM/DD/YYYY
-    var DATE_FORMAT = 'mm/dd/yy';
+    // Displayed as DD-MM-YYYY like the other pages; sent to the server as MM/DD/YYYY (toServerDate)
+    var DATE_FORMAT = 'dd-mm-yyyy';
 
     $(document).ready(function () {
         // Set default dates to today with consistent format
@@ -2606,12 +2606,18 @@
         $('#txtToDate').val(formattedDate);
     }
 
-    // ===== FORMAT DATE AS MM/DD/YYYY (with leading zeros) =====
+    // ===== FORMAT DATE AS DD-MM-YYYY (with leading zeros) =====
     function formatDate(date) {
         var month = String(date.getMonth() + 1).padStart(2, '0');
         var day = String(date.getDate()).padStart(2, '0');
         var year = date.getFullYear();
-        return month + '/' + day + '/' + year;
+        return day + '-' + month + '-' + year;
+    }
+
+    // DD-MM-YYYY (display) -> MM/DD/YYYY (what the server expects)
+    function toServerDate(s) {
+        var m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(s || '').trim());
+        return m ? (m[2] + '/' + m[1] + '/' + m[3]) : s;
     }
 
     // ===== DROPDOWN SEARCH FILTER =====
@@ -2849,8 +2855,8 @@
         //mAssetLister.SearchCriteria.SiteId = getFirstValue('site');
 
         // Date values
-        mAssetLister.SearchCriteria.FromDate = $('#txtFromDate').val();
-        mAssetLister.SearchCriteria.ToDate = $('#txtToDate').val();
+        mAssetLister.SearchCriteria.FromDate = toServerDate($('#txtFromDate').val());
+        mAssetLister.SearchCriteria.ToDate = toServerDate($('#txtToDate').val());
 
         // Load based on view type
         if (selectedViewType === 'Table') {

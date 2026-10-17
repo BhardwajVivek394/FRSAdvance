@@ -554,11 +554,11 @@
                             </div>
                             <div class="filter-item">
                                 <label>From Date</label>
-                                <input type="text" class="filter-input" id="txtFromDate" placeholder="MM/DD/YYYY">
+                                <input type="text" class="filter-input" id="txtFromDate" placeholder="DD-MM-YYYY">
                             </div>
                             <div class="filter-item">
                                 <label>To Date</label>
-                                <input type="text" class="filter-input" id="txtToDate" placeholder="MM/DD/YYYY">
+                                <input type="text" class="filter-input" id="txtToDate" placeholder="DD-MM-YYYY">
                             </div>
                             <div class="filter-item">
                                 <label>View</label>
@@ -760,8 +760,8 @@
     // DOCUMENT READY
     // ==========================================================================
     $(document).ready(function () {
-        $('#txtFromDate').datepicker({ dateFormat: 'mm/dd/yy', changeMonth: true, changeYear: true, onSelect: function (d) { $(this).val(d); } });
-        $('#txtToDate').datepicker({ dateFormat: 'mm/dd/yy', changeMonth: true, changeYear: true, onSelect: function (d) { $(this).val(d); } });
+        $('#txtFromDate').datepicker({ dateFormat: 'dd-mm-yyyy', changeMonth: true, changeYear: true, onSelect: function (d) { $(this).val(d); } });
+        $('#txtToDate').datepicker({ dateFormat: 'dd-mm-yyyy', changeMonth: true, changeYear: true, onSelect: function (d) { $(this).val(d); } });
         setDefaultDates();
 
         $('.select-btn').on('click', function (e) { e.stopPropagation(); toggleDD($(this).data('target'), this); });
@@ -811,8 +811,13 @@
         $('#txtFromDate').datepicker('setDate', today); $('#txtToDate').datepicker('setDate', today);
         $('#txtFromDate').val(formatDate(today)); $('#txtToDate').val(formatDate(today));
     }
+    // DD-MM-YYYY (display) -> MM/DD/YYYY (what the server expects)
+    function toServerDate(s) {
+        var m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(s || '').trim());
+        return m ? (m[2] + '/' + m[1] + '/' + m[3]) : s;
+    }
     function formatDate(date) {
-        return String(date.getMonth() + 1).padStart(2, '0') + '/' + String(date.getDate()).padStart(2, '0') + '/' + date.getFullYear();
+        return String(date.getDate()).padStart(2, '0') + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + date.getFullYear();
     }
     function updateRangeBar() {
         $('#dispFromDate').text($('#txtFromDate').val() || '—');
@@ -969,7 +974,7 @@
             SearchCriteria: {
                 ZoneIds: getValues('zone'), DivisionIds: getValues('division'),
                 SiteIds: siteIds, AssetTypeIds: assetTypeIds,
-                AssetIds: getValues('assetNumber'), StartDate: fromDate, EndDate: toDate
+                AssetIds: getValues('assetNumber'), StartDate: toServerDate(fromDate), EndDate: toServerDate(toDate)
             }
         };
 
