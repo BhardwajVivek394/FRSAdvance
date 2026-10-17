@@ -33,11 +33,22 @@
     var ROSTER_STATE_URL = '/FRS25/MaintenceRoster/GetMaintenanceState';
     var ROSTER_PAGE_URL = '/FRS25/MaintenceRoster/Index';   /* v618.34: Asset Health API (Roster 2.11.0.0 / E7.AiCore AssetHealthEngine) */
     var CHAT_URL = '/FRS25/ChatBot/Chat';   /* v618.37: E7MRIWeb ChatBot endpoint (E7.AiCore ChatEngine), was /FRS25/AiChat/Chat */
-    /* Same engine the Chatbot page uses: its picker saves sessionStorage.e7ChatEngine, default quantum10.
+    /* Same engine the Chatbot page uses: its picker saves sessionStorage.e7ChatEngine, default = the API's IsDefault engine.
        Without a provider the server falls back to its own default (Anthropic for privileged users), so the
        drawer and the Chatbot page answered the same question with different models. */
+    /* Order, as on the ChatBot page: 1) the ChatBot picker's saved choice, honoured only if that
+       engine is still in the API list; 2) the API's IsDefault engine (window.E7_DEFAULT_ENGINE, set
+       by Telemetry/Index.cshtml); 3) quantum10 only when the API gave nothing. */
     function chatEngine() {
-        try { var s = W.sessionStorage.getItem('e7ChatEngine'); if (s && /^[a-z0-9]+$/i.test(s)) return s; } catch (e) { }
+        var ok = function (id) { return !!id && /^[a-z0-9]+$/i.test(id); };
+        var list = W.E7_ENGINES && W.E7_ENGINES.length ? W.E7_ENGINES : null;
+        var inList = function (id) {
+            if (!list) return true;
+            for (var i = 0; i < list.length; i++) if (list[i] && list[i].id === id) return true;
+            return false;
+        };
+        try { var s = W.sessionStorage.getItem('e7ChatEngine'); if (ok(s) && inList(s)) return s; } catch (e) { }
+        if (ok(W.E7_DEFAULT_ENGINE)) return W.E7_DEFAULT_ENGINE;
         return 'quantum10';
     }
     var ALERTS_URL = '/FRS25/Telemetry/GetSipReplayAlerts';
