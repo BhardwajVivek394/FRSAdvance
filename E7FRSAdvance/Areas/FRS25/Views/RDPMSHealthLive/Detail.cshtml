@@ -457,6 +457,102 @@
              padding: 6px 14px;
          }
 
+     /* ===== FILTER BAR ALIGNMENT =====
+        Every field shares one row: same 36px height, same white fill and border,
+        equal widths, and the Search button stays at the end of the row.
+        #e7Body .e7-body raises specificity above e7-responsive-fixes.css
+        (flex 1 1 150px made the row too wide, so Search wrapped) and above the
+        theme's grey .form-control fill. */
+     #e7Body .e7-body #filterContainer > .filter-item {
+         flex: 1 1 120px !important;
+         min-width: 0 !important;
+     }
+
+         #e7Body .e7-body #filterContainer > .filter-item:has(> .btn-search) {
+             flex: 0 0 auto !important;
+         }
+
+         #e7Body .e7-body #filterContainer > .filter-item > span:first-child {
+             line-height: 16px;
+             min-height: 16px;
+             margin-bottom: 6px;
+         }
+
+     #e7Body .e7-body #filterContainer .select-btn,
+     #e7Body .e7-body #filterContainer .form-control,
+     #e7Body .e7-body #filterContainer input.time-24 {
+         box-sizing: border-box;
+         width: 100% !important;
+         min-width: 0 !important;
+         max-width: 100% !important;
+         height: 36px !important;
+         padding: 0 12px;
+         font-size: 13px;
+         border: 1px solid var(--e7-border-2) !important;
+         border-radius: 6px !important;
+         background-color: var(--e7-surface) !important;
+         color: var(--e7-text) !important;
+     }
+
+     #e7Body .e7-body #filterContainer .form-control[readonly] {
+         cursor: pointer;
+     }
+
+     /* time: box fills its column and the clock sits inside it */
+     #e7Body .e7-body #filterContainer .time-24-wrapper {
+         display: block;
+         width: 100% !important;
+         min-width: 0 !important;
+         max-width: 100% !important;
+     }
+
+     #e7Body .e7-body #filterContainer input.time-24 {
+         text-align: left;
+         padding-right: 32px !important;
+     }
+
+     #e7Body .e7-body #filterContainer .time-24-icon {
+         right: 12px;
+     }
+
+     /* View: same chevron and look as the Zone / Division dropdowns */
+     #e7Body .e7-body #filterContainer select#drpView {
+         -webkit-appearance: none;
+         -moz-appearance: none;
+         appearance: none;
+         padding-right: 32px;
+         cursor: pointer;
+         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a94a6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
+         background-repeat: no-repeat !important;
+         background-position: right 12px center !important;
+         background-size: 12px 12px !important;
+     }
+
+     @@media (max-width: 991.98px) {
+         #e7Body .e7-body #filterContainer {
+             flex-direction: row !important;
+             align-items: flex-end !important;
+         }
+
+             #e7Body .e7-body #filterContainer > .filter-item {
+                 flex: 1 1 calc(33.333% - 12px) !important;
+             }
+     }
+
+     @@media (max-width: 575.98px) {
+         #e7Body .e7-body #filterContainer > .filter-item {
+             flex: 1 1 calc(50% - 12px) !important;
+         }
+
+             #e7Body .e7-body #filterContainer > .filter-item:has(> .btn-search) {
+                 flex: 1 1 100% !important;
+             }
+
+         #e7Body .e7-body #filterContainer .btn-search {
+             width: 100%;
+         }
+     }
+
 
      /* ===== RESPONSIVE FILTER BAR ===== */
      @@media (max-width: 991.98px) {
@@ -767,7 +863,7 @@
                     <!-- From Date -->
                     <div class="filter-item">
                         <span>From Date</span>
-                        <input type="text" class="form-control" id="txtFromDate" placeholder="Select" readonly style="width:130px;background-color:var(--e7-surface, white);color:var(--e7-text, inherit)" />
+                        <input type="text" class="form-control" id="txtFromDate" placeholder="Select" readonly />
                     </div>
 
                     <!-- From Time -->
@@ -783,7 +879,7 @@
                     <!-- To Date -->
                     <div class="filter-item">
                         <span>To Date</span>
-                        <input type="text" class="form-control" id="txtToDate" placeholder="Select" readonly style="width: 130px; background-color: var(--e7-surface, white); color: var(--e7-text, inherit)" />
+                        <input type="text" class="form-control" id="txtToDate" placeholder="Select" readonly />
                     </div>
 
                     <!-- To Time -->
@@ -799,8 +895,7 @@
                     <!-- View -->
                     <div class="filter-item">
                         <span>View</span>
-                        <select class="form-control" id="drpView"
-                                style="height:36px;min-width:110px;font-size:13px;">
+                        <select class="form-control" id="drpView">
                             <option value="Table">Table</option>
                             <option value="Pie">Pie</option>
                             <option value="Bar">Bar</option>
@@ -1433,12 +1528,8 @@
             return;
         }
 
-        $('#divRDPMSHealthLive').html(
-            '<div class="text-center p-5">' +
-            '<i class="fas fa-spinner fa-spin fa-2x text-primary"></i>' +
-            '<br/><small class="text-muted mt-2">Loading data...</small>' +
-            '</div>'
-        );
+        // Shared themed loader from _Layout (same one the Alerts page uses)
+        if (window.E7Loader) { E7Loader.show('Loading health summary…'); } else { $('#e7-loader').show(); }
 
         $.ajax({
             url: '/FRS25/RDPMSHealthLive/_Detail',
@@ -1455,7 +1546,16 @@
                 }
             },
             error: function () {
+                $('#divRDPMSHealthLive').html(
+                    '<div class="text-center p-5" style="color:var(--e7-text-3);font-size:13px;">' +
+                    '<i class="fas fa-circle-exclamation" style="color:var(--e7-red);font-size:20px;"></i>' +
+                    '<div style="margin-top:8px;">Couldn\'t load data, try again.</div>' +
+                    '</div>'
+                );
                 CommonNotification("ERROR", "Something went wrong!", "Error");
+            },
+            complete: function () {
+                if (window.E7Loader) { E7Loader.hide(); } else { $('#e7-loader').hide(); }
             }
         });
     }

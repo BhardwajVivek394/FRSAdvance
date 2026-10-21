@@ -2120,13 +2120,23 @@
     }
 
     // ==========================================================================
+    // LOADER — shared themed E7Loader from _Layout (this layout has no #loader)
+    // ==========================================================================
+    function rdpmsLoaderShow(label) {
+        if (window.E7Loader) { E7Loader.show(label); } else { $('#e7-loader').show(); }
+    }
+    function rdpmsLoaderHide() {
+        if (window.E7Loader) { E7Loader.hide(); } else { $('#e7-loader').hide(); }
+    }
+
+    // ==========================================================================
     // EXCEL DOWNLOAD
     // ==========================================================================
     function fnDownloadExcel() {
         var table = document.getElementById('tblRDPMSHealthSummary');
         if (!table) { alert('No data available to download'); return; }
         try {
-            $("#loader").show();
+            rdpmsLoaderShow('Preparing Excel…');
             var workbook = new ExcelJS.Workbook(); workbook.creator = 'RDPMS'; workbook.created = new Date();
             var worksheet = workbook.addWorksheet('RDPMS Health Summary');
             var colCount = 13;
@@ -2181,10 +2191,12 @@
 
             workbook.xlsx.writeBuffer().then(function (buffer) {
                 saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), getFileName('xlsx'));
-                $("#loader").hide();
+                rdpmsLoaderHide();
                 CommonNotification("SUCCESS", "Excel downloaded successfully!", "Success");
+            }).catch(function (err) {
+                rdpmsLoaderHide(); console.error('Excel Error:', err); CommonNotification("ERROR", "Error downloading Excel", "Error");
             });
-        } catch (err) { $("#loader").hide(); console.error('Excel Error:', err); CommonNotification("ERROR", "Error downloading Excel", "Error"); }
+        } catch (err) { rdpmsLoaderHide(); console.error('Excel Error:', err); CommonNotification("ERROR", "Error downloading Excel", "Error"); }
     }
 
     // ==========================================================================
@@ -2194,7 +2206,7 @@
         var table = document.getElementById('tblRDPMSHealthSummary');
         if (!table) { alert('No data available to download'); return; }
         try {
-            $("#loader").show();
+            rdpmsLoaderShow('Preparing CSV…');
             var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type',
                 'Total number of Sensors', '% Availability of Sensors',
                 'Total Number of IoTs', '% Availability of IoTs',
@@ -2217,9 +2229,9 @@
             });
             if (typeof goToPage === 'function') goToPage(1);
             saveAs(new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' }), getFileName('csv'));
-            $("#loader").hide();
+            rdpmsLoaderHide();
             CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
-        } catch (err) { $("#loader").hide(); console.error('CSV Error:', err); CommonNotification("ERROR", "Error downloading CSV", "Error"); }
+        } catch (err) { rdpmsLoaderHide(); console.error('CSV Error:', err); CommonNotification("ERROR", "Error downloading CSV", "Error"); }
     }
 
     // ==========================================================================
@@ -2229,7 +2241,7 @@
         var table = document.getElementById('tblRDPMSHealthSummary');
         if (!table) { alert('No data available to download'); return; }
         try {
-            $("#loader").show();
+            rdpmsLoaderShow('Preparing PDF…');
 
             var { jsPDF } = window.jspdf;
             var doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
@@ -2276,7 +2288,7 @@
             if (typeof goToPage === 'function') goToPage(1);
 
             if (tableBody.length === 0) {
-                $("#loader").hide();
+                rdpmsLoaderHide();
                 alert('No data available to download');
                 return;
             }
@@ -2392,11 +2404,11 @@
             });
 
             doc.save(getFileName('pdf'));
-            $("#loader").hide();
+            rdpmsLoaderHide();
             CommonNotification("SUCCESS", "PDF downloaded successfully!", "Success");
 
         } catch (err) {
-            $("#loader").hide();
+            rdpmsLoaderHide();
             console.error('PDF Error:', err);
             CommonNotification("ERROR", "Error downloading PDF", "Error");
         }

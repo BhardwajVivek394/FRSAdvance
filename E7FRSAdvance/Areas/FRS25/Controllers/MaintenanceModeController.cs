@@ -114,6 +114,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         mMaintenanceMode.InActiveTime = baseDate;
                 }
                 mMaintenanceMode.CreatedBy = ClsHttpContent.LoginUser.Id;
+                mMaintenanceMode.RoleId = ClsHttpContent.LoginUser.RoleId;
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
                     var jsonStr = JsonConvert.SerializeObject(mMaintenanceMode);
@@ -146,6 +147,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
                 mMaintenanceMode.InActiveTime = DateTime.Now;
                 mMaintenanceMode.CreatedBy = ClsHttpContent.LoginUser.Id;
+                mMaintenanceMode.RoleId = ClsHttpContent.LoginUser.RoleId;
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
                     var jsonStr = JsonConvert.SerializeObject(mMaintenanceMode);

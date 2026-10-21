@@ -60,7 +60,7 @@ namespace Domain
         public List<string> DivisionNames { get; set; }
         public List<string> SectionNames { get; set; }
         public List<string> SiteNames { get; set; }
-
+        public string UserClassTypeName { get; set; }
         // ─────────────────────────────────────────────────────────
         // NEW: Multi-select filter properties for User Management
         // ─────────────────────────────────────────────────────────
@@ -71,6 +71,9 @@ namespace Domain
         /// <summary>Status filter: "1" = Active, "0" = Inactive. Multiple values = OR logic. Empty = All.</summary>
         public List<string> StatusList { get; set; } = new List<string>();
         public List<int> ZoneIds { get; set; }
+        public System.DateTime? LastLogInTime { get; set; }
+        public int UserClassTypeId { get; set; }
+
         public User()
         {
             ColumnName = "Id";

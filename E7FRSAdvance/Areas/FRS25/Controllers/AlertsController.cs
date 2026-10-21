@@ -420,6 +420,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 mMaintenanceMode.Id = 0;          // 616 posts by AssetId only
                 mMaintenanceMode.AssetIds = null;
                 mMaintenanceMode.CreatedBy = ClsHttpContent.LoginUser.Id;
+                mMaintenanceMode.RoleId = ClsHttpContent.LoginUser.RoleId;
 
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
@@ -492,6 +493,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
                 mMaintenanceMode.InActiveTime = DateTime.Now;
                 mMaintenanceMode.CreatedBy = ClsHttpContent.LoginUser.Id;
+                mMaintenanceMode.RoleId = ClsHttpContent.LoginUser.RoleId;
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
                     var jsonStr = JsonConvert.SerializeObject(mMaintenanceMode);
@@ -580,6 +582,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
                 mMaintenanceMode.AssetIds = null;
                 mMaintenanceMode.CreatedBy = ClsHttpContent.LoginUser.Id;
+                mMaintenanceMode.RoleId = ClsHttpContent.LoginUser.RoleId;
                 int failed = 0;
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
