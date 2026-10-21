@@ -90,7 +90,7 @@ namespace E7FRSAdvance.MenuBuilder
             menus.Add(alerts);
 
             // Health (Data Receiver / Datalogger / Debouncer / EdgeX service monitor): Energy7 users only
-            if (isVendor)
+            if (loginUser.IsSiteKeeping)
             {
                 Menu health = new Menu();
                 health.Main = health.SetMenuAttribute("Health", ControllerName.Health, ActionName.Index, FRSIconName.Health);

@@ -1188,6 +1188,69 @@
             font-weight: 600;
         }
 
+        .alrt-maint-hdr-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alrt-maint-dl {
+            position: relative;
+        }
+
+        .alrt-maint-dl-btn {
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 1px solid var(--e7-border);
+            background: var(--e7-surface);
+            color: var(--e7-violet);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+            .alrt-maint-dl-btn:hover {
+                background: var(--e7-violet-soft);
+            }
+
+        .alrt-maint-dl-menu {
+            display: none;
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            min-width: 130px;
+            padding: 6px;
+            background: var(--e7-surface);
+            border: 1px solid var(--e7-border);
+            border-radius: 10px;
+            box-shadow: var(--e7-shadow-hover, 0 8px 24px rgba(0, 0, 0, .12));
+            z-index: 50;
+        }
+
+        .alrt-maint-dl.open .alrt-maint-dl-menu {
+            display: block;
+        }
+
+        .alrt-maint-dl-menu a {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--e7-text);
+            text-decoration: none;
+        }
+
+            .alrt-maint-dl-menu a:hover {
+                background: var(--e7-surface-3);
+            }
+
         .alrt-maint-body {
             padding: 16px;
         }
@@ -1775,6 +1838,66 @@
             min-height: 100px;
             resize: vertical;
         }
+
+        /* Maintenance modal — Asset Number multi-select */
+        .mnt-ms {
+            position: relative;
+        }
+
+        .mnt-ms-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            text-align: left;
+            cursor: pointer;
+        }
+
+            .mnt-ms-btn span {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+        .mnt-ms-panel {
+            display: none;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 4px);
+            z-index: 5;
+            max-height: 220px;
+            overflow-y: auto;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-xl);
+            padding: 4px 0;
+        }
+
+        .mnt-ms.open .mnt-ms-panel {
+            display: block;
+        }
+
+        .mnt-ms-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 14px;
+            font-size: 13px;
+            color: var(--text-primary);
+            cursor: pointer;
+            margin: 0;
+        }
+
+            .mnt-ms-item:hover {
+                background: var(--bg-page);
+            }
+
+            .mnt-ms-item.mnt-ms-all {
+                font-weight: 600;
+                border-bottom: 1px solid var(--border);
+            }
 
         .alrt-file-upload {
             border: 2px dashed var(--border);
@@ -3813,7 +3936,19 @@
             <div class="alrt-maint-card">
                 <div class="alrt-maint-hdr">
                     <h3 class="alrt-maint-title"><i class="fas fa-wrench"></i> Maintenance Mode</h3>
-                    <span class="alrt-maint-count" id="alrtMaintCountBadge">—</span>
+                    <div class="alrt-maint-hdr-right">
+                        <span class="alrt-maint-count" id="alrtMaintCountBadge">—</span>
+                        <div class="alrt-maint-dl" id="alrtMaintDl">
+                            <button type="button" class="alrt-maint-dl-btn" title="Download Maintenance Mode report" onclick="alrtToggleMaintDl(event)">
+                                <i class="fas fa-download"></i>
+                            </button>
+                            <div class="alrt-maint-dl-menu">
+                                <a href="javascript:void(0);" onclick="alrtMaintExport('excel')"><i class="fas fa-file-excel" style="color:var(--e7-green, #16a34a);"></i> Excel</a>
+                                <a href="javascript:void(0);" onclick="alrtMaintExport('csv')"><i class="fas fa-file-alt" style="color:var(--e7-accent, #3b82f6);"></i> CSV</a>
+                                <a href="javascript:void(0);" onclick="alrtMaintExport('pdf')"><i class="fas fa-file-pdf" style="color:var(--e7-red, #ef4444);"></i> PDF</a>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="alrt-maint-body">
                     <div class="alrt-maint-list" id="alrtMaintList"></div>
@@ -3926,19 +4061,23 @@
 
             <div class="alrt-form-group">
                 <label class="alrt-form-label">Asset Number <span class="req">*</span></label>
-                <select class="alrt-form-sel" id="mntAsset" disabled>
-                    <option value="">— Select Asset —</option>
-                </select>
+                <div class="mnt-ms" id="mntAssetMs">
+                    <button type="button" class="alrt-form-sel mnt-ms-btn" id="mntAssetBtn" disabled onclick="mntToggleAssetPanel(event)">
+                        <span id="mntAssetTxt">— Select Asset —</span>
+                        <i class="fas fa-chevron-down" style="font-size:11px;"></i>
+                    </button>
+                    <div class="mnt-ms-panel" id="mntAsset"></div>
+                </div>
             </div>
 
             <div class="alrt-form-row">
                 <div class="alrt-form-group">
                     <label class="alrt-form-label">From Date <span class="req">*</span></label>
-                    <input type="date" class="alrt-form-inp" id="mntFromDate">
+                    <input type="date" class="alrt-form-inp" id="mntFromDate" onchange="mntSyncDateMins()">
                 </div>
                 <div class="alrt-form-group">
                     <label class="alrt-form-label">From Time <span class="req">*</span></label>
-                    <input type="time" class="alrt-form-inp" id="mntFromTime" step="60">
+                    <input type="time" class="alrt-form-inp" id="mntFromTime" step="1">
                 </div>
             </div>
         </div>
@@ -3951,7 +4090,7 @@
             </div>
             <div class="alrt-form-group">
                 <label class="alrt-form-label">To Time <span class="req">*</span></label>
-                <input type="time" class="alrt-form-inp" id="mntToTime" step="60">
+                <input type="time" class="alrt-form-inp" id="mntToTime" step="1">
             </div>
         </div>
 
@@ -4094,6 +4233,13 @@
 </div>
 @Html.Partial("_FRSAlertModals")
 @Html.Partial("_FRSFeedbackSlidePanel")
+
+@* Maintenance Mode report export (Excel / CSV / PDF) *@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="@Url.Content("~/Areas/FRS25/assets/PageJs/MaintenanceMode/maintenance-export.js")"></script>
 
 <script>
     // ── AlertWS state — initialised immediately so alrtConnectAlertWS
@@ -4929,14 +5075,59 @@ window._alertWsState = window._alertWsState || {
         });
     }
 
+    // DOWNLOAD — Maintenance Mode report (616 format, see maintenance-export.js).
+    // Uses the page's Zone/Division/Site filters and the From/To date filter. With no
+    // dates picked it falls back to 616's default range: today → today + 7 days.
+    // Plain DOM here: this block runs before the layout loads jQuery.
+    function alrtToggleMaintDl(e) {
+        e.stopPropagation();
+        document.getElementById('alrtMaintDl').classList.toggle('open');
+    }
+    document.addEventListener('click', function (e) {
+        var dl = document.getElementById('alrtMaintDl');
+        if (dl && !dl.contains(e.target)) dl.classList.remove('open');
+    });
+
+    function alrtMaintExport(format) {
+        document.getElementById('alrtMaintDl').classList.remove('open');
+
+        function fromIso(iso) {           // yyyy-mm-dd → Date
+            var p = (iso || '').split('-');
+            return p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2]) : null;
+        }
+        function pad(n) { return String(n).padStart(2, '0'); }
+        function serverDate(d) { return pad(d.getMonth() + 1) + '/' + pad(d.getDate()) + '/' + d.getFullYear(); }
+        function displayDate(d) { return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear(); }
+
+        var from = fromIso($('#fltFrom').val());
+        var to = fromIso($('#fltTo').val());
+        if (!from) from = new Date();
+        if (!to) { to = new Date(from); to.setDate(to.getDate() + 7); }
+
+        var criteria = {
+            ZoneIds: alrtGetValues('zone'),
+            DivisionIds: alrtGetValues('division'),
+            SiteIds: alrtGetValues('site'),
+            FromDate: serverDate(from),
+            FromTime: '00:00',
+            ToDate: serverDate(to),
+            ToTime: '23:59'
+        };
+        var period = { fromDate: displayDate(from), fromTime: '00:00', toDate: displayDate(to), toTime: '23:59' };
+
+        e7MaintExport(format, criteria, period, '/FRS25/Alerts/DownloadMaintenanceMode');
+    }
+
     // OPEN modal (id = 0 for new, existing id for edit)
-    function alrtOpenMaintModal(id, assetDisp, station, fromDisplay, toDate, toTime) {
+    function alrtOpenMaintModal(id, assetDisp, station, fromDisplay, toDate, toTime, assetId, fromDate, fromTime) {
         alrtCloseDD(); // close any open header dropdown & hide backdrop first
 
         id = id || 0;
         var isEdit = id > 0;
 
         $('#mntEditId').val(id);
+        // Edit re-posts MaintenanceMode/Create for this asset, keeping its original start (as 616 does)
+        $('#mntEditId').data({ assetId: isEdit ? (assetId || 0) : 0, fromDate: isEdit ? (fromDate || '') : '', fromTime: isEdit ? (fromTime || '') : '' });
         $('#mntModalTitle').text(isEdit ? 'Edit Maintenance Window' : 'Activate Maintenance Window');
         $('#mntSaveLbl').text(isEdit ? 'Update' : 'Activate');
         $('#mntValidMsg').hide();
@@ -4968,11 +5159,14 @@ window._alertWsState = window._alertWsState || {
             $('#mntDivision').prop('disabled', true).html('<option value="">— Select Division —</option>');
             $('#mntSite').prop('disabled', true).html('<option value="">— Select Station —</option>');
             $('#mntAssetType').prop('disabled', true).html('<option value="">— Select Asset Type —</option>');
-            $('#mntAsset').prop('disabled', true).html('<option value="">— Select Asset —</option>');
+            mntResetAssets('— Select Asset —');
 
             // Clear date/time/remark fields
             $('#mntFromDate,#mntFromTime,#mntToDate,#mntToTime,#mntRemark').val('');
         }
+
+        // Dates cannot be in the past
+        mntSyncDateMins();
 
         // Open modal
         document.getElementById('alrtOverlay').classList.add('active');
@@ -4980,7 +5174,70 @@ window._alertWsState = window._alertWsState || {
     }
     function mntPad2(n) { return (n < 10 ? '0' : '') + n; }
 
+    function mntTodayStr() {
+        var d = new Date();
+        return d.getFullYear() + '-' + mntPad2(d.getMonth() + 1) + '-' + mntPad2(d.getDate());
+    }
+
+    // From Date min = today; To Date min = From Date (or today)
+    function mntSyncDateMins() {
+        var today = mntTodayStr();
+        var fd = $('#mntFromDate').val();
+        $('#mntFromDate').attr('min', today);
+        $('#mntToDate').attr('min', fd && fd > today ? fd : today);
+    }
+
+    // "yyyy-MM-dd" + "HH:mm[:ss]" -> local Date (null if invalid)
+    function mntParseDT(d, t) {
+        if (!d || !t) return null;
+        var dp = d.split('-'), tp = t.split(':');
+        var dt = new Date(+dp[0], +dp[1] - 1, +dp[2], +tp[0] || 0, +tp[1] || 0, +tp[2] || 0);
+        return isNaN(dt.getTime()) ? null : dt;
+    }
+
+    // ---- Asset Number multi-select ----
+    function mntResetAssets(msg) {
+        $('#mntAsset').html('');
+        $('#mntAssetTxt').text(msg);
+        $('#mntAssetBtn').prop('disabled', true);
+        $('#mntAssetMs').removeClass('open');
+    }
+
+    function mntToggleAssetPanel(e) {
+        e.stopPropagation();
+        if ($('#mntAssetBtn').prop('disabled')) return;
+        $('#mntAssetMs').toggleClass('open');
+    }
+
+    function mntGetSelectedAssets() {
+        var ids = [];
+        $('#mntAsset .mnt-ms-cb:checked').each(function () { ids.push(parseInt(this.value, 10)); });
+        return ids;
+    }
+
+    function mntOnAssetCheck(cb) {
+        var $all = $('#mntAsset .mnt-ms-cb');
+        if (cb && cb.id === 'mntAssetAll') {
+            $all.prop('checked', cb.checked);
+        } else {
+            $('#mntAssetAll').prop('checked', $all.length > 0 && $all.length === $all.filter(':checked').length);
+        }
+        var $sel = $all.filter(':checked');
+        var txt = '— Select Asset —';
+        if ($sel.length === 1) txt = $sel.first().data('name');
+        else if ($sel.length > 1) txt = $sel.length + ' assets selected';
+        $('#mntAssetTxt').text(txt);
+    }
+
+    // close the asset panel on any outside click
+    // (plain JS — this runs at parse time, before jQuery is loaded)
+    document.addEventListener('click', function (e) {
+        var ms = document.getElementById('mntAssetMs');
+        if (ms && !ms.contains(e.target)) ms.classList.remove('open');
+    });
+
     function alrtCloseMaintModal() {
+        $('#mntAssetMs').removeClass('open');
         document.getElementById('alrtOverlay').classList.remove('active');
         document.getElementById('alrtMaintModal').classList.remove('active');
     }
@@ -4993,7 +5250,7 @@ window._alertWsState = window._alertWsState || {
         $('#mntDivision').prop('disabled', true).html('<option value="">— Loading… —</option>');
         $('#mntSite').prop('disabled', true).html('<option value="">— Select Station —</option>');
         $('#mntAssetType').prop('disabled', true).html('<option value="">— Select Asset Type —</option>');
-        $('#mntAsset').prop('disabled', true).html('<option value="">— Select Asset —</option>');
+        mntResetAssets('— Select Asset —');
 
         if (!zoneId) {
             $('#mntDivision').html('<option value="">— Select Division —</option>');
@@ -5028,7 +5285,7 @@ window._alertWsState = window._alertWsState || {
         // Reset downstream only — leave Division enabled
         $('#mntSite').prop('disabled', true).html('<option value="">— Loading… —</option>');
         $('#mntAssetType').prop('disabled', true).html('<option value="">— Select Asset Type —</option>');
-        $('#mntAsset').prop('disabled', true).html('<option value="">— Select Asset —</option>');
+        mntResetAssets('— Select Asset —');
 
         if (!divId) {
             $('#mntSite').html('<option value="">— Select Station —</option>');
@@ -5062,7 +5319,7 @@ window._alertWsState = window._alertWsState || {
         var siteId = $('#mntSite').val();
 
         $('#mntAssetType').prop('disabled', true).html('<option value="">— Loading… —</option>');
-        $('#mntAsset').prop('disabled', true).html('<option value="">— Select Asset —</option>');
+        mntResetAssets('— Select Asset —');
 
         if (!siteId) {
             $('#mntAssetType').html('<option value="">— Select Asset Type —</option>');
@@ -5089,10 +5346,10 @@ window._alertWsState = window._alertWsState || {
         var siteId = $('#mntSite').val();
         var assetTypeId = $('#mntAssetType').val();
 
-        $('#mntAsset').prop('disabled', true).html('<option value="">— Loading… —</option>');
+        mntResetAssets('— Loading… —');
 
         if (!siteId || !assetTypeId) {
-            $('#mntAsset').html('<option value="">— Select Asset —</option>');
+            mntResetAssets('— Select Asset —');
             return;
         }
 
@@ -5104,18 +5361,28 @@ window._alertWsState = window._alertWsState || {
             dataType: 'json',
             success: function (data) {
                 if (!data || data.length === 0) {
-                    $('#mntAsset').html('<option value="">— No assets found —</option>');
+                    mntResetAssets('— No assets found —');
                     return;
                 }
-                var html = '<option value="">— Select Asset —</option>';
+                var $panel = $('#mntAsset').empty();
+                $panel.append(
+                    $('<label class="mnt-ms-item mnt-ms-all">').append(
+                        $('<input type="checkbox" id="mntAssetAll" onchange="mntOnAssetCheck(this)">'),
+                        $('<span>').text('Select All')));
                 $.each(data, function (_, v) {
-                    html += '<option value="' + v.Id + '">' + (v.Name || v.AssetName || '') + '</option>';
+                    var name = v.Name || v.AssetName || '';
+                    $panel.append(
+                        $('<label class="mnt-ms-item">').append(
+                            $('<input type="checkbox" class="mnt-ms-cb" onchange="mntOnAssetCheck(this)">')
+                                .val(v.Id).attr('data-name', name)
+                                .prop('checked', preselectAssetId && String(v.Id) === String(preselectAssetId)),
+                            $('<span>').text(name)));
                 });
-                $('#mntAsset').html(html).prop('disabled', false);   // ← enable after load
-                if (preselectAssetId) $('#mntAsset').val(preselectAssetId);
+                $('#mntAssetBtn').prop('disabled', false);   // ← enable after load
+                mntOnAssetCheck(null);
             },
             error: function () {
-                $('#mntAsset').html('<option value="">— Failed to load —</option>');
+                mntResetAssets('— Failed to load —');
             }
         });
     }
@@ -5129,14 +5396,33 @@ window._alertWsState = window._alertWsState || {
 
         if (!td || !tt) return bad('To Date and To Time are required.');
 
-        // ── EDIT MODE: only update the end time ──
+        var now = new Date();
+        var toDT = mntParseDT(td, tt);
+        if (!toDT) return bad('Invalid To Date / To Time.');
+        if (td < mntTodayStr()) return bad('To Date cannot be in the past.');
+        if (toDT <= now) return bad('To Time cannot be in the past.');
+
+        // ── EDIT MODE: new end time; saved through MaintenanceMode/Create (616 behaviour) ──
         if (isEdit) {
+            var ed = $('#mntEditId').data() || {};
+            if (!ed.assetId) return bad('Asset not found for this maintenance window. Please reload and try again.');
+            var editFromDT = mntParseDT(ed.fromDate, ed.fromTime);
+            if (editFromDT && toDT <= editFromDT) return bad('To Time must be after the maintenance start time.');
+
             $('#mntValidMsg').hide();
             $('#mntSaveBtn').prop('disabled', true);
             $.ajax({
                 url: '/FRS25/Alerts/UpdateMaintenanceEndTime',
                 type: 'POST',
-                data: { Id: id, ToDate: td, ToTime: tt },   // form-encoded — matches controller model binding
+                data: {                                     // form-encoded — matches controller model binding
+                    Id: id,
+                    AssetId: ed.assetId,
+                    FromDate: ed.fromDate,
+                    FromTime: ed.fromTime,
+                    ToDate: td,
+                    ToTime: tt,
+                    Remark: $('#mntRemark').val()
+                },
                 dataType: 'json',
                 success: function (r) {
                     if (r && r.type === 'success') {
@@ -5158,21 +5444,29 @@ window._alertWsState = window._alertWsState || {
         var divsn = $('#mntDivision').val();
         var site = $('#mntSite').val();
         var assetType = $('#mntAssetType').val();
-        var asset = $('#mntAsset').val();
+        var assetIds = mntGetSelectedAssets();
         var fd = $('#mntFromDate').val(), ft = $('#mntFromTime').val();
         var remark = $('#mntRemark').val();
 
-        if (!zone || !divsn || !site || !assetType || !asset)
-            return bad('Zone, Division, Station, Asset Type and Asset are all required.');
-        if (!fd || !ft) return bad('Start and end date/time are required.');
-        if (new Date(td + 'T' + tt) <= new Date(fd + 'T' + ft))
-            return bad('To time must be after From time.');
+        if (!zone || !divsn || !site || !assetType || assetIds.length === 0)
+            return bad('Zone, Division, Station, Asset Type and at least one Asset are required.');
+        if (!fd || !ft) return bad('From Date and From Time are required.');
+
+        var fromDT = mntParseDT(fd, ft);
+        if (!fromDT) return bad('Invalid From Date / From Time.');
+        if (fd < mntTodayStr()) return bad('From Date cannot be in the past.');
+        if (fromDT.getTime() < now.getTime() + 2000)
+            return bad('From Time must be at least 2 seconds after the current time.');
+        if (td < fd) return bad('To Date cannot be earlier than From Date.');
+        if (toDT <= fromDT) return bad('To Time must be after From Time.');
 
         $('#mntValidMsg').hide();
 
         var payload = {
             Id: 0,
-            AssetId: parseInt(asset),
+            IsMaintenceMode: true,   // adding = activate maintenance (Domain property spelling)
+            AssetId: assetIds[0],
+            AssetIds: assetIds,
             AssetTypeId: parseInt(assetType),
             SiteId: parseInt(site),
             DivisionId: parseInt(divsn),
@@ -5189,6 +5483,7 @@ window._alertWsState = window._alertWsState || {
             url: '/FRS25/Alerts/UpdateMaintenanceActiveMode',
             type: 'POST',
             data: payload,
+            traditional: true,   // AssetIds=1&AssetIds=2 — binds to int[] assetIds
             success: function (r) {
                 if (r && r.type === 'success') {
                     alrtToast('success', 'Maintenance Activated', r.result || 'Saved successfully');
@@ -5196,6 +5491,7 @@ window._alertWsState = window._alertWsState || {
                     alrtLoadMaintList();
                 } else {
                     bad((r && r.result) || 'Server rejected the request.');
+                    alrtLoadMaintList();   // some assets may have been saved
                 }
             },
             error: function () { bad('Save failed. Check console.'); },

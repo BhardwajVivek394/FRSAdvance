@@ -174,6 +174,9 @@
                                 <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadMaintenanceCSV()">
                                     <i class="fa fa-file-alt mr-2" style="color:var(--e7-accent, #3b82f6);"></i> CSV
                                 </a>
+                                <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadMaintenancePDF()">
+                                    <i class="fa fa-file-pdf mr-2" style="color:var(--e7-red, #ef4444);"></i> PDF
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -215,8 +218,13 @@
                                         <td>@item.Site</td>
                                         <td>@item.AssetType</td>
                                         <td>@item.Asset</td>
-                                        <td>@item.ActiveTime</td>
-                                        <td>@item.InActiveTime</td>
+                                        <td>@item.ActiveTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                        <td>
+                                            @if (item.InActiveTime != null && item.InActiveTime.Value != DateTime.MinValue)
+                                            {
+                                                <span>@item.InActiveTime.Value.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                            }
+                                        </td>
                                         <td class="text-center">
                                             @if (item.IsMaintenceMode)
                                             {
@@ -278,6 +286,8 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <script>
     (function () {
@@ -414,10 +424,19 @@
                     // ===== SUMMARY ROW =====
                     var totalCount = data.length;
                     var activeCount = data.filter(function (x) { return x.IsMaintenceMode; }).length;
-                    var summaryText = 'Total: ' + totalCount + ' | Active: ' + activeCount + ' | Generated: ' + new Date().toLocaleString();
-                    var summaryRow = worksheet.addRow([summaryText]);
-                    summaryRow.height = 20;
+
+                    var period = getMaintenancePeriod();
+                    var periodText = 'Period: ' + period.fromDate + ' ' + period.fromTime + '  →  ' + period.toDate + ' ' + period.toTime;
+                    var periodRow = worksheet.addRow([periodText]);
+                    periodRow.height = 20;
                     worksheet.mergeCells(2, 1, 2, columnCount);
+                    periodRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+                    periodRow.getCell(1).alignment = { horizontal: 'center' };
+
+                    var summaryText = 'Total: ' + totalCount + '   |   Active: ' + activeCount + '   |   Cleared: ' + (totalCount - activeCount) + '   |   Generated: ' + new Date().toLocaleString();
+                    var summaryRow = worksheet.addRow([summaryText]);
+                    summaryRow.height = 18;
+                    worksheet.mergeCells(3, 1, 3, columnCount);
                     summaryRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
                     summaryRow.getCell(1).alignment = { horizontal: 'center' };
 
@@ -427,7 +446,7 @@
                     // ===== HEADER ROW =====
                     var headers = [
                         'Sr.No', 'Zone', 'Division', 'Station', 'Asset Type',
-                        'Asset Number', 'Maintenance Mode Activate', 'Maintenance Mode Clear', 'Status'
+                        'Asset Number', 'Date and Time of Maintenance mode to activate', 'Date and Time of Maintenance mode to clear', 'Status'
                     ];
                     var headerRow = worksheet.addRow(headers);
                     headerRow.height = 28;
@@ -527,7 +546,6 @@
 
     // ===== CSV DOWNLOAD =====
     function fnDownloadMaintenanceCSV() {
-        debugger;
         var mMaintenanceModeLister = { SearchCriteria: {} };
 
         mMaintenanceModeLister.SearchCriteria.ZoneIds = getValues('zone');
@@ -541,7 +559,6 @@
         mMaintenanceModeLister.SearchCriteria.ToTime = $('#txtToTime').val();
 
         $("#loader").show();
-        debugger;
         $.ajax({
             url: '/FRS25/MaintenanceMode/DownloadMaintenanceMode',
             type: 'POST',
@@ -550,7 +567,6 @@
             success: function (data) {
                 $("#loader").hide();
 
-                debugger;
                 if (!data || !data.length) {
                     showError('No data available for specified date to download', 'Download Error');
                     return;
@@ -559,10 +575,16 @@
                 try {
                     var headers = [
                         'Sr.No', 'Zone', 'Division', 'Station', 'Asset Type',
-                        'Asset Number', 'Maintenance Mode Activate', 'Maintenance Mode Clear', 'Status'
+                        'Asset Number', 'Date and Time of Maintenance mode to activate', 'Date and Time of Maintenance mode to clear', 'Status'
                     ];
 
+                    var period = getMaintenancePeriod();
+
                     var csv = [];
+                    csv.push('"Maintenance Mode Report"');
+                    csv.push('"Period: ' + period.fromDate + ' ' + period.fromTime + '  to  ' + period.toDate + ' ' + period.toTime + '"');
+                    csv.push('"Total: ' + data.length + '  |  Active: ' + data.filter(function (x) { return x.IsMaintenceMode; }).length + '  |  Generated: ' + new Date().toLocaleString() + '"');
+                    csv.push('');
                     csv.push(headers.map(function (h) { return '"' + h + '"'; }).join(','));
 
                     $.each(data, function (index, item) {
@@ -594,6 +616,202 @@
                 showError('Something went wrong!', 'Error');
             }
         });
+    }
+
+    // ===== PDF DOWNLOAD (same report layout as 616) =====
+    function fnDownloadMaintenancePDF() {
+        var mMaintenanceModeLister = { SearchCriteria: {} };
+
+        mMaintenanceModeLister.SearchCriteria.ZoneIds = getValues('zone');
+        mMaintenanceModeLister.SearchCriteria.DivisionIds = getValues('division');
+        mMaintenanceModeLister.SearchCriteria.SiteIds = getValues('site');
+        mMaintenanceModeLister.SearchCriteria.AssetTypeIds = getValues('assetType');
+        mMaintenanceModeLister.SearchCriteria.AssetIds = getValues('assetNumber');
+        mMaintenanceModeLister.SearchCriteria.FromDate = $('#txtFromDate').val();
+        mMaintenanceModeLister.SearchCriteria.FromTime = $('#txtFromTime').val();
+        mMaintenanceModeLister.SearchCriteria.ToDate = $('#txtToDate').val();
+        mMaintenanceModeLister.SearchCriteria.ToTime = $('#txtToTime').val();
+
+        $("#loader").show();
+
+        $.ajax({
+            url: '/FRS25/MaintenanceMode/DownloadMaintenanceMode',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mMaintenanceModeLister),
+            success: function (data) {
+                $("#loader").hide();
+
+                if (!data || !data.length) {
+                    showError('No data available for specified date to download', 'Download Error');
+                    return;
+                }
+
+                try {
+                    var { jsPDF } = window.jspdf;
+                    var doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+                    var pageW = doc.internal.pageSize.getWidth();
+
+                    // ── SUMMARY COUNTS ─────────────────────────────────────────
+                    var totalCount = data.length;
+                    var activeCount = data.filter(function (x) { return x.IsMaintenceMode; }).length;
+                    var clearedCount = totalCount - activeCount;
+
+                    var period = getMaintenancePeriod();
+
+                    var generatedNow = (function () {
+                        var now = new Date();
+                        return String(now.getDate()).padStart(2, '0') + '/' +
+                            String(now.getMonth() + 1).padStart(2, '0') + '/' +
+                            now.getFullYear() + '  ' +
+                            String(now.getHours()).padStart(2, '0') + ':' +
+                            String(now.getMinutes()).padStart(2, '0') + ':' +
+                            String(now.getSeconds()).padStart(2, '0');
+                    })();
+
+                    var metaText = 'Period: ' + period.fromDate + ' ' + period.fromTime +
+                        '  to  ' + period.toDate + ' ' + period.toTime +
+                        '   |   Total: ' + totalCount +
+                        '   Active: ' + activeCount +
+                        '   Cleared: ' + clearedCount +
+                        '   |   Generated: ' + generatedNow;
+
+                    // ── BUILD TABLE BODY ───────────────────────────────────────
+                    var tableBody = [];
+                    $.each(data, function (index, item) {
+                        tableBody.push([
+                            index + 1,
+                            item.Zone || '',
+                            item.Division || '',
+                            item.Site || '',
+                            item.AssetType || '',
+                            item.Asset || '',
+                            parseMSDate(item.ActiveTime),
+                            parseMSDate(item.InActiveTime),
+                            item.IsMaintenceMode ? 'Active' : 'Cleared'
+                        ]);
+                    });
+
+                    // ── COLUMN HEADERS ─────────────────────────────────────────
+                    var headers = [
+                        'Sr.No', 'Zone', 'Division', 'Station',
+                        'Asset Type', 'Asset Number',
+                        'Date and Time of \n Maintenance mode to activate',
+                        'Date and Time of \n Maintenance mode to clear',
+                        'Status'
+                    ];
+
+                    doc.autoTable({
+                        startY: 58,
+                        head: [headers],
+                        body: tableBody,
+                        theme: 'grid',
+                        tableWidth: 'auto',
+                        styles: {
+                            fontSize: 8,
+                            cellPadding: 4,
+                            valign: 'middle',
+                            halign: 'center',
+                            lineColor: [226, 232, 240],
+                            lineWidth: 0.4,
+                            overflow: 'linebreak'
+                        },
+                        headStyles: {
+                            fillColor: [30, 58, 95],
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold',
+                            fontSize: 8,
+                            halign: 'center',
+                            valign: 'middle',
+                            minCellHeight: 28,
+                            cellPadding: { top: 5, bottom: 5, left: 3, right: 3 }
+                        },
+                        alternateRowStyles: {
+                            fillColor: [241, 245, 249]
+                        },
+                        bodyStyles: {
+                            textColor: [51, 51, 51]
+                        },
+                        columnStyles: {
+                            0: { cellWidth: 30 },    // Sr.No
+                            1: { cellWidth: 70 },    // Zone
+                            2: { cellWidth: 110 },   // Division
+                            3: { cellWidth: 110 },   // Station
+                            4: { cellWidth: 100 },   // Asset Type
+                            5: { cellWidth: 100 },   // Asset Number
+                            6: { cellWidth: 122 },   // Activate DateTime
+                            7: { cellWidth: 122 },   // Clear DateTime
+                            8: { cellWidth: 50 }     // Status
+                        },
+                        margin: { top: 58, left: 14, right: 14 },
+                        didParseCell: function (data) {
+                            if (data.section === 'body' && data.column.index === 8) {
+                                var val = data.cell.raw;
+                                if (val === 'Active') {
+                                    data.cell.styles.textColor = [180, 83, 9];    // amber
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else if (val === 'Cleared') {
+                                    data.cell.styles.textColor = [4, 120, 87];    // green
+                                    data.cell.styles.fontStyle = 'bold';
+                                }
+                            }
+                        },
+                        // Repeat header banner on every page
+                        didDrawPage: function () {
+                            // Title bar
+                            doc.setFillColor(79, 70, 229);
+                            doc.rect(0, 0, pageW, 36, 'F');
+                            doc.setFont('helvetica', 'bold');
+                            doc.setFontSize(15);
+                            doc.setTextColor(255, 255, 255);
+                            doc.text('Maintenance Mode Report', pageW / 2, 23, { align: 'center' });
+
+                            // Meta bar
+                            doc.setFillColor(240, 244, 255);
+                            doc.rect(0, 36, pageW, 18, 'F');
+                            doc.setFont('helvetica', 'italic');
+                            doc.setFontSize(8);
+                            doc.setTextColor(71, 85, 105);
+                            doc.text(metaText, pageW / 2, 47, { align: 'center' });
+
+                            // Page number
+                            var pageNum = doc.internal.getCurrentPageInfo().pageNumber;
+                            var totalPg = doc.internal.getNumberOfPages();
+                            doc.setFont('helvetica', 'normal');
+                            doc.setFontSize(7);
+                            doc.setTextColor(148, 163, 184);
+                            doc.text('Page ' + pageNum + ' of ' + totalPg, pageW - 14, doc.internal.pageSize.getHeight() - 8, { align: 'right' });
+                        }
+                    });
+
+                    doc.save(getMaintenanceFileName('pdf'));
+                    showSuccess('PDF downloaded successfully!', 'Success');
+
+                } catch (error) {
+                    console.error('PDF Error:', error);
+                    showError('Error generating PDF', 'Download Error');
+                }
+            },
+            error: function () {
+                $("#loader").hide();
+                showError('Something went wrong!', 'Error');
+            }
+        });
+    }
+
+    // Report "Period" text. This page's pickers hold MM/DD/YYYY (what the server expects);
+    // the report shows DD/MM/YYYY like 616.
+    function getMaintenancePeriod() {
+        function toDisplayDate(mmddyyyy) {
+            var parts = (mmddyyyy || '').split('/');
+            return parts.length === 3 ? parts[1] + '/' + parts[0] + '/' + parts[2] : (mmddyyyy || '');
+        }
+        return {
+            fromDate: toDisplayDate($('#txtFromDate').val()),
+            toDate: toDisplayDate($('#txtToDate').val()),
+            fromTime: $('#txtFromTime').val() || '00:00',
+            toTime: $('#txtToTime').val() || '23:59'
+        };
     }
 
     function parseMSDate(dateStr) {

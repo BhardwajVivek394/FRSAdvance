@@ -32,6 +32,8 @@ namespace Domain
         public List<int> SiteIds { get; set; }
         public List<int> AssetTypeIds { get; set; }
         public List<int> AssetIds { get; set; }
+        public string CreatedByName { get; set; }      // display: creator's name
+        public string CreatedByClass { get; set; }     // display: creator's User Class
     }
 
     public class MaintenanceModeLister

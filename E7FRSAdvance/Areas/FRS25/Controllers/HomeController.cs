@@ -123,7 +123,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts.Count > 0)
             {
-                mFRSAlerts = mFRSAlertLister.mFRSAlerts.GroupBy(x => x.AssetId).Select(g => g.First()).ToList();
+                // One row per asset AND alert type, so an asset with both a Failure and a
+                // Predictive alert keeps both (grouping by AssetId alone dropped the Predictive one).
+                mFRSAlerts = mFRSAlertLister.mFRSAlerts.GroupBy(x => new { x.AssetId, x.AlertTypeId }).Select(g => g.First()).ToList();
             }
 
             var jsonResult = Json(mFRSAlerts, JsonRequestBehavior.AllowGet);
@@ -715,7 +717,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts.Count > 0)
             {
-                mFRSAlerts = mFRSAlertLister.mFRSAlerts.GroupBy(x => x.AssetId).Select(g => g.First()).ToList();
+                // One row per asset AND alert type, so the popup lists both the Failure and the
+                // Predictive alert of an asset that has both (grouping by AssetId alone hid the Predictive one).
+                mFRSAlerts = mFRSAlertLister.mFRSAlerts.GroupBy(x => new { x.AssetId, x.AlertTypeId }).Select(g => g.First()).ToList();
             }
 
             var jsonResult = Json(mFRSAlerts, JsonRequestBehavior.AllowGet);

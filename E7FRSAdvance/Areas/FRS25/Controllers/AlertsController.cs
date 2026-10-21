@@ -334,12 +334,153 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     {
                         var jsonString = response.Content.ReadAsStringAsync().Result;
                         mMaintenanceModeLister = JsonConvert.DeserializeObject<MaintenanceModeLister>(jsonString);
+                        FillMaintenanceCreatedBy(hcf, mMaintenanceModeLister);
                     }
                 }
             }
             catch (Exception ex) { throw ex; }
 
             return PartialView(mMaintenanceModeLister);
+        }
+
+        // GetLister only returns CreatedBy (user id) — resolve name + User Class for the "By:" line
+        private void FillMaintenanceCreatedBy(HttpClientFactory hcf, MaintenanceModeLister lister)
+        {
+            var items = lister?.mMaintenanceModes;
+            if (items == null || items.Count == 0) return;
+            try
+            {
+                var classNames = new Dictionary<int, string>();
+                var clsResp = hcf.client.GetAsync("UserClass/GetAllUserClass").Result;
+                if (clsResp.StatusCode == HttpStatusCode.OK)
+                {
+                    var classes = JsonConvert.DeserializeObject<List<Domain.UserClass>>(clsResp.Content.ReadAsStringAsync().Result) ?? new List<Domain.UserClass>();
+                    foreach (var c in classes) classNames[c.Id] = c.ClassName;
+                }
+
+                var users = new Dictionary<int, Domain.User>();
+                foreach (int userId in items.Where(x => x.CreatedBy > 0).Select(x => x.CreatedBy).Distinct())
+                {
+                    var uResp = hcf.client.GetAsync(String.Format("User/GetUserById/{0}", userId)).Result;
+                    if (uResp.StatusCode == HttpStatusCode.OK)
+                        users[userId] = JsonConvert.DeserializeObject<Domain.User>(uResp.Content.ReadAsStringAsync().Result);
+                }
+
+                foreach (var m in items)
+                {
+                    if (!users.TryGetValue(m.CreatedBy, out Domain.User u) || u == null) continue;
+                    if (string.IsNullOrWhiteSpace(m.CreatedByName))
+                    {
+                        string full = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim();
+                        m.CreatedByName = !string.IsNullOrWhiteSpace(full) ? full
+                                        : !string.IsNullOrWhiteSpace(u.Name) ? u.Name
+                                        : !string.IsNullOrWhiteSpace(u.UserName) ? u.UserName
+                                        : u.EmailAddress;
+                    }
+                    if (string.IsNullOrWhiteSpace(m.CreatedByClass) && u.UserClassId.HasValue
+                        && classNames.TryGetValue(u.UserClassId.Value, out string cls))
+                        m.CreatedByClass = cls;
+                }
+            }
+            catch
+            {
+                // lookup is display-only; never break the sidebar
+            }
+        }
+
+        // EDIT a maintenance window from the sidebar card. Like 616's edit, this re-posts
+        // MaintenanceMode/Create for the asset with its original start and the new end time;
+        // the API updates that asset's maintenance window.
+        public ActionResult UpdateMaintenanceEndTime(Domain.MaintenanceMode mMaintenanceMode)
+        {
+            try
+            {
+                if (mMaintenanceMode == null || mMaintenanceMode.AssetId <= 0)
+                    return Json(new { type = "error", result = "Asset is required." });
+
+                mMaintenanceMode.IsMaintenceMode = true;
+
+                // Start stays as it was (616 sends the locked From date/time again)
+                if (mMaintenanceMode.FromDate != DateTime.MinValue)
+                    mMaintenanceMode.ActiveTime = TimeSpan.TryParse(mMaintenanceMode.FromTime, out TimeSpan fromTime)
+                        ? mMaintenanceMode.FromDate.Date.Add(fromTime) : mMaintenanceMode.FromDate.Date;
+                else
+                    return Json(new { type = "error", result = "Maintenance start time is missing. Please reload and try again." });
+
+                if (mMaintenanceMode.ToDate == DateTime.MinValue)
+                    return Json(new { type = "error", result = "To Date and To Time are required." });
+                mMaintenanceMode.InActiveTime = TimeSpan.TryParse(mMaintenanceMode.ToTime, out TimeSpan toTime)
+                    ? mMaintenanceMode.ToDate.Date.Add(toTime) : mMaintenanceMode.ToDate.Date;
+
+                if (mMaintenanceMode.InActiveTime.Value <= DateTime.Now)
+                    return Json(new { type = "error", result = "To Time cannot be in the past." });
+                if (mMaintenanceMode.InActiveTime.Value <= mMaintenanceMode.ActiveTime)
+                    return Json(new { type = "error", result = "To Time must be after the maintenance start time." });
+
+                mMaintenanceMode.Id = 0;          // 616 posts by AssetId only
+                mMaintenanceMode.AssetIds = null;
+                mMaintenanceMode.CreatedBy = ClsHttpContent.LoginUser.Id;
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(mMaintenanceMode);
+                    var str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("MaintenanceMode/Create", str).Result;
+                    if (response.StatusCode == HttpStatusCode.NoContent)
+                        return Json(new { type = "success", result = "Maintenance window updated." });
+                }
+            }
+            catch
+            {
+            }
+            return Json(new { type = "error", result = "Internal server error." });
+        }
+
+        // Maintenance Mode report export for the sidebar card's download menu. Same query as
+        // MaintenanceModeController.DownloadMaintenanceMode (616), served here so it only needs
+        // Alerts menu access — like the card's other maintenance actions.
+        public ActionResult DownloadMaintenanceMode(Domain.MaintenanceModeLister mMaintenanceModeLister)
+        {
+            var mMaintenanceModes = new List<Domain.MaintenanceMode>();
+            try
+            {
+                if (mMaintenanceModeLister == null) mMaintenanceModeLister = new Domain.MaintenanceModeLister();
+                if (mMaintenanceModeLister.SearchCriteria == null) mMaintenanceModeLister.SearchCriteria = new Domain.MaintenanceMode();
+                if (mMaintenanceModeLister.Pager == null) mMaintenanceModeLister.Pager = new Domain.Pager();
+
+                mMaintenanceModeLister.Pager.Take = -1;
+                mMaintenanceModeLister.SearchCriteria.RoleId = ClsHttpContent.LoginUser.RoleId;
+                mMaintenanceModeLister.SearchCriteria.UserId = ClsHttpContent.LoginUser.Id;
+                mMaintenanceModeLister.SearchCriteria.IsCheckMaintenceModeStatus = true;
+
+                // Merge the From/To date and time into ActiveTime/InActiveTime (as 616 does).
+                var sc = mMaintenanceModeLister.SearchCriteria;
+                if (sc.FromDate != DateTime.MinValue)
+                    sc.ActiveTime = TimeSpan.TryParse(sc.FromTime, out TimeSpan fromTime) ? sc.FromDate.Date.Add(fromTime) : sc.FromDate.Date;
+                else
+                    sc.ActiveTime = DateTime.Now;
+                if (sc.ToDate != DateTime.MinValue)
+                    sc.InActiveTime = TimeSpan.TryParse(sc.ToTime, out TimeSpan toTime) ? sc.ToDate.Date.Add(toTime) : sc.ToDate.Date;
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(mMaintenanceModeLister);
+                    var str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("MaintenanceMode/GetLister", str).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        var jsonString = response.Content.ReadAsStringAsync().Result;
+                        mMaintenanceModeLister = JsonConvert.DeserializeObject<Domain.MaintenanceModeLister>(jsonString);
+                        if (mMaintenanceModeLister != null && mMaintenanceModeLister.mMaintenanceModes != null)
+                            mMaintenanceModes = mMaintenanceModeLister.mMaintenanceModes;
+                    }
+                }
+            }
+            catch (Exception ex) { throw ex; }
+
+            var jsonResult = Json(mMaintenanceModes, JsonRequestBehavior.AllowGet);
+            jsonResult.MaxJsonLength = int.MaxValue;
+            return jsonResult;
         }
 
         public ActionResult UpdateMaintenanceInActiveMode(Domain.MaintenanceMode mMaintenanceMode)
@@ -411,22 +552,42 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     else
                         mMaintenanceMode.InActiveTime = baseDate;
                 }
+
+                // From must be (at least 2 s) in the future; To must be after From
+                if (mMaintenanceMode.ActiveTime < DateTime.Now.AddSeconds(2))
+                    return Json(new { type = "error", result = "From Time must be at least 2 seconds after the current time." });
+                if (!mMaintenanceMode.InActiveTime.HasValue || mMaintenanceMode.InActiveTime.Value <= mMaintenanceMode.ActiveTime)
+                    return Json(new { type = "error", result = "To Time must be after From Time." });
+
+                // Multi-select Asset Number: one MaintenanceMode/Create per asset
+                List<int> assetIds = (mMaintenanceMode.AssetIds ?? new List<int>()).Where(a => a > 0).Distinct().ToList();
+                if (assetIds.Count == 0 && mMaintenanceMode.AssetId > 0)
+                    assetIds.Add(mMaintenanceMode.AssetId);
+                if (assetIds.Count == 0)
+                    return Json(new { type = "error", result = "Select at least one Asset." });
+
+                mMaintenanceMode.AssetIds = null;
                 mMaintenanceMode.CreatedBy = ClsHttpContent.LoginUser.Id;
+                int failed = 0;
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
-                    var jsonStr = JsonConvert.SerializeObject(mMaintenanceMode);
-                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
-                    var response = hcf.client.PostAsync(String.Format("MaintenanceMode/Create"), str).Result;
-                    string jsonString = response.Content.ReadAsStringAsync().Result;
-                    if (response.StatusCode == HttpStatusCode.NoContent)
+                    foreach (int assetId in assetIds)
                     {
-                        data = new { type = "success", result = "Remark has been Updated" };
-                    }
-                    else
-                    {
-                        data = new { type = "error", result = "Internal server error." };
+                        mMaintenanceMode.AssetId = assetId;
+                        var jsonStr = JsonConvert.SerializeObject(mMaintenanceMode);
+                        StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                        var response = hcf.client.PostAsync(String.Format("MaintenanceMode/Create"), str).Result;
+                        if (response.StatusCode != HttpStatusCode.NoContent)
+                            failed++;
                     }
                 }
+                int saved = assetIds.Count - failed;
+                if (failed == 0)
+                    data = new { type = "success", result = saved == 1 ? "Maintenance window activated." : $"Maintenance window activated for {saved} assets." };
+                else if (saved > 0)
+                    data = new { type = "error", result = $"Activated for {saved} of {assetIds.Count} assets; {failed} failed." };
+                else
+                    data = new { type = "error", result = "Internal server error." };
             }
             catch
             {
