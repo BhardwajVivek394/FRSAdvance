@@ -119,7 +119,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             var mFRSAlerts = new List<Domain.FRSAlert>();
             mFRSAlertLister.SearchCriteria.AlertStatus = (int)E7FRSAdvance.Utility.Utility.AlertStatus.Active;
-            mFRSAlertLister = _alertService.GetWithOutAcknowledgementAlert(mFRSAlertLister);
+            // Same source as 616: GetListerWithPagination counts every active alert for every role.
+            // GetWithOutAcknowledgementAlert (FRSAlert/GetLister) also dropped acknowledged alerts and,
+            // for role User, watch-listed ones — so JE/SE saw fewer Predictive/Failure than Admin.
+            if (mFRSAlertLister.Pager == null) mFRSAlertLister.Pager = new Domain.Pager();
+            mFRSAlertLister.Pager.Take = -1;
+            mFRSAlertLister = _alertService.GetListerWithPagination(mFRSAlertLister);
 
             if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts.Count > 0)
             {
@@ -713,7 +718,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             var mFRSAlerts = new List<Domain.FRSAlert>();
             mFRSAlertLister.SearchCriteria.AlertStatus = (int)E7FRSAdvance.Utility.Utility.AlertStatus.Active;
-            mFRSAlertLister = _alertService.GetWithOutAcknowledgementAlert(mFRSAlertLister);
+            // Same source as the cards (and 616), so the popup lists what the card counts
+            if (mFRSAlertLister.Pager == null) mFRSAlertLister.Pager = new Domain.Pager();
+            mFRSAlertLister.Pager.Take = -1;
+            mFRSAlertLister = _alertService.GetListerWithPagination(mFRSAlertLister);
 
             if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts.Count > 0)
             {

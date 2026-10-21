@@ -500,7 +500,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     string jsonString = response.Content.ReadAsStringAsync().Result;
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
-                        data = new { type = "success", result = "Remark has been Updated" };
+                        data = new { type = "success", result = "Maintenance has been cleared" };
+                    }
+                    else if (response.StatusCode == HttpStatusCode.BadRequest)
+                    {
+                        // Same as 616: show the API's own reason
+                        data = new { type = "error", result = JsonConvert.DeserializeObject<string>(jsonString) };
                     }
                     else
                     {
@@ -514,6 +519,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
             return Json(data);
         }
+        // maintenanceModeScan broadcast for the sidebar card (same as MaintenanceMode/BroadCastNotification,
+        // served here so it only needs Alerts menu access — like the card's other maintenance actions)
+        public JsonResult BroadCastNotification(int id, bool isUpdate = false)
+        {
+            return Json(MaintenanceModeController.BroadcastMaintenanceModeById(id, isUpdate), JsonRequestBehavior.AllowGet);
+        }
+
         public ActionResult UpdateMaintenanceActiveMode(Domain.MaintenanceMode mMaintenanceMode)
         {
             dynamic data = new ExpandoObject();

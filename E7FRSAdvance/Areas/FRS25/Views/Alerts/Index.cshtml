@@ -2185,6 +2185,8 @@
             padding-right: 6px;
             padding-top: 4px;
             max-height: 450px;
+            scrollbar-gutter: stable;       /* reserve the 5px bar so content doesn't shift when it appears */
+            overscroll-behavior: contain;   /* wheel at the end doesn't scroll the page */
         }
 
             /* Slim scrollbar */
@@ -4073,7 +4075,7 @@
             <div class="alrt-form-row">
                 <div class="alrt-form-group">
                     <label class="alrt-form-label">From Date <span class="req">*</span></label>
-                    <input type="date" class="alrt-form-inp" id="mntFromDate" onchange="mntSyncDateMins()">
+                    <input type="date" class="alrt-form-inp" id="mntFromDate" max="9999-12-31" onchange="mntSyncDateMins()">
                 </div>
                 <div class="alrt-form-group">
                     <label class="alrt-form-label">From Time <span class="req">*</span></label>
@@ -4086,7 +4088,7 @@
         <div class="alrt-form-row">
             <div class="alrt-form-group">
                 <label class="alrt-form-label">To Date <span class="req">*</span></label>
-                <input type="date" class="alrt-form-inp" id="mntToDate">
+                <input type="date" class="alrt-form-inp" id="mntToDate" max="9999-12-31">
             </div>
             <div class="alrt-form-group">
                 <label class="alrt-form-label">To Time <span class="req">*</span></label>
@@ -5179,20 +5181,32 @@ window._alertWsState = window._alertWsState || {
         return d.getFullYear() + '-' + mntPad2(d.getMonth() + 1) + '-' + mntPad2(d.getDate());
     }
 
-    // From Date min = today; To Date min = From Date (or today)
+    // Only write min/max when it actually changes: Chrome rebuilds a date input's
+    // day/month/year segments on every min/max write, dropping the segment being typed.
+    function mntSetAttrIfChanged(sel, name, val) {
+        var el = document.querySelector(sel);
+        if (el && el.getAttribute(name) !== val) el.setAttribute(name, val);
+    }
+
+    // From Date min = today; To Date min = From Date (or today); 4-digit year max
     function mntSyncDateMins() {
         var today = mntTodayStr();
         var fd = $('#mntFromDate').val();
-        $('#mntFromDate').attr('min', today);
-        $('#mntToDate').attr('min', fd && fd > today ? fd : today);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(fd || '')) fd = '';   // ignore half-typed / 5+ digit years
+        mntSetAttrIfChanged('#mntFromDate', 'min', today);
+        mntSetAttrIfChanged('#mntFromDate', 'max', '9999-12-31');
+        mntSetAttrIfChanged('#mntToDate', 'min', fd && fd > today ? fd : today);
+        mntSetAttrIfChanged('#mntToDate', 'max', '9999-12-31');
     }
 
-    // "yyyy-MM-dd" + "HH:mm[:ss]" -> local Date (null if invalid)
+    // "yyyy-MM-dd" + "HH:mm[:ss]" -> local Date (null if invalid, incl. non 4-digit year / 31-Feb style dates)
     function mntParseDT(d, t) {
         if (!d || !t) return null;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !/^\d{2}:\d{2}(:\d{2})?$/.test(t)) return null;
         var dp = d.split('-'), tp = t.split(':');
         var dt = new Date(+dp[0], +dp[1] - 1, +dp[2], +tp[0] || 0, +tp[1] || 0, +tp[2] || 0);
-        return isNaN(dt.getTime()) ? null : dt;
+        if (isNaN(dt.getTime()) || dt.getFullYear() !== +dp[0] || dt.getMonth() !== +dp[1] - 1 || dt.getDate() !== +dp[2]) return null;
+        return dt;
     }
 
     // ---- Asset Number multi-select ----
@@ -5500,7 +5514,7 @@ window._alertWsState = window._alertWsState || {
     }
 
     // CLEAR — calls UpdateMaintenanceInActiveMode
-    function alrtClearMaint(id) {
+    function alrtClearMaint(id, mainId) {
         if (!confirm('Clear this maintenance window now? Alerts will resume immediately.')) return;
         var mMaintenanceMode = { AssetId: id };
 
@@ -5515,6 +5529,14 @@ window._alertWsState = window._alertWsState || {
                 window.E7Loader && E7Loader.hide();
                 if (data && data.type === 'success') {
                     alrtToast('success', 'Maintenance Cleared', data.result || 'Alerts have resumed');
+                    // Push the cleared window on 'maintenanceModeScan', as 616 does after a clear
+                    if (mainId) {
+                        $.ajax({
+                            url: '/FRS25/Alerts/BroadCastNotification', type: 'POST',
+                            contentType: 'application/json',
+                            data: JSON.stringify({ id: mainId, isUpdate: false })
+                        });
+                    }
                     alrtLoadMaintList();
                 } else {
                     alrtToast('error', 'Clear Failed', (data && data.result) || 'Server error');
@@ -7246,29 +7268,44 @@ window._alertWsState = window._alertWsState || {
         // Update sidebar header info
         var infoEl = document.querySelector('.alrt-esc-info');
         if (infoEl) {
-            infoEl.innerHTML = 'Alert: <strong>' + (cause || '#' + alertId) + '</strong>'
-                + (station ? ' &bull; ' + station : '');
+            infoEl.innerHTML = 'Alert: <strong>' + alrtEsc(cause || '#' + alertId) + '</strong>'
+                + (station ? ' &bull; ' + alrtEsc(station) : '');
         }
 
-        // Show loading state in timeline
+        // Only the latest click may render: abort the previous request and ignore late replies
+        var reqId = window.__alrtEscReqId = (window.__alrtEscReqId || 0) + 1;
+        if (window.__alrtEscXhr) window.__alrtEscXhr.abort();
+
+        // Drop the previous alert's footer/popup now, not after the reply (avoids a second jump)
+        var oldSummary = document.querySelector('.alrt-esc-reminder-summary');
+        if (oldSummary) oldSummary.remove();
+        alrtHideReminderPopup();
+
+        // Show loading state in timeline — keep the current height so the card (and the
+        // page scrollbar) doesn't collapse and re-grow while loading
         var tlEl = document.querySelector('.alrt-timeline');
         if (tlEl) {
+            tlEl.style.minHeight = Math.min(tlEl.offsetHeight, 450) + 'px';
+            tlEl.scrollTop = 0;
             tlEl.innerHTML =
                 '<div style="text-align:center;padding:20px;color:var(--e7-text-2, #55657a);font-size:12px;">' +
                 '<i class="fas fa-circle-notch fa-spin" style="color:var(--e7-accent, #4f46e5);font-size:18px;display:block;margin-bottom:8px;"></i>' +
                 'Loading escalation data…</div>';
         }
 
-        $.ajax({
+        window.__alrtEscXhr = $.ajax({
             url: '/FRS25/Alerts/GetNotificationDetail',
             type: 'GET',
             data: { frsAlertId: alertId },
             dataType: 'json',
             success: function (data) {
+                if (reqId !== window.__alrtEscReqId) return;
                 alrtRenderEscalationTimeline(data);
             },
-            error: function () {
+            error: function (xhr, status) {
+                if (status === 'abort' || reqId !== window.__alrtEscReqId) return;
                 if (tlEl) {
+                    tlEl.style.minHeight = '';
                     tlEl.innerHTML =
                         '<div style="text-align:center;padding:16px;color:var(--failure);font-size:12px;">' +
                         '<i class="fas fa-exclamation-circle" style="margin-right:6px;"></i>' +
@@ -7289,6 +7326,7 @@ window._alertWsState = window._alertWsState || {
         tlEl.style.overflowY = '';
         tlEl.style.overflowX = '';
         tlEl.style.paddingRight = '';
+        tlEl.scrollTop = 0;
 
         var normalized = Array.isArray(data) ? data : (data ? [data] : []);
 

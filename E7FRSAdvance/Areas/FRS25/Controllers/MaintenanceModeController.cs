@@ -154,7 +154,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     string jsonString = response.Content.ReadAsStringAsync().Result;
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
-                        data = new { type = "success", result = "Remark has been Updated" };
+                        data = new { type = "success", result = "Maintenance has been cleared" };
+                    }
+                    else if (response.StatusCode == HttpStatusCode.BadRequest)
+                    {
+                        // Same as 616: show the API's own reason
+                        data = new { type = "error", result = JsonConvert.DeserializeObject<string>(jsonString) };
                     }
                     else
                     {
@@ -169,6 +174,43 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return Json(data);
         }
 
+        // After a clear / create / edit succeeds, 616 re-reads the window and pushes it on the
+        // 'maintenanceModeScan' websocket topic so the live side picks up the change.
+        public JsonResult BroadCastNotification(int id, bool isUpdate = false)
+        {
+            return Json(BroadcastMaintenanceModeById(id, isUpdate), JsonRequestBehavior.AllowGet);
+        }
+
+        internal static Domain.MaintenanceMode BroadcastMaintenanceModeById(int id, bool isUpdate)
+        {
+            Domain.MaintenanceMode mMaintenanceMode = new Domain.MaintenanceMode();
+            try
+            {
+                using (var mHttpClientFactory = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = mHttpClientFactory.client.GetAsync(String.Format($"MaintenanceMode/{id}")).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mMaintenanceMode = JsonConvert.DeserializeObject<Domain.MaintenanceMode>(jsonString);
+
+                        if (mMaintenanceMode != null && mMaintenanceMode.Id > 0)
+                        {
+                            if (isUpdate)
+                                mMaintenanceMode.IsUpdate = true;
+
+                            EdgeXWebsocket.Websocket.ConnectWsBroadcaster("maintenanceModeScan");
+                            EdgeXWebsocket.Websocket.BroadcastMaintenanceMode("maintenanceModeScan", mMaintenanceMode);
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+
+            return mMaintenanceMode;
+        }
 
         public ActionResult DownloadMaintenanceMode(Domain.MaintenanceModeLister mMaintenanceModeLister)
         {

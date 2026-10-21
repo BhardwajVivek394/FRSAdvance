@@ -14,6 +14,7 @@ namespace Domain
 
 
         //Extra
+        public bool IsUpdate { get; set; }     // maintenanceModeScan broadcast: true = window edited, false = created/cleared (616)
         public bool IsCheckMaintenceModeStatus { get; set; }
         public int RoleId { get; set; }
         public int UserId { get; set; }

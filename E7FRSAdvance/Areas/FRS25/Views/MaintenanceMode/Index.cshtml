@@ -1249,7 +1249,7 @@
     }
 
     // ===== DEACTIVATE MAINTENANCE MODE =====
-    function fnUpdateMaintenanceInActiveMode(id) {
+    function fnUpdateMaintenanceInActiveMode(id, mainId) {
         if (!id) { alert('Asset is required.'); return; }
         if (!confirm('Are you sure you want to clear maintenance mode for this asset?')) return;
 
@@ -1269,6 +1269,8 @@
                 if (data != null) {
                     if (data.type == "success") {
                         showSuccess(data.result, 'Success');
+
+                        BroadCastNotification(mainId, false);   // push the cleared window on maintenanceModeScan (616)
                     }
                     else if (data.type == "error") {
                         showError(data.result, 'Error');
@@ -1279,6 +1281,17 @@
                 $("#loader").hide();
                 showError('Something went wrong!', 'Error');
             }
+        });
+    }
+
+    // Re-reads the maintenance record and broadcasts it on 'maintenanceModeScan' (same as 616)
+    function BroadCastNotification(id, isUpdate) {
+        if (!id) return;
+        $.ajax({
+            url: '/FRS25/MaintenanceMode/BroadCastNotification',
+            type: 'POST',
+            data: JSON.stringify({ id: id, isUpdate: isUpdate }),
+            contentType: 'application/json'
         });
     }
 

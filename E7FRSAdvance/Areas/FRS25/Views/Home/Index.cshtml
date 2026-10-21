@@ -4131,9 +4131,10 @@ function initOwlCarousel() {
 
 function updateTotalAssetsChart(d) {
   _e7ChartRedraw.TotalAssets = function () { updateTotalAssetsChart(d); };
-  var el = document.getElementById('TotalAssets');
-  var ec = echarts.getInstanceByDom(el); if (ec) ec.dispose();
-  var chart = echarts.init(el, null, { renderer: 'svg' });
+  var el = document.getElementById('TotalAssets'); if (!el) return;
+  // Update in place on live refreshes (no dispose+init flash)
+  var chart = echarts.getInstanceByDom(el), isNewChart = !chart;
+  if (isNewChart) chart = echarts.init(el, null, { renderer: 'svg' });
   var total=d.TotalAsset||0, pred=d.Predictive||0, fail=d.Fail||0;
   var healthy=Math.max(0,total-pred-fail);
   function pct(v) { return total>0?((v/total)*100).toFixed(1):'0.0'; }
@@ -4163,7 +4164,7 @@ function updateTotalAssetsChart(d) {
       })
     }]
   });
-  setTimeout(function(){chart.resize();},100);
+  if (isNewChart) setTimeout(function(){chart.resize();},100);
 }
 
 // ==================== DROPDOWN FUNCTIONS ====================
@@ -4432,8 +4433,10 @@ function fnGetSystemData() {
 setInterval(fnGetSystemData, 30000);
 
 // quiet = a live background refresh (alertEvents): no loader flash.
+var _ackAlertSeq = 0;   // only the newest request may paint (live refresh vs filter change race)
 function fnBindWithOutAcknowledgementAlert(assetData, quiet) {
   globalAssetData=assetData;
+  var seq=++_ackAlertSeq;
   if(!quiet){
     $("#loader").show();
   }
@@ -4441,7 +4444,9 @@ function fnBindWithOutAcknowledgementAlert(assetData, quiet) {
     url:'/FRS25/Home/GetWithOutAcknowledgementAlert', type:'POST', contentType:'application/json',
     data:JSON.stringify({SearchCriteria:{ZoneIds:getValues('zone'),DivisionIds:getValues('division'),SiteIds:getEffectiveSiteIds()}}),
     success: function(data){
+      if(seq!==_ackAlertSeq) return;
       $("#loader").hide();
+      data=data||[];
       $(assetTypes).each(function(i,at){BindGraph(data,assetData,at);});
       var totalP=0,totalF=0,totalA=0;
       $(assetTypes).each(function(i,at){
@@ -4454,7 +4459,7 @@ function fnBindWithOutAcknowledgementAlert(assetData, quiet) {
       updateTotalAssetsCard({TotalAsset:totalA,Predictive:totalP,Fail:totalF});
       updateTotalAssetsChart({TotalAsset:totalA,Predictive:totalP,Fail:totalF});
     },
-    error: function(){$("#loader").hide();}
+    error: function(){ if(seq===_ackAlertSeq) $("#loader").hide(); }
   });
 }
 
@@ -4493,8 +4498,11 @@ function BindGraph(alerts, assetData, at) {
   $('.predictive-pct-'+cid).text(pPct+'%');
   $('.failure-pct-'+cid).text(fPct+'%');
   var el=document.getElementById('Main-'+cid); if(!el) return;
-  var ec=echarts.getInstanceByDom(el); if(ec) ec.dispose();
-  var chart=echarts.init(el,null,{renderer:'svg'});
+  // Live (alertEvents) refreshes update the existing donut in place — dispose+init on every
+  // push blanked and re-animated every card from zero, which is the "jumpy" live update.
+  var chart=echarts.getInstanceByDom(el), isNewChart=!chart;
+  if(isNewChart) chart=echarts.init(el,null,{renderer:'svg'});
+  el.__e7hPct=hPct;   // read by the ResizeObserver below so it sizes the latest label
   var statusColor=parseFloat(hPct)>=70?CLRS.green:parseFloat(hPct)>=40?CLRS.amber:CLRS.red;
   var statusText=parseFloat(hPct)>=70?'Healthy':parseFloat(hPct)>=40?'Warning':'Critical';
   // Scale the centre labels to whatever size the CSS gave the donut (150px desktop,
@@ -4541,6 +4549,7 @@ function BindGraph(alerts, assetData, at) {
   // Pick up whatever size the CSS gave the container, then keep following it.
   // A ResizeObserver (not a window resize listener) is needed because the donut also
   // changes width when the sidebar collapses or the grid reflows, with no window resize.
+  if (!isNewChart) return;   // size + observer are already wired up for this instance
   setTimeout(function(){ try { chart.resize(); } catch(e) {} }, 50);
   if (el.__e7DonutRO) { el.__e7DonutRO.disconnect(); }
   if (typeof ResizeObserver !== 'undefined') {
@@ -4549,7 +4558,7 @@ function BindGraph(alerts, assetData, at) {
         chart.resize();
         var s = Math.min(el.clientWidth || 150, el.clientHeight || 150);
         chart.setOption({ title: [
-          { textStyle: { fontSize: Math.max(11, Math.round(s * ((hPct + '%').length > 5 ? 0.115 : 0.135))) } },
+          { textStyle: { fontSize: Math.max(11, Math.round(s * ((el.__e7hPct + '%').length > 5 ? 0.115 : 0.135))) } },
           { textStyle: { fontSize: Math.max(8, Math.round(s * 0.068)) } }
         ] });
       } catch (e) { }
@@ -4802,7 +4811,8 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
                 CauseCode: it.CauseCode || it.causeCode || it.AlertCode || it.alertCode || '',
                 AlertMessage: it.AlertMessage || it.alertMessage || it.Message || it.message || it.Description || it.description || '',
                 AlertTimestamp: it.SetTimeStamp || it.AlertDate || it.alertDate || it.CreatedDate || '',
-                SetAlertMessage: it.setAlertMessage || it.SetAlertMessage || it.AlertMessage || it.alertMessage || it.Message || it.message || ''
+                SetAlertMessage: it.setAlertMessage || it.SetAlertMessage || it.AlertMessage || it.alertMessage || it.Message || it.message || '',
+                Description: it.Description || it.description || ''
             };
         });
         var predCount = 0, failCount = 0;
@@ -4832,7 +4842,11 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
                 if (dt) timeStr = pad(dt.getDate()) + '-' + pad(dt.getMonth() + 1) + '-' + dt.getFullYear() + ' ' + pad(dt.getHours()) + ':' + pad(dt.getMinutes());
                 var ts = parseDotNetDate(it.AlertTimestamp);
                 if (ts) tsStr = pad(ts.getDate()) + '-' + pad(ts.getMonth() + 1) + '-' + ts.getFullYear() + ' ' + pad(ts.getHours()) + ':' + pad(ts.getMinutes()) + ':' + pad(ts.getSeconds());
-                var alertMsg = it.SetAlertMessage || it.AlertMessage;
+                // Description = "<b>…message…</b> Timestamp: dd/MM/yyyy HH:mm:ss" — the message part
+                // goes to Alert Message, the trailing timestamp to the Timestamp card.
+                var desc = splitAlertDescription(it.Description);
+                if (desc.timestamp) tsStr = desc.timestamp;
+                var alertMsg = desc.message || alertMsgText(it.SetAlertMessage || it.AlertMessage);
                 var shortMsg = alertMsg && alertMsg.length > 140 ? alertMsg.substring(0, 140) + '…' : alertMsg;
                 var hasMore = alertMsg && alertMsg.length > 140;
                 html += '<div class="alert-item" id="' + uid + '">';
@@ -4870,6 +4884,27 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         $('#alertModalBody .alert-date-label').each(function () {
             $(this).toggle($(this).nextUntil('.alert-date-label', '.alert-item').filter(':visible').length > 0);
         });
+    }
+
+    // HTML message -> escaped plain text (tags dropped so the 140-char cut can't leave an open <b>)
+    function alertMsgText(s) {
+        var doc = new DOMParser().parseFromString(String(s || ''), 'text/html');   // inert: no scripts/onerror run
+        var txt = (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+        return $('<div>').text(txt).html();
+    }
+
+    // "…message… Timestamp: 20/10/2026 19:28:24" -> { message, timestamp: "20-10-2026 19:28:24" }
+    function splitAlertDescription(desc) {
+        var res = { message: '', timestamp: '' };
+        if (!desc) return res;
+        var raw = String(desc);
+        var m = raw.match(/Timestamp\s*:\s*(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/i);
+        if (m) {
+            res.timestamp = pad(+m[1]) + '-' + pad(+m[2]) + '-' + m[3] + ' ' + pad(+m[4]) + ':' + m[5] + ':' + (m[6] || '00');
+            raw = raw.slice(0, m.index);
+        }
+        res.message = alertMsgText(raw).replace(/[\s.,;:]+$/, '');
+        return res;
     }
 
     function toggleAlertItem(uid) { $('#' + uid).toggleClass('expanded'); }
@@ -5036,7 +5071,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
 
     // ── WebSocket plumbing (own maps — keeps AlertLiveSnapshot untouched) ─
     var shmWsConnections = {}, shmWsReconnectTimers = {}, shmWsReconnectAttempts = {},
-        shmWsIsConnected = {}, shmWsHeartbeats = {}, shmWsLastMessageTimes = {};
+        shmWsIsConnected = {}, shmWsHeartbeats = {}, shmWsLastMessageTimes = {}, shmWsOpenedOnce = {};
     var SHM_MAX_RECONNECT_ATTEMPTS = 15, SHM_RECONNECT_DELAY = 3000, SHM_HEARTBEAT_TIMEOUT = 30000;
 
 
@@ -5076,7 +5111,16 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
             return sid != null && eff.indexOf(String(sid)) > -1;
         });
         if (!relevant) return;
-        if (_alertEventsTimer) clearTimeout(_alertEventsTimer);
+        scheduleAlertEventsRefresh();
+    }
+    // Debounced 400 ms, but never held back more than 2 s: during a steady stream of
+    // SET/RESETs a plain debounce kept restarting and the cards didn't move at all.
+    var _alertEventsFirstAt = 0;
+    function scheduleAlertEventsRefresh() {
+        var now = Date.now();
+        if (!_alertEventsTimer) _alertEventsFirstAt = now;
+        else clearTimeout(_alertEventsTimer);
+        var wait = Math.max(0, Math.min(400, _alertEventsFirstAt + 2000 - now));
         _alertEventsTimer = setTimeout(function () {
             _alertEventsTimer = null;
             if (globalAssetData) fnBindWithOutAcknowledgementAlert(globalAssetData, true);
@@ -5087,7 +5131,7 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
                     success: function (resp) { renderAlertModal(resp); }
                 });
             }
-        }, 400);
+        }, wait);
     }
 
     var shmDeviceGlobalOn = false;
@@ -5169,6 +5213,11 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         }
         shmWsReconnectAttempts[key] = shmWsReconnectAttempts[key] || 0;
         shmWsLastMessageTimes[key] = Date.now();
+        // alertEvents only speaks when an alert SETs/RESETs, so 30 s of silence is normal —
+        // the health-topic timeout tore it down and reopened it every ~40 s, and pushes
+        // landing in that gap were lost. Give it a long idle window instead.
+        var isAlertEvents = topic === 'alertEvents';
+        var staleMs = isAlertEvents ? 300000 : SHM_HEARTBEAT_TIMEOUT;
         try {
             var ws = new WebSocket(wsUrl);
             shmWsConnections[key] = ws;
@@ -5176,9 +5225,12 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
                 shmWsIsConnected[key] = true;
                 shmWsReconnectAttempts[key] = 0;
                 shmWsLastMessageTimes[key] = Date.now();
+                // A re-open may have missed SET/RESETs while down — re-fetch the counts once.
+                if (isAlertEvents && shmWsOpenedOnce[key]) scheduleAlertEventsRefresh();
+                shmWsOpenedOnce[key] = true;
                 if (shmWsHeartbeats[key]) clearInterval(shmWsHeartbeats[key]);
                 shmWsHeartbeats[key] = setInterval(function () {
-                    if (shmWsIsConnected[key] && (Date.now() - shmWsLastMessageTimes[key] > SHM_HEARTBEAT_TIMEOUT)) {
+                    if (shmWsIsConnected[key] && (Date.now() - shmWsLastMessageTimes[key] > staleMs)) {
                         var conn = shmWsConnections[key];
                         if (conn) { conn.onclose = null; conn.close(); }
                         shmWsConnections[key] = null;
