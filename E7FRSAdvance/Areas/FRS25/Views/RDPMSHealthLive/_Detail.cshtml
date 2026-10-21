@@ -939,14 +939,15 @@
                                     @if (Model != null && Model.mAssets != null && Model.mAssets.Count > 0)
                                     {
                                         int counter = 0;
+                                        var rdpmsForceSiteIds = ViewBag.RdpmsForceSiteIds as List<int> ?? new List<int>();
                                         foreach (var item in Model.mAssets)
                                         {
                                             counter++;
                                             int rowIndex = counter - 1;
-                                            // Stations 161 and 167 must always report full health in the
-                                            // summary: every device category is shown at 100% availability
-                                            // regardless of the raw values returned by the API.
-                                            bool rdpmsForcedHealthy = (item.SiteId == 161 || item.SiteId == 167);
+                                            // Stations listed in web.config RDPMSHealthSummaryForceHealthySiteIds always
+                                            // report full health in the summary: every device category is shown at 100%
+                                            // availability regardless of the raw values returned by the API.
+                                            bool rdpmsForcedHealthy = rdpmsForceSiteIds.Contains(item.SiteId);
                                             <tr data-siteid="@item.SiteId" data-row-index="@rowIndex">
                                                 <td>@counter</td>
                                                 <td>@item.Zone</td>
@@ -3071,15 +3072,16 @@
 
             var windowSecs = rangeSeconds(range);
 
-            /* Stations 161 / 167 are forced to full health on this screen, so
-               their Wired/Wireless uptime blocks always read 100%. This keeps
-               the media-health cards consistent with the forced 100%
-               availability shown in the summary table below. */
+            /* Forced-health stations (web.config RDPMSHealthSummaryForceHealthySiteIds)
+               read 100% on this screen, so their Wired/Wireless uptime blocks
+               always read 100%. This keeps the media-health cards consistent
+               with the forced 100% availability shown in the summary table below. */
             var lmhForced = (function () {
+                var forcedIds = @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(ViewBag.RdpmsForceSiteIds as List<int> ?? new List<int>()));
                 var ids = getSelectedSiteIds();
-                if (!ids.length) { return false; }
+                if (!ids.length || !forcedIds.length) { return false; }
                 for (var i = 0; i < ids.length; i++) {
-                    if (ids[i] !== 161 && ids[i] !== 167) { return false; }
+                    if (forcedIds.indexOf(ids[i]) < 0) { return false; }
                 }
                 return true;
             })();

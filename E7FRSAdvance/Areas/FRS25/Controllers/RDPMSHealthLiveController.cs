@@ -120,6 +120,26 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
         }
 
+        /// <summary>
+        /// Station ids an RDPMS screen always shows at full health, read from a
+        /// comma-separated appSetting (e.g. "161,167"). A missing or blank key
+        /// returns an empty list, so every station shows its real state.
+        /// </summary>
+        private static List<int> GetForceHealthySiteIds(string appSettingKey)
+        {
+            string raw = ConfigurationManager.AppSettings[appSettingKey];
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return new List<int>();
+            }
+
+            return raw.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => int.TryParse(s.Trim(), out int id) ? id : 0)
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
+        }
+
         public ActionResult Index()
         {
             Helper.FilterCacheHelper.SetFilterViewBag(ViewBag, _siteService, _zoneService, _divisionService, includeAssetType: false);
@@ -135,6 +155,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult _List(RDPMSHealthLiveLister mAssetLister)
         {
+            ViewBag.RdpmsForceSiteIds = GetForceHealthySiteIds("RDPMSHealthLiveForceHealthySiteIds");
+
             try
             {
                 mAssetLister.Pager.Take = -1;
@@ -241,12 +263,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 mAssetLister.SearchCriteria.RoleId = ClsHttpContent.LoginUser.RoleId;
                 mAssetLister.SearchCriteria.UserId = ClsHttpContent.LoginUser.Id;
 
-                // RDPMS Health Live forces sites 161/167 to full health in the summary.
-                // The summary DTO has no per-row SiteId, and the API response below
-                // overwrites mAssetLister, so capture the selected stations here for the view.
-                ViewBag.RdpmsForceSiteIds = (mAssetLister.SearchCriteria != null && mAssetLister.SearchCriteria.SiteIds != null)
-                    ? mAssetLister.SearchCriteria.SiteIds
-                    : new List<int>();
+                // Stations the summary always shows at 100% (web.config RDPMSHealthSummaryForceHealthySiteIds).
+                ViewBag.RdpmsForceSiteIds = GetForceHealthySiteIds("RDPMSHealthSummaryForceHealthySiteIds");
 
                 if (mAssetLister.SearchCriteria.FromDate != null && mAssetLister.SearchCriteria.FromDate != DateTime.MinValue)
                 {

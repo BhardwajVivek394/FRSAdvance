@@ -14337,7 +14337,7 @@ console.log(
     /* ══════════════════════════════════════════════════════════════════
        FORCED-HEALTH SITE OVERRIDE (RDPMS Health Live)
 
-       Business rule: stations 161 and 167 must always present as fully
+       Business rule: the configured stations must always present as fully
        healthy on this screen — every per-row Network / IoT / Sensor /
        Gateway cell reads Healthy, and the summary header counters show
        zero faulty (100% availability), regardless of what the live
@@ -14353,14 +14353,17 @@ console.log(
             EVERY displayed station is a forced site — pins the header faulty
             counters to zero.
 
-       To change the list, edit RDPMS_FORCE_HEALTHY_SITES below.
+       To change the list, edit web.config RDPMSHealthLiveForceHealthySiteIds
+       (comma-separated Site Ids, e.g. "161,167").
        ══════════════════════════════════════════════════════════════════ */
-    /* Forced-health override removed: Sakun (161) and Gahlot (167) now report
-       their real live Network / IoT / Sensor / Gateway state like every other
-       station. Leaving the map empty makes rdpmsIsForcedSite() return false
-       everywhere, so all the coercion below (per-row repaint, header pinning)
-       becomes an inert no-op without having to unpick each call site. */
-    var RDPMS_FORCE_HEALTHY_SITES = {};
+    /* A blank setting leaves the map empty, so rdpmsIsForcedSite() returns
+       false everywhere and all the coercion below (per-row repaint, header
+       pinning) is an inert no-op: every station reports its real live state. */
+    var RDPMS_FORCE_HEALTHY_SITES = (function (ids) {
+        var map = {};
+        for (var i = 0; i < ids.length; i++) { map[String(ids[i])] = true; }
+        return map;
+    })(@Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(ViewBag.RdpmsForceSiteIds as List<int> ?? new List<int>())));
 
     window.rdpmsIsForcedSite = function (id) {
         var n = parseInt(id, 10);
