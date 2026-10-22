@@ -97,8 +97,17 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 if (mFRSAlertLister?.Pager == null)
                     throw new ArgumentNullException("Pager is null");
 
+                // Status filter → IsAcknowledgement: Cleared(1) = true, Pending(2) = false, All = null (both)
+                int alertStatus = mFRSAlertLister.SearchCriteria.AlertStatus;
+                mFRSAlertLister.SearchCriteria.IsAcknowledgement =
+                    alertStatus == 1 ? true : alertStatus == 2 ? false : (bool?)null;
+                // Same as 616 AlertLive/_List: SP gets AlertStatus = 0; Pending/Cleared is driven by IsAcknowledgement only
+                mFRSAlertLister.SearchCriteria.AlertStatus = 0;
+
                 mFRSAlertLister.Pager.Take = mFRSAlertLister.Pager.PageSize;
                 mFRSAlertLister = _frsAlertService.GetListerWithPagination(mFRSAlertLister);
+                if (mFRSAlertLister?.SearchCriteria != null)
+                    mFRSAlertLister.SearchCriteria.AlertStatus = alertStatus;
 
                 if (mFRSAlertLister?.mFRSAlerts != null)
                 {
@@ -267,9 +276,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 mFRSAlertLister = _frsAlertService.GetListerWithPagination(mFRSAlertLister);
                 var alerts = mFRSAlertLister?.mFRSAlerts ?? new List<Domain.FRSAlert>();
 
-                // Cleared = AcknowledgemenTimeStamp != null (feedback given today)
-                var clearedToday = alerts.Where(x => x.AcknowledgemenTimeStamp != null
-                                                  && x.AcknowledgemenTimeStamp.Value.Date == DateTime.Today).ToList();
+                // Cleared = AcknowledgemenTimeStamp != null, within the selected From/To date range
+                // (alerts are already filtered by FromDate/ToDate in GetListerWithPagination)
+                var clearedToday = alerts.Where(x => x.AcknowledgemenTimeStamp != null).ToList();
 
                 return Json(new
                 {
@@ -668,7 +677,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
                     // 3. Actual Failure Detection
                     int rdpms = alerts.Count(x => x.AlertTypeId == tFail && x.isManual == 0 && (x.AcknowledgemenStatusId == sTrue || x.AcknowledgemenStatusId == sPT));
-                    int totAct = alerts.Count(x => x.AlertTypeId == tFail && x.isManual == 1 && (x.AcknowledgemenStatusId == sTrue || x.AcknowledgemenStatusId == sPT || x.AcknowledgemenStatusId == sFalse));
+                    // Total actual failures = RDPMS-detected (IsManual=0) + manually entered (IsManual=1)
+                    int totAct = rdpms + alerts.Count(x => x.AlertTypeId == tFail && x.isManual == 1 && (x.AcknowledgemenStatusId == sTrue || x.AcknowledgemenStatusId == sPT || x.AcknowledgemenStatusId == sFalse));
                     actualDetection = (double?)(totAct > 0 ? Math.Round((decimal)rdpms / totAct * 100, 2) : 0.0m);
                 }
             }
@@ -1635,6 +1645,13 @@ x.Value.Timestamp.TimestampDevice.Second == timeStamp.Second)
             {
                 mFRSAlert.UserClassId = ClsHttpContent.LoginUser.UserClassId;
                 mFRSAlert.ResponsiblePersonId = ClsHttpContent.LoginUser.Id;
+                // Feedback type selected (PT / True / False / Maintenance) = acknowledged → stamp now;
+                // otherwise (Not_Given / Pending) leave it null so the alert stays unacknowledged.
+                bool isFeedbackGiven = mFRSAlert.AcknowledgemenStatusId == (int)AcknowledgemenStatus.PT
+                                    || mFRSAlert.AcknowledgemenStatusId == (int)AcknowledgemenStatus.True
+                                    || mFRSAlert.AcknowledgemenStatusId == (int)AcknowledgemenStatus.False
+                                    || mFRSAlert.AcknowledgemenStatusId == (int)AcknowledgemenStatus.Maintenace;
+                mFRSAlert.AcknowledgemenTimeStamp = isFeedbackGiven ? DateTime.Now : (DateTime?)null;
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
                     var jsonStr = JsonConvert.SerializeObject(mFRSAlert);

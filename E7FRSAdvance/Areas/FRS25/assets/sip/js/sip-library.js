@@ -48,7 +48,7 @@
             lampDark: '#1B2638', lampRing: '#3A4A62', lampMark: 'rgba(169,183,202,0.38)',
             head: '#0A111C', headEdge: '#3A4A62', post: '#93A3B8',
             pmN: '#3DE38A', pmR: '#F6C445', pmUnknown: '#5B6B82',
-            label: '#A9B7CA', labelHot: '#E6EDF5', select: '#3BC9DB', pl: '#F6FAFF',
+            label: '#FFFFFF', labelHot: '#FFFFFF', select: '#3BC9DB', pl: '#F6FAFF',
             bus: '#9AA8C4', glowOpacity: 0.28
         },
         vdu: {
@@ -57,7 +57,7 @@
             lampDark: '#232323', lampRing: '#4A4A4A', lampMark: 'rgba(200,200,200,0.35)',
             head: '#060606', headEdge: '#4A4A4A', post: '#B5B5B5',
             pmN: '#22E05A', pmR: '#FFD21F', pmUnknown: '#6A6A6A',
-            label: '#C8C8C8', labelHot: '#FFFFFF', select: '#00B4FF', pl: '#FFFFFF',
+            label: '#FFFFFF', labelHot: '#FFFFFF', select: '#00B4FF', pl: '#FFFFFF',
             bus: '#A9A9A9', glowOpacity: 0.3
         },
         day: {
@@ -126,8 +126,11 @@
          * back to the readable theme label colour. Status colours (red) pass. */
         const lum = hexLuminance(f);
         if (lum !== null) {
-            const canvasDark = (hexLuminance(String(T.canvas).toLowerCase()) || 0) < 0.3;
-            if (canvasDark && lum < 0.15) return T.labelHot;
+            const canvasLum = hexLuminance(String(T.canvas).toLowerCase()) || 0;
+            const canvasDark = canvasLum < 0.3;
+            /* dark canvas: anything under 4.5:1 contrast (dim blues/greys) goes
+             * white; status red/yellow/green still clear it and pass through */
+            if (canvasDark && (lum + 0.05) / (canvasLum + 0.05) < 4.5) return T.labelHot;
             if (!canvasDark && lum > 0.6) return T.labelHot;
         }
         return fill;
@@ -1236,7 +1239,7 @@
         const labelAttrs = (cell.attrs && cell.attrs.label) || {};
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
         const labelFill = (labelAttrs.fill && labelAttrs.fill !== 'transparent')
-            ? labelAttrs.fill : T.labelHot;
+            ? normaliseLabelFill(labelAttrs.fill) : T.labelHot;
         const labelSize = +labelAttrs.fontSize || 14;
 
         /* Main + shunt are now fully combinable:

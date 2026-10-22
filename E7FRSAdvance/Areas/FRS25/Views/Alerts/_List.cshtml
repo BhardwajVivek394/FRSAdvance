@@ -1,7 +1,7 @@
 ﻿@model Domain.FRSAlertLister
 @{
     var alerts = (Model != null && Model.mFRSAlerts != null) ? Model.mFRSAlerts : new List<Domain.FRSAlert>();
-    var totalCount = (Model != null && Model.Pager != null) ? Model.Pager.TotalRecord : 0;
+    var totalCount = (Model != null && Model.Pager != null) ? Convert.ToInt32(Model.Pager.TotalRecord) : 0;
     var pageSize = (Model != null && Model.Pager != null && Model.Pager.PageSize > 0) ? Model.Pager.PageSize : 10;
     var skip = (Model != null && Model.Pager != null) ? Model.Pager.Skip : 0;
     var currentPage = (skip / pageSize) + 1;
@@ -131,7 +131,7 @@ else
                                 @if (a.ResetTimeStamp.HasValue)
                                 {
                                     <span class="alrt-time-rel" style="color:var(--done);">
-                                        Reset: @a.ResetTimeStamp.Value.ToString("HH:mm:ss")
+                                        Reset: @a.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss")
                                     </span>
                                 }
                             </div>
@@ -207,8 +207,13 @@ else
                                     }
                                 }
 
-                                // ── Resolve badge state from AcknowledgemenStatusId ──
-                                var displayStatusId = a.AcknowledgemenStatusId;
+                                // ── Resolve badge state from FRSAlertRemark (latest entry for this alert) ──
+                                var alertRemarks = mFRSAlertRemarks.Where(x => x.FRSAlertId == a.Id).ToList();
+                                var latestRemark = alertRemarks
+                                    .OrderByDescending(x => x.CreatedDate)
+                                    .ThenByDescending(x => x.Id)
+                                    .FirstOrDefault();
+                                var displayStatusId = latestRemark != null ? latestRemark.AcknowledgementStatusId : 0;
                                 string displayFbText = "";
                                 string displayFbClass = "fb-none";
 
@@ -222,7 +227,7 @@ else
                                 { displayFbText = "M"; displayFbClass = "fb-maint"; }
 
                                 bool hasFeedback = !string.IsNullOrEmpty(displayFbText);
-                                bool hasRemark = !string.IsNullOrEmpty(a.Remark);
+                                bool hasRemark = alertRemarks.Any(x => !string.IsNullOrEmpty(x.Remark));
                             }
 
                             <div class="fb-cell">
@@ -440,7 +445,7 @@ else
                 </button>*@
                                 <button class="alrt-act-btn @(!isCleared ? "btn-primary" : "")"
                                         title="@(!isCleared ? "Give Feedback" : "View Feedback")"
-                                        onclick="openFeedbackSlidePanel('@a.Id','full','@a.AcknowledgemenStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)')">
+                                        onclick="openFeedbackSlidePanel('@a.Id','full','@displayStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)')">
                                     <i class="fas fa-comment-dots"></i>
                                 </button>
                                 <button class="alrt-act-btn alrt-act-analysis"

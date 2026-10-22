@@ -108,9 +108,12 @@ namespace E7FRSAdvance.MenuBuilder
             telemetry.Childs.Add(telemetry.SetMenuAttribute("Telemetry History", ControllerName.TelemetryHistory, ActionName.Index, IconName.Dashboard, "FRS25"));
             menus.Add(telemetry);
 
-            Menu sip = new Menu();
-            sip.Main = sip.SetMenuAttribute("SIP Creation", ControllerName.Sip, ActionName.Index, FRSIconName.Sip, "FRS25");
-            menus.Add(sip);
+            if (loginUser.IsSiteKeeping || isVendor || loginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
+            {
+                Menu sip = new Menu();
+                sip.Main = sip.SetMenuAttribute("SIP Creation", ControllerName.Sip, ActionName.Index, FRSIconName.Sip, "FRS25");
+                menus.Add(sip);
+            }
 
             // RDPMS Health
             Menu rdpmsHealth = new Menu();

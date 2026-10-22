@@ -1005,6 +1005,9 @@
             </div>
 
             <div class="modal-footer">
+                <button type="button" id="btnRemarkImageDownload" class="frs-btn frs-btn-save" onclick="frsDownloadRemarkImage()" style="display:none;">
+                    <i class="fas fa-download"></i> Download
+                </button>
                 <button type="button" class="frs-btn frs-btn-cancel" data-dismiss="modal" onclick="frsResetZoom()">
                     <i class="fas fa-times"></i> Close
                 </button>
@@ -1070,6 +1073,33 @@
         window.frsZoomIn = function () { _scale = Math.min(_scale + 0.25, 4); _apply(); };
         window.frsZoomOut = function () { _scale = Math.max(_scale - 0.25, 0.5); if (_scale <= 1) { _panX = 0; _panY = 0; } _apply(); };
         window.frsResetZoom = function () { _scale = 1; _panX = 0; _panY = 0; _apply(); };
+
+        // Download the image currently shown in the Remark Image viewer.
+        // Converts the data: URL to a Blob so large base64 images download reliably.
+        window.frsDownloadRemarkImage = function () {
+            var img = document.getElementById('remarkImageEl');
+            var src = img ? img.getAttribute('src') : '';
+            if (!src) return;
+            var fileName = img.getAttribute('data-filename') || 'remark-image.jpg';
+
+            function _save(href, revoke) {
+                var a = document.createElement('a');
+                a.href = href;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                if (revoke) setTimeout(function () { URL.revokeObjectURL(href); }, 1000);
+            }
+
+            if (window.fetch && window.URL && URL.createObjectURL) {
+                fetch(src).then(function (r) { return r.blob(); })
+                    .then(function (blob) { _save(URL.createObjectURL(blob), true); })
+                    .catch(function () { _save(src, false); });
+            } else {
+                _save(src, false);
+            }
+        };
 
         window.frsHandleWheel = function (e) {
             e.preventDefault();
