@@ -353,8 +353,7 @@ function atBuildTrackCard(aid) {
     }
 
     // Derived values for Track only (skipped for AXC and every non-Track type)
-    var _selTypeId = parseInt($('#drpAssetType').val() || wsCurrentAssetTypeId || 0, 10);
-    var _isTrackType = (_selTypeId === 1) || (parseInt(a.AssetTypeId, 10) === 1);
+    var _isTrackType = tlIsAssetTypeKind(null, 'track') || tlIsAssetTypeKind(a.AssetTypeId, 'track');
     if (!isAxc && _isTrackType && typeof window.calculateDerivedValues === 'function') {
         var derived = window.calculateDerivedValues(attrs);
         var fmtD = window.formatDerivedValue || function (v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(2); };
@@ -1646,7 +1645,7 @@ function isPointMachineAssetTypeForBulkSkip(assetTypeId) {
         normalizeAssetTypeForBulkSkip($('#drpAssetType').val()) ||
         normalizeAssetTypeForBulkSkip(wsCurrentAssetTypeId);
 
-    return assetTypeId === '3';
+    return tlIsAssetTypeKind(assetTypeId, 'point');
 }
 
 function seedPointMachineAttributeFallbacks() {
@@ -2329,12 +2328,23 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                     var dl = dls[k];
                     if (!dl) continue;
 
-                    // IMPORTANT:
-                    // DataLogger identity must come from Role only.
-                    // Do NOT use Id / DataloggerAttributeId as the DataLogger id.
-                    var dlRole = $.trim(String(dl.Value || dl.value || ''));
+                    // 616-PARITY: map each DL under DataloggerAttributeId, Value AND Id.
+                    // Live/history frames can key a DL channel by any of them (AXC
+                    // assets are DL-only), so a Value-only map left them unbound.
+                    function _dlMapId(v) {
+                        v = $.trim(String(v == null ? '' : v));
+                        return (!v || v === '0' || v.toLowerCase() === 'null') ? '' : v;
+                    }
+                    var dlMapIds = [];
+                    [dl.DataloggerAttributeId, dl.Value || dl.value, dl.Id].forEach(function (v) {
+                        var mid = _dlMapId(v);
+                        if (mid && dlMapIds.indexOf(mid) === -1) dlMapIds.push(mid);
+                    });
 
-                    if (!dlRole || dlRole === '0' || dlRole.toLowerCase() === 'null') {
+                    // Canonical role: Value first (existing behaviour), else the next available id
+                    var dlRole = _dlMapId(dl.Value || dl.value) || dlMapIds[0] || '';
+
+                    if (!dlRole) {
                         console.warn('[BulkMeta-DL] Skipped DL because Role is missing', {
                             assetId: aid,
                             assetName: assetName,
@@ -2366,8 +2376,8 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                         DataloggerAssetName: dl.DataloggerAssetName || '',
 
                         // Keep these only as metadata, not as lookup key
-                        dataloggerAttributeId: dl.Value || null,
-                        DataloggerAttributeId: dl.Value || null,
+                        dataloggerAttributeId: dl.DataloggerAttributeId || null,
+                        DataloggerAttributeId: dl.DataloggerAttributeId || null,
                         dataloggerValueId: dl.Value || null,
                         DataloggerValueId: dl.Value || null,
                         sourceId: dl.Id || null,
@@ -2380,14 +2390,15 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                         siteId: asset.SiteId
                     };
 
-                    var dlKey = aid + '_' + dlRole;
+                    for (var mk = 0; mk < dlMapIds.length; mk++) {
+                        var dlKey = aid + '_' + dlMapIds[mk];
 
-                    userAssetDataloggerMap[dlKey] = dlEntry;
-                    bulkDataloggerMap[dlKey] = dlEntry;
+                        userAssetDataloggerMap[dlKey] = dlEntry;
+                        bulkDataloggerMap[dlKey] = dlEntry;
 
-                    // Role-based lookup only
-                    dlRoleNameMap[dlRole] = dlName;
-                    dlAssetRoleMap[dlKey] = dlName;
+                        dlRoleNameMap[dlMapIds[mk]] = dlName;
+                        dlAssetRoleMap[dlKey] = dlName;
+                    }
 
                     dlCount++;
                 }
@@ -3201,16 +3212,15 @@ function renderWsTable() {
     if (assetIds.length === 0) return;
     $('#wsWaiting').remove();
 
-    var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
-    var isTrack = (assetTypeId === 1);
+    var isTrack = tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track');
     var typeName = 'ASSET';
     var first = wsLiveData[assetIds[0]];
     if (first && first.AssetTypeId) {
-        switch (parseInt(first.AssetTypeId)) {
-            case 1: typeName = 'TRACK'; break;
-            case 2: typeName = 'SIGNAL'; break;
-            case 3: typeName = 'POINT'; break;
-            case 31: typeName = 'ELD'; break;
+        switch (tlAssetTypeKind(first.AssetTypeId)) {
+            case 'track': typeName = 'TRACK'; break;
+            case 'signal': typeName = 'SIGNAL'; break;
+            case 'point': typeName = 'POINT'; break;
+            case 'eld': typeName = 'ELD'; break;
             default:
                 var _tn = (first.AssetTypeName || '').toUpperCase();
                 if (_tn.indexOf('IPS') > -1) typeName = 'IPS';
@@ -4173,8 +4183,7 @@ function updateSingleTableCell(assetId, attrName, value, hasChanged, timestamp) 
     if ($tsCell.length) $tsCell.text(ts);
 
     // Update computed columns for Track view
-    var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
-    if (assetTypeId === 1 && (attrName === 'If mA' || attrName === 'Ir mA' || attrName === 'TPR V')) {
+    if (tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track') && (attrName === 'If mA' || attrName === 'Ir mA' || attrName === 'TPR V')) {
         updateTrackComputedCols(assetId, $row);
     }
 }
@@ -4296,11 +4305,10 @@ function processMessageQueue() {
 
 // Get optimal UI interval based on asset type
 function getOptimalUIInterval() {
-    var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
-    switch (assetTypeId) {
-        case 1: return WS_TRACK_UI_INTERVAL;
-        case 2: return WS_SIGNAL_UI_INTERVAL;
-        case 3: return WS_PM_UI_INTERVAL;
+    switch (tlAssetTypeKind(wsCurrentAssetTypeId)) {
+        case 'track': return WS_TRACK_UI_INTERVAL;
+        case 'signal': return WS_SIGNAL_UI_INTERVAL;
+        case 'point': return WS_PM_UI_INTERVAL;
         default: return WS_UI_UPDATE_INTERVAL;
     }
 }
@@ -4381,8 +4389,7 @@ function executeUIUpdate() {
             else {
                 var $existingTable = $('#wsLiveTable');
                 if ($existingTable.length > 0) {
-                    var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
-                    var isTrack = (assetTypeId === 1);
+                    var isTrack = tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track');
                     incrementalTableUpdate(updatedAssetIds, isTrack);
                 } else {
                     renderWsTable();
@@ -6684,9 +6691,10 @@ function renderApiTable(data, assetTypeId) {
             attrIdMap[d.AssetAttributeName] = d.AssetAttributeId;
         }
     });
-    attrs.sort(function (a, b) { if (parseInt(assetTypeId) === 1) { var dA = assetAttributeMap[attrOrd[a]] || assetAttributeMap[String(attrOrd[a])] || a; var dB = assetAttributeMap[attrOrd[b]] || assetAttributeMap[String(attrOrd[b])] || b; var cA = dA.replace(/\s*\([^)]*\)\s*/g, '').replace(/_/g, ' ').trim().toUpperCase(); var cB = dB.replace(/\s*\([^)]*\)\s*/g, '').replace(/_/g, ' ').trim().toUpperCase(); var sA = 500, sB = 500; for (var si = 0; si < _trackColSeq.length; si++) { var t = _trackColSeq[si].toUpperCase(); if (cA === t || cA.indexOf(t) > -1 || t.indexOf(cA) > -1) sA = si + 1; if (cB === t || cB.indexOf(t) > -1 || t.indexOf(cB) > -1) sB = si + 1; } if (sA !== sB) return sA - sB; } return attrOrd[a] - attrOrd[b]; });
-    var tn = 'ASSET'; if (data[0]) { switch (data[0].AssetTypeId) { case 1: tn = 'TRACK'; break; case 2: tn = 'SIGNAL'; break; case 3: tn = 'POINT'; break; } }
-    var isTrack = (assetTypeId == 1);
+    var _isTrackSort = tlIsAssetTypeKind(assetTypeId, 'track');
+    attrs.sort(function (a, b) { if (_isTrackSort) { var dA = assetAttributeMap[attrOrd[a]] || assetAttributeMap[String(attrOrd[a])] || a; var dB = assetAttributeMap[attrOrd[b]] || assetAttributeMap[String(attrOrd[b])] || b; var cA = dA.replace(/\s*\([^)]*\)\s*/g, '').replace(/_/g, ' ').trim().toUpperCase(); var cB = dB.replace(/\s*\([^)]*\)\s*/g, '').replace(/_/g, ' ').trim().toUpperCase(); var sA = 500, sB = 500; for (var si = 0; si < _trackColSeq.length; si++) { var t = _trackColSeq[si].toUpperCase(); if (cA === t || cA.indexOf(t) > -1 || t.indexOf(cA) > -1) sA = si + 1; if (cB === t || cB.indexOf(t) > -1 || t.indexOf(cB) > -1) sB = si + 1; } if (sA !== sB) return sA - sB; } return attrOrd[a] - attrOrd[b]; });
+    var tn = 'ASSET'; if (data[0]) { switch (tlAssetTypeKind(data[0].AssetTypeId)) { case 'track': tn = 'TRACK'; break; case 'signal': tn = 'SIGNAL'; break; case 'point': tn = 'POINT'; break; } }
+    var isTrack = _isTrackSort;
     var h = '<div class="table-responsive"><table class="table table-hover" id="wsLiveTable"><thead><tr><th>' + tn + '</th>';
     // Use assetAttributeMap to get proper alias names
     attrs.forEach(function (a) {
@@ -6879,9 +6887,9 @@ function fnBindTrackCards() {
     if (!isSignal && !isPoint && !isIps) {
         var atVal = $('#drpAssetType').val();
         var atText = ($('#drpAssetType option:selected').text() || '').toLowerCase();
-        isSignal = (atVal === '2' || atText === 'signal');
-        isPoint = (atVal === '3' || atText.indexOf('point') !== -1);
-        isIps = (atVal === '4' || atText === 'ips');
+        isSignal = (atText === 'signal');
+        isPoint = (atText.indexOf('point') !== -1);
+        isIps = (atText === 'ips');
     }
     var isEld = !isSignal && !isPoint && !isIps && (typeof isEldAssetType === 'function') && isEldAssetType();
     // Track is the default when nothing else matches (asset type 1)
@@ -7419,8 +7427,8 @@ function _gPop(aid, gd) {
     var fb = { 1: 'ITC FEED END(mA)', 2: 'ITC RELAY END(mA)', 3: 'VTC RELAY END(V)', 4: 'VTC CH FEED END(V)', 5: 'ITC TFC O/P(mA)', 6: 'VTC 24 DC TPR I/P(V)', 9: 'RG V', 10: 'RG mA', 11: 'DG V', 12: 'DG mA', 13: 'HG V', 14: 'HG mA', 15: 'HHG V', 16: 'HHG mA', 154: 'Root V', 155: 'Root mA', 227: 'UG V', 228: 'UG mA', 327: 'HHPR', 328: 'DPR', 329: 'HPR', 337: 'PILOT mA', 499: 'PILOT V', 610: 'Co_Hg mA', 611: 'Co_Hg V' };
     var fK = ['TFC I/P', 'TFC O/P', 'CH FEED', 'VTC FEED', 'ITC FEED'];
     var rK = ['RELAY END', 'VTC TR', '24 DC LOC', '24 DC TPR', 'TPR'];
-    var isSignal = (parseInt($('#drpAssetType').val()) === 2);
-    var isEldG = (typeof isEldAssetType === 'function') && isEldAssetType();
+    var isSignal = isSignalAssetType();
+    var isEldG =(typeof isEldAssetType === 'function') && isEldAssetType();
     if (isEldG) fb = {};   // Track/Signal fallback names must never label ELD attributes
     function cls(n) { if (isSignal || isEldG) return 'f'; var u = n.toUpperCase().replace(/\s*\([^)]*\)/g, ''); for (var i = 0; i < fK.length; i++)if (u.indexOf(fK[i]) > -1) return 'f'; for (var j = 0; j < rK.length; j++)if (u.indexOf(rK[j]) > -1) return 'r'; return 'f'; }
 
@@ -7620,7 +7628,7 @@ function _gRender(data, aid, filter) {
         327: 'HHPR', 328: 'DPR', 329: 'HPR', 337: 'PILOT mA', 499: 'PILOT V', 610: 'Co_Hg mA', 611: 'Co_Hg V'
     };
     var isEldR = (typeof isEldAssetType === 'function') && isEldAssetType();
-    var isPM = $('#drpAssetType').val() == '3',
+    var isPM = isPointAssetType(),
         pmOk = { 25: 1, 26: 1, 27: 1, 28: 1, 212: 1, 213: 1, 214: 1, 215: 1, 216: 1, 217: 1, 218: 1, 219: 1 };
 
     // ── Step 1: Build per-attribute valueMaps and track all unique timestamps ──
@@ -8311,8 +8319,7 @@ function processCircuitWsMessage(d) {
         processCircuitDataLogger(aid, attrName, value, d);
         // FIX: For Point Machine, ALSO store in attrs so updateCircuitPointMachine
         // can read NWKR/RWKR values (PM sends them as DataType='DataLogger')
-        var _pmTypeId = parseInt($('#drpAssetType').val() || wsCurrentAssetTypeId || 0);
-        if (_pmTypeId === 3) {
+        if (tlIsAssetTypeKind(null, 'point')) {
             if (!wsLiveData[aid]) return;
             if (!wsLiveData[aid].attrs) wsLiveData[aid].attrs = {};
             // PC-06: route through the single canonical writer (buildWsAttrData) so this
@@ -8410,13 +8417,14 @@ function updateCircuitFromWebSocket(assetId) {
     }
 
     // Update circuit based on asset type
-    if (assetTypeId === 1) {
+    var _circuitKind = tlAssetTypeKind(assetTypeId);
+    if (_circuitKind === 'track') {
         // Track Circuit
         updateCircuitTrack(attrs);
-    } else if (assetTypeId === 2) {
+    } else if (_circuitKind === 'signal') {
         // Signal Circuit
         updateCircuitSignal(attrs, zeroOffset);
-    } else if (assetTypeId === 3) {
+    } else if (_circuitKind === 'point') {
         // Point Machine Circuit
         updateCircuitPointMachine(attrs);
     }
@@ -10472,7 +10480,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
     var colorIdx = 0;
 
     var assetTypeId = $('#rdpmsGraphOverlay').data('assetTypeId') || $('#drpAssetType').val();
-    var isPointMachine = (assetTypeId == 3 || assetTypeId === '3');
+    var isPointMachine = tlIsAssetTypeKind(assetTypeId, 'point');
 
     window._gColorMap = window._gColorMap || {};
 
@@ -11037,7 +11045,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 //    var colorIdx = 0;
 
 //    var assetTypeId = $('#rdpmsGraphOverlay').data('assetTypeId') || $('#drpAssetType').val();
-//    var isPointMachine = (assetTypeId == 3 || assetTypeId === '3');
+//    var isPointMachine = tlIsAssetTypeKind(assetTypeId, 'point');
 
 //    var liveAttrIdToName = {};
 //    var liveAsset = wsLiveData[assetId];
@@ -11364,7 +11372,7 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 
 //    // Check if this is Point Machine asset type
 //    var assetTypeId = $('#rdpmsGraphOverlay').data('assetTypeId') || $('#drpAssetType').val();
-//    var isPointMachine = (assetTypeId == 3 || assetTypeId === '3');
+//    var isPointMachine = tlIsAssetTypeKind(assetTypeId, 'point');
 
 //    // Build AttrId->name from wsLiveData[assetId].attrs -- same source as checkboxes (_gPop).
 //    // This gives the EXACT attribute name the user sees in the checkbox panel.
@@ -11692,9 +11700,49 @@ function renderModalChart(data) {
 }
 
 // ===== VIEW TYPE OPTIONS -- Updated for PointMachine =====
-function isSignalAssetType() { var t = ($('#drpAssetType option:selected').text() || '').trim().toLowerCase(); return (t === 'signal' || $('#drpAssetType').val() === '2'); }
-function isPointAssetType() { var t = ($('#drpAssetType option:selected').text() || '').trim().toLowerCase(); return (t.indexOf('point') > -1 || $('#drpAssetType').val() === '3'); }
-function isIpsAssetType() { var t = ($('#drpAssetType option:selected').text() || '').trim().toLowerCase(); return (t === 'ips' || t.indexOf('ips') > -1); }
+// ===== ASSET TYPE KIND (from API response, no static ids) =====
+// Asset type ids differ per deployment, so the kind is resolved from the
+// asset type NAME returned by GetAssetTypeBySiteId (cached below), falling
+// back to the matching #drpAssetType option text.
+var tlAssetTypeNameById = {};
+function tlRememberAssetTypes(list) {
+    if (!list || !list.length) return;
+    for (var i = 0; i < list.length; i++) {
+        var it = list[i];
+        if (it && it.Id !== undefined && it.Id !== null) tlAssetTypeNameById[String(it.Id)] = String(it.Name || '');
+    }
+}
+function tlAssetTypeName(assetTypeId) {
+    var id = $.trim(String(assetTypeId === undefined || assetTypeId === null ? '' : assetTypeId));
+    if (!id || id === '0') return '';
+    if (tlAssetTypeNameById[id] !== undefined) return tlAssetTypeNameById[id];
+    var $o = $('#drpAssetType option').filter(function () { return String($(this).val()) === id; }).first();
+    return $o.length ? $.trim($o.text()) : '';
+}
+// Returns 'point' | 'axle' | 'ips' | 'eld' | 'signal' | 'track' | ''
+function tlAssetTypeKind(assetTypeId) {
+    if (assetTypeId === undefined || assetTypeId === null || assetTypeId === '') {
+        assetTypeId = $('#drpAssetType').val() || wsCurrentAssetTypeId;
+    }
+    var n = tlAssetTypeName(assetTypeId).toLowerCase().replace(/_/g, ' ');
+    if (!n) return '';
+    if (n.indexOf('point') > -1) return 'point';
+    if (n.indexOf('axle') > -1 || /\baxc\b/.test(n)) return 'axle';
+    if (/\bips\b/.test(n)) return 'ips';
+    if (/^eld\b/.test(n) || n.indexOf('earth leakage') > -1) return 'eld';
+    if (n.indexOf('signal') > -1) return 'signal';
+    if (n.indexOf('track') > -1) return 'track';
+    return '';
+}
+function tlIsAssetTypeKind(assetTypeId, kind) { return tlAssetTypeKind(assetTypeId) === kind; }
+window.tlRememberAssetTypes = tlRememberAssetTypes;
+window.tlAssetTypeName = tlAssetTypeName;
+window.tlAssetTypeKind = tlAssetTypeKind;
+window.tlIsAssetTypeKind = tlIsAssetTypeKind;
+
+function isSignalAssetType() { return tlAssetTypeKind() === 'signal'; }
+function isPointAssetType() { return tlAssetTypeKind() === 'point'; }
+function isIpsAssetType() { return tlAssetTypeKind() === 'ips'; }
 
 /*
  * ELD is asset type 31. It carries DataLogger relays only — no analog
@@ -11702,12 +11750,7 @@ function isIpsAssetType() { var t = ($('#drpAssetType option:selected').text() |
  * measurement columns entirely. Matched by id first (the display name varies
  * between "ELD" and "ELD ..."), then by name.
  */
-function isEldAssetType() {
-    var selectedId = parseInt($('#drpAssetType').val() || wsCurrentAssetTypeId || 0, 10);
-    if (selectedId === 31) return true;
-    var t = ($('#drpAssetType option:selected').text() || '').trim().toLowerCase();
-    return t === 'eld' || t.indexOf('eld') === 0;
-}
+function isEldAssetType() { return tlAssetTypeKind() === 'eld'; }
 window.isEldAssetType = isEldAssetType;
 
 function updateViewTypeOptions() {
@@ -12124,6 +12167,9 @@ function GetAssetTypeBySiteId(siteId) {
         success: function (data) {
             $("#loader").hide();
 
+            // Asset type kinds (Track / Signal / PM / IPS ...) are resolved from these names
+            tlRememberAssetTypes(data);
+
             // Clear and rebuild asset type dropdown
             $("#drpAssetType").empty().append('<option value="">All</option>');
 
@@ -12254,14 +12300,14 @@ function tlBuildExportTableHtml() {
         });
         if (typeof blankDataLast === 'function') assetIds = blankDataLast(assetIds);
 
-        var isTrack = (parseInt(wsCurrentAssetTypeId) || 0) === 1;
+        var isTrack = tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track');
         var typeName = 'ASSET';
         var first = wsLiveData[assetIds[0]];
         if (first && first.AssetTypeId) {
-            switch (parseInt(first.AssetTypeId)) {
-                case 1: typeName = 'TRACK'; break;
-                case 2: typeName = 'SIGNAL'; break;
-                case 3: typeName = 'POINT'; break;
+            switch (tlAssetTypeKind(first.AssetTypeId)) {
+                case 'track': typeName = 'TRACK'; break;
+                case 'signal': typeName = 'SIGNAL'; break;
+                case 'point': typeName = 'POINT'; break;
                 default:
                     if ((first.AssetTypeName || '').toUpperCase().indexOf('IPS') > -1) typeName = 'IPS';
                     break;
@@ -13344,6 +13390,20 @@ $(document).ready(function () {
         // Reset search guard — user must Search again after changing site
         window._tlSearchInitiated = false;
 
+        // 616-PARITY: drop the previous station's stream and data so it cannot
+        // show under the new station while its asset types load.
+        if (typeof resetPmAssetMeta === 'function') resetPmAssetMeta();
+        try { disconnectWebSocket(); } catch (e) { }
+        wsLiveData = {};
+        wsVibrationData = {};
+        wsUpdatedAssets = {};
+        window.wsCurrentFilterAssetIds = [];
+        if (typeof resetPointMachineVibrationBulkMetadata === 'function') resetPointMachineVibrationBulkMetadata();
+        try {
+            $('#tblTelemetryLive tbody').empty();
+            $('#divTelemetryLive').empty();
+        } catch (e) { }
+
         // When site is selected, load asset types for that site
         if (siteId && siteId !== '' && siteId !== '0') {
             GetAssetTypeBySiteId(siteId);
@@ -13503,13 +13563,13 @@ $(document).ready(function () {
             }
             assetIds.sort(function (a, b) { return (wsLiveData[a].AssetName || '').localeCompare(wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' }); });
             assetIds = blankDataLast(assetIds); // FIX-1: moved OUTSIDE loop (was inside, re-sorting every iteration)
-            var atId = parseInt(wsCurrentAssetTypeId || 0);
+            var atKind = tlAssetTypeKind(wsCurrentAssetTypeId);
             var html = '<div class="at-cards-grid">';
             for (var i = 0; i < assetIds.length; i++) {
                 var aid = assetIds[i];
-                if (atId === 2) html += atBuildSignalCard(aid);
-                else if (atId === 3) html += atBuildPmCard(aid);
-                else if (atId === 31 || (typeof isEldAssetType === 'function' && isEldAssetType())) html += atBuildEldCard(aid);
+                if (atKind === 'signal') html += atBuildSignalCard(aid);
+                else if (atKind === 'point') html += atBuildPmCard(aid);
+                else if (atKind === 'eld') html += atBuildEldCard(aid);
                 else html += atBuildTrackCard(aid);
             }
             html += '</div>';
@@ -17724,8 +17784,7 @@ function updateTableCellOnly(assetId, attrName, value, hasChanged, timestamp) {
     if ($tsCell3.length) $tsCell3.text(ts);
 
     // Update derived values for Track
-    var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
-    if (assetTypeId === 1) {
+    if (tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track')) {
         updateDerivedValuesForRow(assetId, $row);
     }
 }
@@ -17737,8 +17796,7 @@ function addNewTableRow(assetId) {
     var asset = wsLiveData[assetId];
     if (!asset) return;
 
-    var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
-    var isTrack = (assetTypeId === 1);
+    var isTrack = tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track');
 
     // Build row HTML
     var h = '<tr data-id="' + assetId + '" class="ws-row-new">';
@@ -18196,8 +18254,7 @@ function renderWsTableFixed() {
     if (assetIds.length === 0) return;
     $('#wsWaiting').remove();
 
-    var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
-    var isTrack = (assetTypeId === 1);
+    var isTrack = tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track');
     // 616-PARITY: all-AXC selection hides attribute + derived columns (list view)
     var allAxc = isTrack && typeof isAllAxcSelection === 'function' && isAllAxcSelection(assetIds);
     var typeName = 'ASSET';
@@ -18206,12 +18263,12 @@ function renderWsTableFixed() {
     }
     var first = wsLiveData[assetIds[0]];
     if (first && first.AssetTypeId) {
-        switch (parseInt(first.AssetTypeId)) {
-            case 1: typeName = 'TRACK'; break;
-            case 2: typeName = 'SIGNAL'; break;
-            case 3: typeName = 'POINT'; break;
+        switch (tlAssetTypeKind(first.AssetTypeId)) {
+            case 'track': typeName = 'TRACK'; break;
+            case 'signal': typeName = 'SIGNAL'; break;
+            case 'point': typeName = 'POINT'; break;
             default:
-                var _tn2 = (first.AssetTypeName || '').toUpperCase();
+                var _tn2= (first.AssetTypeName || '').toUpperCase();
                 if (_tn2.indexOf('IPS') > -1) typeName = 'IPS';
                 break;
         }
@@ -18697,9 +18754,8 @@ function updateExistingRowCells(assetId, $row) {
     var asset = wsLiveData[assetId];
     if (!asset) return;
 
-    var assetTypeId = parseInt(wsCurrentAssetTypeId) || 0;
-    var isTrack = (assetTypeId === 1);
-    var isSignal = (assetTypeId === 2);
+    var isTrack = tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track');
+    var isSignal = tlIsAssetTypeKind(wsCurrentAssetTypeId, 'signal');
     var isEld = (typeof isEldAssetType === 'function') && isEldAssetType();
     var ifMa = 0, irMa = 0, tprV = 0;
 
@@ -20585,8 +20641,7 @@ window.tlBuildAssetActions = tlBuildAssetActions;
                 return;
             }
             // Render table
-            var assetTypeId = $('#drpAssetType').val();
-            var isPoint = (assetTypeId == 3);
+            var isPoint = isPointAssetType();
             if (isPoint && typeof renderPmTableView === 'function') renderPmTableView();
             else if (typeof renderWsTable === 'function') renderWsTable();
             return;
@@ -20613,9 +20668,9 @@ window.tlBuildAssetActions = tlBuildAssetActions;
         if (!_isSignalCard && !_isPointCard && !_isIpsCard) {
             var atVal = $('#drpAssetType').val();
             var atText = ($('#drpAssetType option:selected').text() || '').toLowerCase();
-            _isSignalCard = (atVal === '2' || atText === 'signal');
-            _isPointCard = (atVal === '3' || atText.indexOf('point') !== -1);
-            _isIpsCard = (atVal === '4' || atText === 'ips');
+            _isSignalCard = (atText === 'signal');
+            _isPointCard = (atText.indexOf('point') !== -1);
+            _isIpsCard = (atText === 'ips');
         }
 
         if (_isSignalCard || _isPointCard || _isIpsCard) {
@@ -20936,7 +20991,7 @@ function renderAssetGraphInContainer(assetId, containerEl, callback) {
                 var assetData = response.Data;
                 // Determine asset type from wsLiveData
                 var asset = wsLiveData[assetId];
-                var isTrack = (asset && asset.AssetTypeId == 1) || (parseInt($('#drpAssetType').val()) === 1);
+                var isTrack = (asset && tlIsAssetTypeKind(asset.AssetTypeId, 'track')) || tlIsAssetTypeKind(null, 'track');
                 // We need to set up a temporary graph context.
                 // Since _gRender uses global variables (_gChecked, _gColorMap, etc.),
                 // we can use a copy of those but for simplicity we'll reuse the same global

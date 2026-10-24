@@ -3743,7 +3743,6 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
      * C7  Circuit not available for Axle Counter, Gate, ELD, IPS
      * (v616 19096-19135) — asset type NAME first, id only as fallback
      * ==================================================================== */
-    var CIRCUIT_UNSUPPORTED_ASSET_TYPE_IDS = [4, 5, 31, 34];
     function typeNameUnsupported(name) {
         var t = String(name || '').trim().toLowerCase();
         if (!t) return null;
@@ -3758,11 +3757,13 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         }
         var byName = typeNameUnsupported($opt.text());
         if (byName !== null) return byName;
-        var id = parseInt((assetTypeId !== undefined && assetTypeId !== null && assetTypeId !== '') ? assetTypeId
-            : ($('#drpAssetType').val() || W.wsCurrentAssetTypeId || 0), 10);
-        return CIRCUIT_UNSUPPORTED_ASSET_TYPE_IDS.indexOf(id) !== -1;
+        // Name from the GetAssetTypeBySiteId response (no static ids)
+        var id = (assetTypeId !== undefined && assetTypeId !== null && assetTypeId !== '') ? assetTypeId
+            : ($('#drpAssetType').val() || W.wsCurrentAssetTypeId || '');
+        var k = W.tlAssetTypeKind(id);
+        if (k) return k === 'axle' || k === 'ips' || k === 'eld';
+        return !!typeNameUnsupported(W.tlAssetTypeName ? W.tlAssetTypeName(id) : '');
     }
-    W.CIRCUIT_UNSUPPORTED_ASSET_TYPE_IDS = CIRCUIT_UNSUPPORTED_ASSET_TYPE_IDS;
     W.isCircuitUnsupportedAssetType = isCircuitUnsupportedAssetType;
     function syncCircuitAvailability() {
         var off = isCircuitUnsupportedAssetType();
@@ -4392,9 +4393,9 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
     function applySafeCircuitDomUpdates(assetId) {
         var asset = liveData()[String(assetId)] || liveData()[assetId];
         if (!asset || !asset.attrs) return;
-        var t = circuitTypeFor(assetId);
-        if (t === 1) updateTrackDerivedForeignObject(asset.attrs);
-        else if (t === 3) updatePmForeignObjectTables(asset.attrs);
+        var k = W.tlAssetTypeKind(circuitTypeFor(assetId));
+        if (k === 'track') updateTrackDerivedForeignObject(asset.attrs);
+        else if (k === 'point') updatePmForeignObjectTables(asset.attrs);
     }
     W.safeDerivedFmt = safeDerivedFmt;
     W.getCircuitRoot = getCircuitRoot;

@@ -184,6 +184,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                          */
                         RemoveExcludedAssetTypes(mAssetLister);
 
+                        ViewBag.RdpmsWireguardSiteIds = FillCardLineWireguardIP(hcf, mAssetLister);
+
                         if (mAssetLister != null && mAssetLister.mAssetInfos != null && mAssetLister.mAssetInfos.Count > 0)
                         {
                             foreach (var assetInfo in mAssetLister.mAssetInfos)
@@ -236,6 +238,83 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
 
             return PartialView(mAssetLister);
+        }
+
+        /// <summary>
+        /// Asset/GetRDPMSHealthLiveDetails does not return CardLine.WireguardIP,
+        /// so the page could only tell a wireless-only cluster (WireguardIP null)
+        /// after its own GetCardLineData AJAX landed, and the Wired chip / tile
+        /// flashed in first. Copy WireguardIP from CardLine/SiteId/{id} onto
+        /// mCardLines here so it is known at first paint. One call per searched
+        /// station, run in parallel and capped at WireguardFetchTimeoutMs so a
+        /// slow CardLine API can never hold up the list (SiteId 0 = every
+        /// authorised station was far too large and stalled multi-station
+        /// searches). A station that misses the cap simply falls back to the
+        /// client-side GetCardLineData path.
+        /// Returns the SiteIds whose values were resolved; the view trusts
+        /// WireguardIP only for those.
+        /// </summary>
+        private const int WireguardFetchTimeoutMs = 8000;
+
+        private static List<int> FillCardLineWireguardIP(HttpClientFactory hcf, RDPMSHealthLiveLister lister)
+        {
+            var resolved = new List<int>();
+            try
+            {
+                if (lister == null || lister.mCardLines == null || lister.mCardLines.Count == 0) { return resolved; }
+
+                var siteIds = lister.mCardLines.Where(x => x != null && x.SiteId != null)
+                    .Select(x => x.SiteId.Value).Distinct().ToList();
+                if (siteIds.Count == 0) { return resolved; }
+
+                var calls = siteIds.ToDictionary(
+                    id => id,
+                    id => hcf.client.GetAsync(String.Format("CardLine/SiteId/{0}", id)));
+                System.Threading.Tasks.Task.WaitAll(calls.Values.ToArray<System.Threading.Tasks.Task>(), WireguardFetchTimeoutMs);
+
+                var rows = new List<CardLine>();
+                var returnedSites = new HashSet<int>();
+                foreach (var call in calls)
+                {
+                    var t = call.Value;
+                    if (t.Status != System.Threading.Tasks.TaskStatus.RanToCompletion ||
+                        t.Result.StatusCode != HttpStatusCode.OK) { continue; }
+                    var siteRows = JsonConvert.DeserializeObject<List<CardLine>>(t.Result.Content.ReadAsStringAsync().Result);
+                    if (siteRows == null) { continue; }
+                    rows.AddRange(siteRows);
+                    returnedSites.Add(call.Key);
+                }
+
+                /* SiteId|ModemId -> first non-empty WireguardIP (null = wireless-only). */
+                var ipByModem = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var r in rows)
+                {
+                    if (r == null || r.SiteId == null || string.IsNullOrWhiteSpace(r.ModemId)) { continue; }
+                    var key = r.SiteId.Value + "|" + r.ModemId.Trim();
+                    string ip;
+                    if (!ipByModem.TryGetValue(key, out ip) || string.IsNullOrWhiteSpace(ip))
+                    {
+                        ipByModem[key] = string.IsNullOrWhiteSpace(r.WireguardIP) ? null : r.WireguardIP.Trim();
+                    }
+                }
+
+                foreach (var cl in lister.mCardLines)
+                {
+                    if (cl == null || cl.SiteId == null || string.IsNullOrWhiteSpace(cl.ModemId)) { continue; }
+                    string ip;
+                    if (ipByModem.TryGetValue(cl.SiteId.Value + "|" + cl.ModemId.Trim(), out ip))
+                    {
+                        cl.WireguardIP = ip;
+                    }
+                }
+
+                resolved = siteIds.Where(returnedSites.Contains).ToList();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FillCardLineWireguardIP exception: {ex.Message}");
+            }
+            return resolved;
         }
 
         private List<Domain.AssetType> GetFRSAssetType()

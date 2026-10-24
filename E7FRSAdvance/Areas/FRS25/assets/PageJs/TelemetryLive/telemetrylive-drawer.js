@@ -80,7 +80,15 @@
            selected type is only a last resort -- the SIP opens assets of every type */
         var t = typeof W.tlAssetTypeOf === 'function' ? W.tlAssetTypeOf(D.aid, D.typeHint)
             : parseInt(a.AssetTypeId || W.wsCurrentAssetTypeId || ($('#drpAssetType').val && $('#drpAssetType').val()) || 0, 10);
-        return t === 3 ? 'pm' : t === 2 ? 'signal' : 'track';
+        var k = W.tlAssetTypeKind(t);   /* from the asset type name in the API response */
+        return k === 'point' ? 'pm' : k === 'signal' ? 'signal' : 'track';
+    }
+    /* Axle Counter / IPS / ELD / Gate have no circuit diagram */
+    function hasCircuit() {
+        var t = typeof W.tlAssetTypeOf === 'function' ? W.tlAssetTypeOf(D.aid, D.typeHint) : '';
+        var k = W.tlAssetTypeKind(t);
+        if (k === 'axle' || k === 'ips' || k === 'eld') return false;
+        return !/\bgate\b/i.test(W.tlAssetTypeName(t));
     }
     function siteId() { return String((W.jQuery && $('#drpSite').val()) || ''); }
     function live() { return W.wsLiveData || {}; }
@@ -2187,7 +2195,9 @@
             return '<button type="button" class="tld-btn sm" data-tld-h="' + p[0] + '" aria-pressed="' + (D.graphHours === p[0]) + '">' + p[1] + '</button>';
         }).join(' ');
         /* v618.38: in-drawer section nav (SPA-style jump) -- replaces Open in SIP / Full circuit view */
-        var navItems = [['tldSecValues', 'Live values'], ['tldChatSec', 'Ask AI'], ['tldSecAlerts', 'Alerts'], ['tldSecCircuit', 'Circuit']];
+        var showCircuit = hasCircuit();
+        var navItems = [['tldSecValues', 'Live values'], ['tldChatSec', 'Ask AI'], ['tldSecAlerts', 'Alerts']];
+        if (showCircuit) navItems.push(['tldSecCircuit', 'Circuit']);
         if (kind() === 'track') navItems.push(['tldSecShort', 'Track shorting']);
         else if (kind() === 'pm') navItems.push(['tldSecPattern', 'Pattern analysis']);
         navItems.push(['tldSecRoster', 'Maintenance roster'], ['tldSecGraph', 'Graph']);
@@ -2204,7 +2214,7 @@
             '<button type="button" class="tld-ib" data-tld-chatclear="1" aria-label="New chat" title="New chat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>' +
             '<button type="button" class="tld-ib" data-tld-chatfull="1" aria-pressed="' + !!D.chatFull + '" aria-label="' + (D.chatFull ? 'Exit full screen' : 'Expand to full screen') + '" title="Full screen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button></div>' +
             '<div id="tldChat" style="display:flex;flex-direction:column;flex:1;min-height:0">' + chatHtml() + '</div></section></div></div>' +
-            sec('Circuit &#183; live', '<div id="tldCircuit">' + circuitSvg(A) + '</div>' + circuitLegend(), kind() === 'signal' ? '<span id="tldSigTabs">' + sigTabsHtml(A) + '</span>' : '<span class="tld-chip ok">Live</span>', null, false, 'tldSecCircuit') +
+            (showCircuit ? sec('Circuit &#183; live', '<div id="tldCircuit">' + circuitSvg(A) + '</div>' + circuitLegend(), kind() === 'signal' ? '<span id="tldSigTabs">' + sigTabsHtml(A) + '</span>' : '<span class="tld-chip ok">Live</span>', null, false, 'tldSecCircuit') : '') +
             sec('Past alerts &#183; 30 days', alertsHtml(), '', 'tldAlerts', false, 'tldSecAlerts') +
             sec('Maintenance roster &#183; today', rosterHtml(), '<button type="button" class="tld-btn sm" data-tld-rrefresh="1">&#8635; Refresh</button>', 'tldRoster', false, 'tldSecRoster') +
             (kind() === 'signal' ? '' : kind() === 'pm' ? sec('Operation pattern analysis', '<div class="tld-pend"><b>Pattern analysis API pending.</b> This section will run the point-machine pattern checks on the recent operations and show the result: ' +

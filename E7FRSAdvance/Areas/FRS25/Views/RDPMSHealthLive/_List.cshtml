@@ -2827,6 +2827,10 @@ var json = "";
  $(document).ready(function () {
     json = @Html.Raw(Json.Encode(Model));
     window.json = json;   /* painters read window.json, not the local var */
+    /* Stations whose mCardLines WireguardIP the server filled from CardLine
+       (FillCardLineWireguardIP) - lets the Wired chip / tiles be right on the
+       first paint instead of after GetCardLineData lands. */
+    window.__rdpmsWireguardSites = @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(ViewBag.RdpmsWireguardSiteIds as List<int> ?? new List<int>()));
 
     /* Any WS rows that landed before this partial finished rendering are
        already in window.__rdpmsChannelRows but were never painted (the
@@ -5628,9 +5632,12 @@ var netWirelessFaulty =
  */
 var netUniverseTotal = nfNetworkUniverseTotal();
 if (netUniverseTotal > 0) {
-    netWiredTotal = netUniverseTotal;
+    /* Wired universe excludes wireless-only clusters (WireguardIP null). */
+    netWiredTotal = Math.max(0, netUniverseTotal -
+        ((typeof window.nfWirelessOnlyClusterCount === 'function')
+            ? window.nfWirelessOnlyClusterCount() : 0));
     netWirelessTotal = netUniverseTotal;
-    netWiredFaulty = Math.min(netWiredFaulty, netUniverseTotal);
+    netWiredFaulty = Math.min(netWiredFaulty, netWiredTotal);
     netWirelessFaulty = Math.min(netWirelessFaulty, netUniverseTotal);
 }
 
@@ -6591,9 +6598,22 @@ if (!iotWsConnected && !iotWsFresh) {
                lives in nfCombineNetLegs and still lets the un-masked leg
                decide; only this per-leg chip stopped lying. */
 
+            /* Wireless-only cluster (CardLine WireguardIP null on every modem
+               of the row): there is no Wired link, so the leg is 'absent' and
+               its chip is not drawn. */
+            var _hasWired = true;
+            if (typeof window.nfModemsHaveWired === 'function') {
+                var $wRow = $cell.closest('tr');
+                _hasWired = window.nfModemsHaveWired(
+                    String($wRow.data('siteid') || '').trim(),
+                    String($wRow.data('modemid') != null ? $wRow.data('modemid') : '')
+                        .split(',').map(function (s) { return s.trim(); }).filter(Boolean));
+            }
+            if (!_hasWired) { w = { state: 'absent', time: '' }; }
+
             if (window.rdpmsIsForcedSite &&
                 window.rdpmsIsForcedSite($cell.closest('tr').data('siteid'))) {
-                w = { state: 'healthy', time: '' };
+                w = _hasWired ? { state: 'healthy', time: '' } : w;
                 wl = { state: 'healthy', time: '' };
             }
 
@@ -6610,7 +6630,7 @@ if (w.state === 'na' && wl.state === 'na') {
     return;
 }
 
-if (w.state === 'none' && wl.state === 'none') {
+if ((w.state === 'none' || w.state === 'absent') && wl.state === 'none') {
     $span.html('<span class="badge" style="background:var(--e7-surface-3, #9ca3af);color:var(--e7-text-3, #fff);">N/A</span>');
     return;
 }
@@ -6801,6 +6821,8 @@ else {
      */
     modems: _netModemStates,
 
+    hasWired: _hasWired,
+
     wired: {
         state: w.state,
         time: w.time || ''
@@ -6829,7 +6851,7 @@ else {
             $span.html(
                 '<span style="display:inline-flex;flex-direction:row;align-items:flex-start;' +
                 'gap:4px;flex-wrap:nowrap;">' +
-                netLegHtml('Wired', w) +
+                (w.state === 'absent' ? '' : netLegHtml('Wired', w)) +
                 netLegHtml('Wireless', wl) +
                 '</span>' +
                 '<button class="rdpms-detail-btn" title="Network detail" ' +
@@ -9474,12 +9496,22 @@ if (_nwHealthyModems.length) {
     bodyHtml += '</div>';
 }
 
+            /* Wireless-only cluster (CardLine WireguardIP null): no Wired card.
+               Re-checked at click time so a payload baked before
+               GetCardLineData landed still hides it. */
+            var _popHasWired = payload.hasWired !== false &&
+                !(payload.wired && payload.wired.state === 'absent');
+            if (_popHasWired && typeof window.nfModemsHaveWired === 'function') {
+                _popHasWired = window.nfModemsHaveWired(
+                    String(payload.lazy && payload.lazy.siteId || ''), _nwIds);
+            }
+
             bodyHtml +=
     '<div class="rdpms-popup-section-title">' +
     '<span>Connectivity</span>' +
     '</div>' +
-    '<div class="rdpms-popup-net-grid">' +
-    rdpmsNetSection('Wired', 'fa-ethernet', 'wired', payload.wired) +
+    '<div class="rdpms-popup-net-grid"' + (_popHasWired ? '' : ' style="grid-template-columns:1fr;"') + '>' +
+    (_popHasWired ? rdpmsNetSection('Wired', 'fa-ethernet', 'wired', payload.wired) : '') +
     rdpmsNetSection('Wireless', 'fa-wifi', 'wireless', payload.wireless) +
     '</div>';
 
@@ -11191,6 +11223,7 @@ if (_nwHealthyModems.length) {
             });
 
             var total = 0;
+            var wiredTotal = 0;
             var wiredHealthy = 0;
             var wiredFaulty = 0;
             var wirelessHealthy = 0;
@@ -11215,6 +11248,12 @@ if (_nwHealthyModems.length) {
                     parseInt(cluster.clusterId, 10) > 0
                         ? String(parseInt(cluster.clusterId, 10))
                         : '';
+
+                /* Wireless-only modem (CardLine WireguardIP null): it is not
+                   part of the Wired universe at all, Online or Faulty. */
+                var _hasWired =
+                    nfModemHasWired(clusterSiteId, cluster.modemId) !== false;
+                if (_hasWired) { wiredTotal++; }
 
                 var flagValue = null;
 
@@ -11273,7 +11312,7 @@ if (_nwHealthyModems.length) {
                     !isFinite(flagValue)
                 ) {
                     unknown++;
-                    if (_legDown.wired) { wiredFaulty++; }
+                    if (_hasWired && _legDown.wired) { wiredFaulty++; }
                     if (_legDown.wireless) { wirelessFaulty++; }
                     return;
                 }
@@ -11287,7 +11326,10 @@ if (_nwHealthyModems.length) {
                 /* _legDown overrides a Healthy verdict: the flag can read up
                    simply because the masked leg stopped reporting, but the
                    backend still has the fault open (setTime, no resetTime). */
-                if (verdict.wired === 'Healthy' && !_legDown.wired) {
+                if (!_hasWired) {
+                    /* no Wired link - nothing to count */
+                }
+                else if (verdict.wired === 'Healthy' && !_legDown.wired) {
                     wiredHealthy++;
                 }
                 else {
@@ -11314,8 +11356,10 @@ if (_nwHealthyModems.length) {
             return {
                 total: total,
 
+                wiredTotal: wiredTotal,
+
                 wiredOnline:
-                    Math.max(0, total - wiredFaulty),
+                    Math.max(0, wiredTotal - wiredFaulty),
 
                 wiredFaulty:
                     wiredFaulty,
@@ -11609,9 +11653,132 @@ if (_nwHealthyModems.length) {
         return none;
     }
 
+    /* ── Does a modem have a Wired (OFC) link at all? ─────────────────────
+       CardLine.WireguardIP decides it: null on every row of the modem means
+       the cluster is wireless-only; any non-null value means it has both
+       Wired and Wireless.
+       Source order: the raw GetCardLineData rows (always carry the field),
+       then json.mCardLines - but only when that list has at least one
+       non-null WireguardIP, which proves its source populates the field
+       (an all-null list may simply be a feed that never sends it).
+       Returns true / false, or null when no CardLine row names the modem -
+       callers treat null as "has wired" so behaviour is unchanged until the
+       data is known. */
+    var _nfWiredMap = null, _nfWiredSig = '';
+    function nfBuildModemWiredMap() {
+        var bySite = window.__rdpmsCardLineRowsBySite || {};
+        var jsRows = (window.json && $.isArray(window.json.mCardLines)) ? window.json.mCardLines : [];
+        var wgSites = $.isArray(window.__rdpmsWireguardSites) ? window.__rdpmsWireguardSites : [];
+        var sig = String(jsRows.length) + '|wg:' + wgSites.join(',');
+        for (var k in bySite) {
+            if (bySite.hasOwnProperty(k) && $.isArray(bySite[k])) { sig += '|' + k + ':' + bySite[k].length; }
+        }
+        if (_nfWiredMap && sig === _nfWiredSig) { return _nfWiredMap; }
+
+        var map = {};
+        function absorb(rows, onlyNew) {
+            var touched = {};
+            for (var i = 0; i < rows.length; i++) {
+                var cl = rows[i];
+                if (!cl || cl.ModemId == null || !('WireguardIP' in cl)) { continue; }
+                var mid = String(cl.ModemId).trim().toUpperCase();
+                if (!mid) { continue; }
+                var key = String(cl.SiteId == null ? '' : cl.SiteId) + '|' + mid;
+                if (onlyNew && map.hasOwnProperty(key) && !touched[key]) { continue; }
+                touched[key] = true;
+                var has = $.trim(String(cl.WireguardIP == null ? '' : cl.WireguardIP)) !== '';
+                map[key] = map[key] === true || has;
+            }
+        }
+        for (var s in bySite) {
+            if (bySite.hasOwnProperty(s) && $.isArray(bySite[s])) { absorb(bySite[s], false); }
+        }
+        /* Server-resolved stations: json.mCardLines is authoritative even when
+           every WireguardIP there is null (an all-wireless station). */
+        if (wgSites.length) {
+            var wgSet = {};
+            wgSites.forEach(function (id) { wgSet[String(id)] = true; });
+            absorb(jsRows.filter(function (cl) { return cl && wgSet[String(cl.SiteId)]; }), true);
+        }
+        var jsHasField = jsRows.some(function (cl) {
+            return cl && cl.WireguardIP != null && $.trim(String(cl.WireguardIP)) !== '';
+        });
+        if (jsHasField) { absorb(jsRows, true); }
+
+        _nfWiredMap = map;
+        _nfWiredSig = sig;
+        return map;
+    }
+
+    function nfModemHasWired(siteId, modemId) {
+        var map = nfBuildModemWiredMap();
+        var sid = String(siteId == null ? '' : siteId).trim();
+        var vs = nfIdVariants(modemId);
+        for (var i = 0; i < vs.length; i++) {
+            var key = sid + '|' + String(vs[i]).toUpperCase();
+            if (map.hasOwnProperty(key)) { return map[key]; }
+        }
+        return null;
+    }
+
+    /* False only when EVERY modem on the row is known to be wireless-only. */
+    function nfModemsHaveWired(siteId, modemIds) {
+        if (!modemIds || !modemIds.length) { return true; }
+        for (var i = 0; i < modemIds.length; i++) {
+            if (nfModemHasWired(siteId, modemIds[i]) !== false) { return true; }
+        }
+        return false;
+    }
+    window.nfModemHasWired = nfModemHasWired;
+    window.nfModemsHaveWired = nfModemsHaveWired;
+
+    /* Modems of one station known to be wireless-only. The Wired KPI
+       denominator is the station's modem count minus this. */
+    function nfWirelessOnlyModemCount(siteId) {
+        var map = nfBuildModemWiredMap();
+        var pfx = String(siteId == null ? '' : siteId).trim() + '|';
+        var n = 0;
+        for (var k in map) {
+            if (map.hasOwnProperty(k) && k.indexOf(pfx) === 0 && map[k] === false) { n++; }
+        }
+        return n;
+    }
+    window.nfWirelessOnlyModemCount = nfWirelessOnlyModemCount;
+
+    /* Distinct json.mCardLines clusters whose every modem is wireless-only -
+       the same universe nfNetworkUniverseTotal() counts. */
+    function nfWirelessOnlyClusterCount() {
+        var rows = (window.json && $.isArray(window.json.mCardLines)) ? window.json.mCardLines : [];
+        var byCluster = {};
+        for (var i = 0; i < rows.length; i++) {
+            var cl = rows[i];
+            if (!cl || cl.ModemId == null) { continue; }
+            var cid = parseInt(cl.ClusterId, 10);
+            if (!(cid > 0)) { continue; }
+            var has = nfModemHasWired(cl.SiteId, cl.ModemId);
+            byCluster[cid] = (byCluster[cid] === undefined) ? (has === false) : (byCluster[cid] && has === false);
+        }
+        var n = 0;
+        for (var c in byCluster) {
+            if (byCluster.hasOwnProperty(c) && byCluster[c]) { n++; }
+        }
+        return n;
+    }
+    window.nfWirelessOnlyClusterCount = nfWirelessOnlyClusterCount;
+
     /* Wired leg with masking: every modem masked -> 'na'; otherwise the
-       normal worst-of over the modems that are NOT masked. */
+       normal worst-of over the modems that are NOT masked.
+       Wireless-only modems (no WireguardIP) are dropped first; when none is
+       left the leg is 'absent' - there is no Wired link to report on. */
     function nfWiredLegMasked(siteId, modemIds, idx) {
+        modemIds = modemIds || [];
+        if (modemIds.length && !nfModemsHaveWired(siteId, modemIds)) {
+            return { state: 'absent', time: '' };
+        }
+        modemIds = modemIds.filter(function (m) {
+            return nfModemHasWired(siteId, m) !== false;
+        });
+
         /* UI OVERRIDE (against correction.md): hold the wired leg at
      Undetermined while this site's Station Gateway is down, so the Modem
      never shows Healthy ahead of the Gateway.
@@ -11661,6 +11828,14 @@ if (_nwHealthyModems.length) {
     function nfCombineNetLegs(wired, wireless) {
         var w = (wired && wired.state) || 'unknown';
         var l = (wireless && wireless.state) || 'unknown';
+
+        /* Wireless-only modem (no WireguardIP): Wireless is the only path,
+           so its leg alone is the verdict. */
+        if (w === 'absent') {
+            if (l === 'faulty') { return { state: 'faulty', time: (wireless && wireless.time) || '' }; }
+            if (l === 'masked') { return { state: 'masked', time: '' }; }
+            return { state: 'healthy', time: '' };
+        }
 
         if (w === 'faulty' && l === 'faulty') {
             return {
@@ -13194,8 +13369,15 @@ console.log(
                frame that omits modemTotal. */
             var netTotal = (g.modemTotal > 0) ? g.modemTotal : g.clustersTotal;
 
-            wiredFaulty += g.modemWiredDown;
-            wiredOnline += Math.max(0, netTotal - g.modemWiredDown);
+            /* Wired denominator excludes wireless-only modems (CardLine
+               WireguardIP null) - they have no Wired link to be up or down. */
+            var _wOnly = (typeof window.nfWirelessOnlyModemCount === 'function')
+                ? window.nfWirelessOnlyModemCount(sid) : 0;
+            var wiredNetTotal = Math.max(0, netTotal - _wOnly);
+            var _wDown = Math.min(Math.max(0, g.modemWiredDown || 0), wiredNetTotal);
+
+            wiredFaulty += _wDown;
+            wiredOnline += Math.max(0, wiredNetTotal - _wDown);
 
             wirelessFaulty += g.modemWirelessDown;
             wirelessOnline += Math.max(0, netTotal - g.modemWirelessDown);
@@ -14250,7 +14432,8 @@ console.log(
                         networkCounts) {
                         networkCounts.wiredFaulty = 0;
                         networkCounts.wirelessFaulty = 0;
-                        networkCounts.wiredOnline = networkCounts.total;
+                        networkCounts.wiredOnline = (networkCounts.wiredTotal != null)
+                            ? networkCounts.wiredTotal : networkCounts.total;
                         networkCounts.wirelessOnline = networkCounts.total;
                         networkCounts.unknown = 0;
                     }

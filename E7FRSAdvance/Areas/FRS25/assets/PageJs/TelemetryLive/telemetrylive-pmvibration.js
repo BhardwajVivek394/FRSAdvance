@@ -3054,15 +3054,9 @@ function renderPointMachineVibrationTable() {
     }, 250);
 }
 function _pmVibrationRenderNow() {
-    var assetTypeId =
-        parseInt(
-            wsCurrentAssetTypeId ||
-            $('#drpAssetType').val() ||
-            0,
-            10
-        );
+    var assetTypeId = wsCurrentAssetTypeId || $('#drpAssetType').val() || '';
 
-    if (assetTypeId !== 3) return;
+    if (!window.tlIsAssetTypeKind || !window.tlIsAssetTypeKind(assetTypeId, 'point')) return;
 
     var viewType =
         $('#drpView').val();
@@ -3184,15 +3178,9 @@ function updatePointMachineVibrationRows(assetIds) {
 function _pmVibrationUpdateRowsNow(
     assetIds
 ) {
-    var assetTypeId =
-        parseInt(
-            wsCurrentAssetTypeId ||
-            $('#drpAssetType').val() ||
-            0,
-            10
-        );
+    var assetTypeId = wsCurrentAssetTypeId || $('#drpAssetType').val() || '';
 
-    if (assetTypeId !== 3) return;
+    if (!window.tlIsAssetTypeKind || !window.tlIsAssetTypeKind(assetTypeId, 'point')) return;
 
     var viewType =
         $('#drpView').val();

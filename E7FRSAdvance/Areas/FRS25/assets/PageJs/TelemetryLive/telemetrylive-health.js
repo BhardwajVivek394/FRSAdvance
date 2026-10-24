@@ -121,7 +121,7 @@
         return parseInt(t, 10) || 0;
     }
     window.tlAssetTypeOf = assetTypeOf;
-    function isTrackType() { return assetTypeId() === 1; }
+    function isTrackType() { return window.tlAssetTypeKind(assetTypeId()) === 'track'; }
 
     /* ======================================================================
        SAFE RANGES  (FRS attribute range per asset, else RDPMS default)
@@ -204,8 +204,8 @@
        RWKR / NWCR / RWCR; direction + last operation time. */
     var PM_DEFS = [['iptMax', 'IPT N/R(A) Max'], ['iptAvg', 'IPT N/R(A) Avg'], ['vpt110Avg', 'VPT 110 DC LOC N/R(V)'],
         ['tpt', 'TPT N/R(ms)'], ['locIndication', 'VPT 24 DC LOC N/R(V)'], ['krIndication', 'VPT N/R(V)']];
-    function isPmType() { return assetTypeId() === 3; }
-    function isSignalType() { return assetTypeId() === 2; }
+    function isPmType() { return window.tlAssetTypeKind(assetTypeId()) === 'point'; }
+    function isSignalType() { return window.tlAssetTypeKind(assetTypeId()) === 'signal'; }
 
     /* ---- Signal: aspect-wise layout (v616 _signalColSeq) ------------------
        Each reading maps to its aspect group in the 616 sequence

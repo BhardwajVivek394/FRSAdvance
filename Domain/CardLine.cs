@@ -42,6 +42,8 @@ namespace Domain
         public int? ValueType { get; set; }
         public bool? IsDigital { get; set; }
         public decimal? Multiplication { get; set; }
+        public string WireguardIP { get; set; }  // null = wireless-only modem, set = wired (OFC) + wireless
+        public string IP { get; set; }
         public List<ADC> mADCs { get; set; } = new List<ADC>();
         public List<Domain.AssetType> AssetTypes { get; set; } = new List<Domain.AssetType>();
         public List<Domain.Asset> Assets { get; set; } = new List<Domain.Asset>();
