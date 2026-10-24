@@ -1,0 +1,1034 @@
+/* ============================================================
+   e7-signalroom-theme.css
+   Energy7 RDPMS — "Option C · Signal Room" theme
+
+   Light ops look: a cool grey page with a faint dot grid, a solid
+   navy navigation rail running full height, a navy hero band on the
+   dashboard, flat white cards with soft layered shadows, one blue
+   accent (#2F6BFF), Manrope for UI text and IBM Plex Mono for
+   clocks, codes and small counters. A matching navy dark scheme.
+
+   HOW IT PLUGS IN
+   ---------------
+   • Loaded straight AFTER e7-energy7-theme.css and BEFORE
+     e7-responsive-fixes.css in Areas/FRS25/Views/Shared/_Layout.cshtml.
+     The Energy7 theme stays in place: this sheet re-points its
+     --e7-* tokens (so every page built on them follows) and replaces
+     only the shell geometry, rail, top bar and dashboard surfaces.
+   • No markup, ids, classes or script hooks change.
+   • Rollback: delete the one <link> line for this file in _Layout.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. Tokens
+   ------------------------------------------------------------ */
+
+/* Shell geometry. The flat shell has no grey frame around it; --e7-inset
+   is now the gutter between the rail and the content. Re-declared in the
+   responsive block at the bottom (same breakpoints as the Energy7 theme). */
+:root {
+    --e7-frame: 0px;
+    --e7-inset: 24px;
+    --sidebar-width: 244px;
+    --sidebar-width-mini: 76px;
+
+    --sr-font: "Manrope", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --sr-mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sr-radius-card: 16px;
+    --sr-radius-ctl: 11px;
+}
+
+:root,
+html[data-aurora="light"] {
+    --sr-rail: #0B1B38;
+    --sr-rail-line: rgba(255, 255, 255, .08);
+    --sr-hero: #0F2554;
+    --sr-hero-glow: rgba(80, 140, 255, .34);
+    --sr-hero-text: #B3C4E6;
+    --sr-hero-tile: rgba(255, 255, 255, .07);
+    --sr-hero-edge: rgba(255, 255, 255, .14);
+    --sr-dotgrid: rgba(15, 23, 42, .055);
+    --sr-accent-glow: 0 6px 16px -8px rgba(47, 107, 255, .8);
+
+    --e7-page: #F4F6FA;
+    --e7-shell: transparent;
+    --e7-surface: #FFFFFF;
+    --e7-surface-2: #F8FAFC;
+    --e7-surface-3: #EEF2F8;
+
+    --e7-border: #E4E8F0;
+    --e7-border-2: #DFE4EC;
+    --e7-shadow-shell: none;
+    --e7-shadow-card: 0 1px 2px rgba(15, 23, 42, .04), 0 12px 32px -24px rgba(15, 23, 42, .18);
+    --e7-shadow-soft: 0 1px 2px rgba(15, 23, 42, .04);
+    --e7-shadow-pop: 0 18px 40px -12px rgba(15, 23, 42, .22);
+    --e7-shadow-hover: 0 2px 4px rgba(15, 23, 42, .05), 0 18px 36px -20px rgba(15, 37, 84, .35);
+    --e7-shadow-rail: none;
+
+    /* Sidebar — its own tokens, so the shared --e7-rail-* family below can keep
+       its page meaning. */
+    --sr-nav-text: #B8C6DE;
+    --sr-nav-dim: #7E92B5;
+    --sr-nav-hover: rgba(255, 255, 255, .07);
+    --sr-nav-active-bg: rgba(91, 140, 255, .16);   /* current page: soft tint … */
+    --sr-nav-active-fg: #FFFFFF;
+    --sr-nav-active-icon: #8FB4FF;
+    --sr-nav-active-bar: #5B8CFF;                   /* … plus a slim accent bar */
+    --sr-nav-parent: transparent;                   /* parent of the current page: just white text */
+    --sr-nav-child: rgba(91, 140, 255, .16);
+    --sr-nav-guide: rgba(255, 255, 255, .10);
+
+    /* --e7-rail-* is shared: 30+ pages paint their header bands, band buttons,
+       band toggles and selected states with it (Telemetry, Alerts, Alert Analysis,
+       Performance, ChatBot, User Management …). It keeps its original meaning —
+       a coloured band, a WHITE active pill with dark text, and
+       rail-active-icon = the selection colour — only re-hued to Option C blue.
+       Light scheme: the band keeps the original teal band's lightness, because the
+       light-mode page rules (aurora-bridge / energy7 theme) force h1–h6, p and
+       small to dark text with !important — on a navy band that text vanished. */
+    --e7-rail-from: #8AB2F8;
+    --e7-rail-mid: #74A1F6;
+    --e7-rail-to: #5E8EF7;
+    --e7-rail-text: rgba(255, 255, 255, .92);
+    --e7-rail-text-dim: rgba(255, 255, 255, .78);
+    --e7-rail-icon: rgba(255, 255, 255, .92);
+    --e7-rail-hover: rgba(255, 255, 255, .18);
+    --e7-rail-active-bg: #FFFFFF;
+    --e7-rail-active-fg: #0F2554;
+    --e7-rail-active-icon: #2F6BFF;
+    --e7-rail-chip: #FFFFFF;
+    --e7-rail-divider: rgba(255, 255, 255, .28);
+
+    --e7-text: #0F172A;
+    --e7-text-2: #475569;
+    --e7-text-3: #5B6B82;   /* 5.4:1 on white */
+    --e7-text-4: #A3AFC2;
+    --e7-heading: #0F172A;
+    --e7-footer-text: #64748B;
+
+    --e7-accent: #2F6BFF;
+    --e7-accent-2: #5B8CFF;
+    --e7-accent-ink: #1D4FD0;
+    --e7-accent-soft: rgba(47, 107, 255, .10);
+    --e7-ask-from: #2F6BFF;
+    --e7-ask-to: #1D5BD8;
+    --e7-grid-line: #EEF1F6;
+
+    --e7-green: #15803D;
+    --e7-amber: #B45309;
+    --e7-red: #C42B2B;
+    --e7-dot-green: #22C55E;
+    --e7-dot-amber: #F59E0B;
+    --e7-dot-red: #E5484D;
+    --e7-live-bg: #E6F6EC;
+    --e7-live-fg: #15803D;
+
+    --e7-green-soft: #E6F6EC;
+    --e7-amber-soft: #FEF3C7;
+    --e7-red-soft: #FEE2E2;
+    --e7-violet: #6D28D9;
+    --e7-violet-soft: #EDE7FB;
+
+    /* the old aqua / blue / lilac pastels all become one cool-blue family */
+    --e7-p-aqua: #DCE6FB;
+    --e7-p-aqua-2: #F1F5FE;
+    --e7-p-blue: #DCE6FB;
+    --e7-p-blue-2: #F1F5FE;
+    --e7-p-lilac: #E4E0F8;
+    --e7-p-lilac-2: #F5F3FD;
+    --e7-wash: rgba(15, 23, 42, .025);
+
+    --e7-c1: #2F6BFF;
+    --e7-c2: #6D28D9;
+    --e7-c3: #15803D;
+    --e7-c4: #0E7490;
+    --e7-c5: #B45309;
+    --e7-c6: #1D4FD0;
+
+    --e7-focus: #2F6BFF;
+}
+
+html[data-aurora="dark"],
+html:not([data-aurora="light"]) {
+    --sr-rail: #071226;
+    --sr-rail-line: rgba(255, 255, 255, .07);
+    --sr-hero: #0F2554;
+    --sr-hero-glow: rgba(80, 140, 255, .30);
+    --sr-hero-text: #B3C4E6;
+    --sr-hero-tile: rgba(255, 255, 255, .06);
+    --sr-hero-edge: rgba(255, 255, 255, .12);
+    --sr-dotgrid: rgba(148, 170, 210, .07);
+    --sr-accent-glow: 0 6px 16px -8px rgba(91, 140, 255, .7);
+
+    --e7-page: #0A1222;
+    --e7-shell: transparent;
+    --e7-surface: #111C30;
+    --e7-surface-2: #0E1829;
+    --e7-surface-3: #18253D;
+
+    --e7-border: #1E2C45;
+    --e7-border-2: #27385A;
+    --e7-shadow-shell: none;
+    --e7-shadow-card: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 32px -24px rgba(0, 0, 0, .7);
+    --e7-shadow-soft: 0 1px 2px rgba(0, 0, 0, .3);
+    --e7-shadow-pop: 0 18px 40px -12px rgba(0, 0, 0, .6);
+    --e7-shadow-hover: 0 2px 4px rgba(0, 0, 0, .3), 0 18px 36px -20px rgba(0, 0, 0, .7);
+    --e7-shadow-rail: none;
+
+    --sr-nav-text: #B8C6DE;
+    --sr-nav-dim: #7E92B5;
+    --sr-nav-hover: rgba(255, 255, 255, .06);
+    --sr-nav-active-bg: rgba(91, 140, 255, .15);
+    --sr-nav-active-fg: #FFFFFF;
+    --sr-nav-active-icon: #8FB4FF;
+    --sr-nav-active-bar: #5B8CFF;
+    --sr-nav-parent: transparent;
+    --sr-nav-child: rgba(91, 140, 255, .15);
+    --sr-nav-guide: rgba(255, 255, 255, .09);
+
+    --e7-rail-from: #0F2554;
+    --e7-rail-mid: #16336F;
+    --e7-rail-to: #1F4FC4;
+    --e7-rail-text: rgba(255, 255, 255, .90);
+    --e7-rail-text-dim: #B3C4E6;
+    --e7-rail-icon: rgba(255, 255, 255, .90);
+    --e7-rail-hover: rgba(255, 255, 255, .12);
+    --e7-rail-active-bg: rgba(255, 255, 255, .94);
+    --e7-rail-active-fg: #0B1B38;
+    --e7-rail-active-icon: #3D6BE0;   /* dark-mode selection fill (white text on it, 4.9:1) */
+    --e7-rail-chip: #FFFFFF;
+    --e7-rail-divider: rgba(255, 255, 255, .16);
+
+    --e7-text: #E2E8F2;
+    --e7-text-2: #AEBBD0;
+    --e7-text-3: #8C9AB3;
+    --e7-text-4: #56647D;
+    --e7-heading: #F1F5FB;
+    --e7-footer-text: #7E8CA5;
+
+    --e7-accent: #5B8CFF;
+    --e7-accent-2: #82A8FF;
+    --e7-accent-ink: #9DBBFF;
+    --e7-accent-soft: rgba(91, 140, 255, .15);
+    --e7-ask-from: #3D76FF;
+    --e7-ask-to: #2F5FE0;
+    --e7-grid-line: rgba(140, 170, 230, .10);
+
+    --e7-green: #4ADE80;
+    --e7-amber: #FBBF24;
+    --e7-red: #FB7185;
+    --e7-dot-green: #34D399;
+    --e7-dot-amber: #FBBF24;
+    --e7-dot-red: #F87171;
+    --e7-live-bg: rgba(52, 211, 153, .14);
+    --e7-live-fg: #4ADE80;
+
+    --e7-green-soft: rgba(52, 211, 153, .14);
+    --e7-amber-soft: rgba(251, 191, 36, .14);
+    --e7-red-soft: rgba(248, 113, 113, .15);
+    --e7-violet: #C4B5FD;
+    --e7-violet-soft: rgba(150, 130, 235, .18);
+
+    --e7-p-aqua: rgba(91, 140, 255, .20);
+    --e7-p-aqua-2: rgba(91, 140, 255, .08);
+    --e7-p-blue: rgba(91, 140, 255, .20);
+    --e7-p-blue-2: rgba(91, 140, 255, .08);
+    --e7-p-lilac: rgba(150, 130, 235, .18);
+    --e7-p-lilac-2: rgba(150, 130, 235, .08);
+    --e7-wash: rgba(255, 255, 255, .02);
+
+    --e7-c1: #82A8FF;
+    --e7-c2: #C4B5FD;
+    --e7-c3: #4ADE80;
+    --e7-c4: #67E8F9;
+    --e7-c5: #FBBF24;
+    --e7-c6: #9DBBFF;
+
+    --e7-focus: #82A8FF;
+}
+
+/* ------------------------------------------------------------
+   2. Type
+   ------------------------------------------------------------ */
+
+html body#e7Body {
+    font-family: var(--sr-font) !important;
+    font-size: 13.5px;
+    background-color: var(--e7-page) !important;
+    background-image: radial-gradient(var(--sr-dotgrid) 1px, transparent 1px) !important;
+    background-size: 22px 22px !important;
+    background-attachment: fixed !important;
+}
+
+/* Same selector as the Energy7 theme's "one typeface" rule, so this later
+   copy wins; icon fonts and code stay excluded. */
+#e7Body *:not(.fa):not(.fas):not(.far):not(.fab):not(.fal):not(.fad):not(.fa-solid):not(.fa-regular):not(.fa-brands):not([class*="fa-"]):not(code):not(pre):not(kbd):not(samp) {
+    font-family: var(--sr-font) !important;
+}
+
+#e7Body h1, #e7Body h2, #e7Body h3, #e7Body h4, #e7Body h5, #e7Body h6 {
+    letter-spacing: -.015em;
+}
+
+/* clocks, version tags and timestamps read as instrument data */
+#e7Body .e7-brand-tag,
+#e7Body .e7-header .pill.clock,
+#e7Body .e7-header .pill.clock *,
+#e7Body .e7-notif-time,
+#e7Body .e7-footer .e7-version {
+    font-family: var(--sr-mono) !important;
+}
+
+/* ------------------------------------------------------------
+   3. Application shell — flush navy rail + open content area
+   ------------------------------------------------------------ */
+
+#e7Body .e7-app {
+    margin: 0;
+    min-height: 100vh;
+    background: transparent !important;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+#e7Body .e7-sidebar {
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: var(--sidebar-width);
+    padding: 22px 14px 16px;
+    background: var(--sr-rail) !important;
+    border: none !important;
+    border-right: 1px solid var(--sr-rail-line) !important;
+    border-radius: 0;
+    box-shadow: none !important;
+}
+
+/* brand: "E7" accent square + white "Energy7" wordmark (same lockup as the
+   login page), straight on the rail — no white chip */
+#e7Body .e7-brand {
+    padding: 0 6px 16px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--sr-rail-line) !important;
+}
+
+#e7Body .e7-logo-chip {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    background: transparent;
+    border-radius: 0;
+    padding: 4px 8px;
+    box-shadow: none;
+}
+
+#e7Body .e7-logo-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: var(--e7-accent);
+    box-shadow: var(--sr-accent-glow);
+    color: #FFFFFF;
+    font-family: var(--sr-font);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: -.01em;
+}
+
+#e7Body .e7-logo-name {
+    font-family: var(--sr-font);
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1;
+    color: #FFFFFF;
+    white-space: nowrap;
+}
+
+body#e7Body.sidebar-mini .e7-logo-chip { justify-content: center; padding: 4px 0; }
+body#e7Body.sidebar-mini .e7-logo-name { display: none; }
+
+#e7Body .e7-brand-tag {
+    margin-top: 11px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .2em;
+    color: var(--sr-nav-dim) !important;
+}
+
+#e7Body .e7-nav {
+    scrollbar-color: rgba(255, 255, 255, .18) transparent;
+}
+
+#e7Body .e7-nav::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .16); }
+
+#e7Body .e7-nav-section {
+    padding: 14px 12px 6px;
+    font-size: 10.5px !important;
+    font-weight: 700 !important;
+    letter-spacing: .14em !important;
+    text-transform: uppercase;
+    color: #6F84A8 !important;
+}
+
+#e7Body .e7-nav-item {
+    min-height: 42px;
+    padding: 0 12px;
+    margin: 2px 0;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+#e7Body .e7-nav-item {
+    color: var(--sr-nav-text) !important;
+    background: transparent !important;
+}
+
+#e7Body .e7-nav-item i {
+    font-size: 14px;
+    color: var(--sr-nav-text) !important;
+}
+
+#e7Body .e7-nav-item:hover {
+    background: var(--sr-nav-hover) !important;
+    color: #FFFFFF !important;
+}
+
+#e7Body .e7-nav-item:hover i { color: #FFFFFF !important; }
+
+#e7Body .e7-nav-item.active,
+#e7Body .e7-nav-item.active:hover {
+    background: var(--sr-nav-active-bg) !important;
+    color: var(--sr-nav-active-fg) !important;
+    font-weight: 700;
+    box-shadow: none !important;
+}
+
+#e7Body .e7-nav-item.active i { color: var(--sr-nav-active-icon) !important; }
+
+/* accent bar on the current page (the layout's own ::before, which the
+   Energy7 theme hid) */
+#e7Body .e7-nav-item.active::before {
+    display: block;
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    border-radius: 0 3px 3px 0;
+    background: var(--sr-nav-active-bar);
+    box-shadow: none;
+}
+
+/* a parent whose child is the current page: tinted, not filled, so only
+   the current page carries the solid accent */
+#e7Body .e7-nav-item.has-sub.active,
+#e7Body .e7-nav-item.has-sub.active:hover {
+    background: var(--sr-nav-parent) !important;
+    color: #FFFFFF !important;
+    box-shadow: none !important;
+}
+
+#e7Body .e7-nav-item.has-sub.active i { color: #FFFFFF !important; }
+#e7Body .e7-nav-item.has-sub.active::before { display: none; }
+
+/* submenu: a hairline guide, the active child is a soft tint */
+#e7Body .e7-submenu {
+    margin-left: 20px;
+    padding-left: 12px;
+    border-left: 1px solid var(--sr-nav-guide);
+}
+
+#e7Body .e7-submenu .e7-nav-item {
+    min-height: 36px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--sr-nav-dim) !important;
+}
+
+#e7Body .e7-submenu .e7-nav-item:hover {
+    background: var(--sr-nav-hover) !important;
+    color: #FFFFFF !important;
+}
+
+#e7Body .e7-submenu .e7-nav-item::after {
+    background: var(--sr-nav-guide) !important;
+}
+
+#e7Body .e7-submenu .e7-nav-item.active,
+#e7Body .e7-submenu .e7-nav-item.active:hover {
+    background: var(--sr-nav-child) !important;
+    color: #FFFFFF !important;
+    box-shadow: none !important;
+}
+
+#e7Body .e7-submenu .e7-nav-item:hover::after,
+#e7Body .e7-submenu .e7-nav-item.active::after {
+    background: #5B8CFF !important;
+}
+
+/* profile card */
+#e7Body .e7-sidebar-footer {
+    padding-top: 12px;
+    border-top: 1px solid var(--sr-rail-line) !important;
+}
+
+#e7Body .e7-sidebar-user {
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .05) !important;
+    border: 1px solid rgba(255, 255, 255, .09) !important;
+}
+
+#e7Body .e7-sidebar-user:hover { background: rgba(255, 255, 255, .09) !important; }
+
+#e7Body .e7-sidebar-user-avatar {
+    background: rgba(255, 255, 255, .14);
+    color: #FFFFFF;
+    font-weight: 700;
+}
+
+#e7Body .e7-sidebar-user-avatar::after { border-color: var(--sr-rail) !important; }
+
+#e7Body .e7-sidebar-user-name { color: #FFFFFF !important; }
+#e7Body .e7-sidebar-user-role,
+#e7Body .e7-sidebar-user-caret { color: var(--sr-nav-dim) !important; }
+
+/* collapsed rail */
+body#e7Body.sidebar-mini .e7-sidebar {
+    width: var(--sidebar-width-mini);
+    padding-left: 10px;
+    padding-right: 10px;
+}
+
+body#e7Body.sidebar-mini .e7-nav-section { display: none; }
+
+/* main column */
+#e7Body .e7-main {
+    margin-left: var(--sidebar-width);
+    width: calc(100% - var(--sidebar-width));
+    min-height: 100vh;
+    padding-left: var(--e7-inset);
+    box-sizing: border-box;
+}
+
+body#e7Body.sidebar-mini .e7-main {
+    margin-left: var(--sidebar-width-mini);
+    width: calc(100% - var(--sidebar-width-mini));
+}
+
+#e7Body .e7-body {
+    padding: 16px var(--e7-inset) 0 0;
+}
+
+/* ------------------------------------------------------------
+   4. Top bar — open row on the page, controls as white tiles
+   ------------------------------------------------------------ */
+
+#e7Body .e7-header,
+#e7Body .e7-header.topbar {
+    min-height: 58px;
+    margin: 12px var(--e7-inset) 0 0;
+    padding: 8px 2px;
+    border-radius: 0;
+    background: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid var(--e7-border) !important;
+    box-shadow: none !important;
+}
+
+#e7Body .e7-menu-toggle.hamb {
+    width: 42px;
+    height: 42px;
+    border-radius: var(--sr-radius-ctl);
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border-2) !important;
+    color: var(--e7-text-2) !important;
+    box-shadow: var(--e7-shadow-soft) !important;
+}
+
+#e7Body .e7-header-title.title {
+    font-size: 14.5px;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    color: var(--e7-heading) !important;
+}
+
+#e7Body .e7-header .pill {
+    height: 42px;
+    padding: 0 14px;
+    border-radius: var(--sr-radius-ctl);
+    border: 1px solid var(--e7-border-2) !important;
+    background: var(--e7-surface) !important;
+    color: var(--e7-text) !important;
+    font-size: 12.5px;
+    font-weight: 600;
+    box-shadow: var(--e7-shadow-soft) !important;
+}
+
+#e7Body .e7-header .pill:hover {
+    background: var(--e7-surface) !important;
+    border-color: var(--e7-accent) !important;
+}
+
+#e7Body .e7-header .pill i { color: var(--e7-text-2) !important; }
+
+#e7Body .e7-header .pill.icon-btn {
+    width: 42px;
+    border-radius: var(--sr-radius-ctl);
+}
+
+/* clock: instrument readout with a live dot */
+#e7Body .e7-header .pill.clock {
+    gap: 8px;
+    background: var(--e7-surface) !important;
+    border-color: var(--e7-border-2) !important;
+    color: var(--e7-text-2) !important;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0;
+}
+
+#e7Body .e7-header .pill.clock::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--e7-dot-green);
+    flex: 0 0 auto;
+}
+
+#e7Body .e7-notif-count {
+    background: var(--e7-dot-red) !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 0 0 2px var(--e7-surface);
+}
+
+/* Ask AI — the one filled control in the bar */
+#e7Body .e7-header .pill.ask {
+    background: var(--e7-accent) !important;
+    border-color: var(--e7-accent) !important;
+    color: #FFFFFF !important;
+    box-shadow: var(--sr-accent-glow) !important;
+}
+
+#e7Body .e7-header .pill.ask:hover {
+    background: var(--e7-accent-ink) !important;
+    border-color: var(--e7-accent-ink) !important;
+    filter: none;
+}
+
+#e7Body .e7-header .pill.theme-toggle i { color: var(--e7-accent) !important; }
+
+/* footer: a plain line of small print */
+#e7Body .e7-footer {
+    margin: 22px var(--e7-inset) 18px 0;
+    padding: 12px 2px;
+    background: transparent !important;
+    border: none !important;
+    border-top: 1px solid var(--e7-border) !important;
+    border-radius: 0;
+    color: var(--e7-footer-text) !important;
+    font-size: 11.5px;
+}
+
+/* focus ring on the rail */
+#e7Body .e7-nav-item:focus-visible,
+#e7Body .e7-sidebar-user:focus-visible {
+    outline: 2px solid #82A8FF;
+    outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------
+   5. Shared surfaces — every card on every page
+   ------------------------------------------------------------ */
+
+#e7Body .e7-body .card,
+#e7Body .e7-body .panel {
+    border-radius: var(--sr-radius-card);
+}
+
+#e7Body .e7-body .btn-primary,
+#e7Body .e7-body .btn.btn-primary {
+    background: var(--e7-accent) !important;
+    border-color: var(--e7-accent) !important;
+    color: #FFFFFF !important;
+}
+
+#e7Body .e7-body .btn-primary:hover,
+#e7Body .e7-body .btn.btn-primary:hover {
+    background: var(--e7-accent-ink) !important;
+    border-color: var(--e7-accent-ink) !important;
+}
+
+/* ------------------------------------------------------------
+   6. Dashboard (Home/Index)
+   The filter bar becomes the navy hero band (title, scope filters,
+   CPU / RAM / DISK tiles). Scoped with :has(.sys) so the other pages
+   that reuse .filters (Health, Wisdom Manage) keep a white bar.
+   ------------------------------------------------------------ */
+
+#e7Body .e7-body .filters:has(> .sys),
+#e7Body .e7-body .filters.bg-Up:has(> .sys) {
+    min-height: 92px;
+    padding: 20px 24px;
+    gap: 14px 16px;
+    border-radius: 18px;
+    border: none;
+    color: #FFFFFF;
+    background-color: var(--sr-hero);
+    background-image:
+        radial-gradient(640px 260px at 86% -30%, var(--sr-hero-glow), transparent 70%),
+        linear-gradient(180deg, rgba(255, 255, 255, .03), transparent);
+    box-shadow: 0 18px 40px -24px rgba(15, 37, 84, .6);
+}
+
+#e7Body .e7-body .filters:has(> .sys) > b.h6 {
+    margin-right: 14px !important;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: #FFFFFF !important;
+}
+
+#e7Body .e7-body .filters:has(> .sys) > b.h6 i {
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    color: #FFFFFF;
+    background: var(--sr-hero-tile);
+    border: 1px solid var(--sr-hero-edge);
+}
+
+/* scope buttons on navy */
+#e7Body .e7-body .filters:has(> .sys) .selectx,
+#e7Body .e7-body .filters:has(> .sys) .selectx.bg-Up {
+    height: 42px;
+    min-width: 150px;
+    padding: 0 14px;
+    border-radius: var(--sr-radius-ctl);
+    background: var(--sr-hero-tile) !important;
+    border: 1px solid rgba(255, 255, 255, .22) !important;
+    color: #FFFFFF !important;
+}
+
+#e7Body .e7-body .filters:has(> .sys) .selectx .text { color: #FFFFFF; }
+#e7Body .e7-body .filters:has(> .sys) .selectx i { color: #B3C4E6 !important; }
+
+#e7Body .e7-body .filters:has(> .sys) .selectx:hover,
+#e7Body .e7-body .filters:has(> .sys) .selectx.bg-Up:hover,
+#e7Body .e7-body .filters:has(> .sys) .selectx.active {
+    background: rgba(255, 255, 255, .13) !important;
+    border-color: rgba(255, 255, 255, .45) !important;
+    border-radius: var(--sr-radius-ctl);
+}
+
+/* the open dropdown is a normal white menu again */
+#e7Body .e7-body .filters:has(> .sys) .filter-dropdown {
+    color: var(--e7-text);
+    border-radius: 14px;
+}
+
+#e7Body .e7-body .filters:has(> .sys) .filter-dropdown input { color: var(--e7-text); }
+
+/* apply button: the accent */
+#e7Body .e7-body .filters:has(> .sys) .search,
+#e7Body .e7-body .filters:has(> .sys) .search.bg-Up {
+    width: 42px;
+    height: 42px;
+    border-radius: var(--sr-radius-ctl);
+    background: var(--e7-accent);
+    box-shadow: var(--sr-accent-glow);
+}
+
+#e7Body .e7-body .filters:has(> .sys) .search:hover,
+#e7Body .e7-body .filters:has(> .sys) .search.bg-Up:hover {
+    background: #4C82FF;
+    border-radius: var(--sr-radius-ctl);
+    filter: none;
+}
+
+/* CPU / RAM / DISK as hero tiles; the ring keeps drawing the usage */
+#e7Body .e7-body .filters:has(> .sys) .sys .gauge,
+#e7Body .e7-body .filters:has(> .sys) .sys .gauge.bg-down {
+    width: 86px;
+    padding: 10px 8px 9px;
+    border-radius: 13px;
+    background: var(--sr-hero-tile) !important;
+    border: 1px solid var(--sr-hero-edge) !important;
+}
+
+#e7Body .e7-body .filters:has(> .sys) .gauge .gauge-ring rect { rx: 12px; }
+
+#e7Body .e7-body .filters:has(> .sys) .gauge strong {
+    font-size: 19px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+}
+
+#e7Body .e7-body .filters:has(> .sys) .sys .gauge[data-status="ok"] strong   { color: #FFFFFF; }
+#e7Body .e7-body .filters:has(> .sys) .sys .gauge[data-status="warn"] strong { color: #FCD34D; }
+#e7Body .e7-body .filters:has(> .sys) .sys .gauge[data-status="bad"] strong  { color: #FCA5A5; }
+
+#e7Body .e7-body .filters:has(> .sys) .gauge small {
+    font-family: var(--sr-mono) !important;
+    font-size: 10px;
+    letter-spacing: .12em;
+    color: var(--sr-hero-text) !important;
+}
+
+#e7Body .e7-body .filters:has(> .sys) .sys .gauge[data-status="ok"] .gauge-ring rect   { stroke: #34D399; }
+#e7Body .e7-body .filters:has(> .sys) .sys .gauge[data-status="warn"] .gauge-ring rect { stroke: #FBBF24; }
+#e7Body .e7-body .filters:has(> .sys) .sys .gauge[data-status="bad"] .gauge-ring rect  { stroke: #F87171; }
+
+/* other pages' filter bars: white scope row with rounded-rect controls */
+#e7Body .e7-body .filters,
+#e7Body .e7-body .filters.bg-Up {
+    border-radius: 14px;
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .e7-body .selectx,
+#e7Body .e7-body .selectx.bg-Up,
+#e7Body .e7-body .selectx:hover,
+#e7Body .e7-body .selectx.bg-Up:hover {
+    border-radius: 10px;
+}
+
+/* station tabs: a white scope strip, current station underlined in accent */
+#e7Body .e7-body .crumb,
+#e7Body .e7-body .crumb.bg-Up {
+    margin-top: 14px;
+    padding: 0 14px;
+    min-height: 46px;
+    border-radius: 14px;
+    background: var(--e7-surface);
+    border: 1px solid var(--e7-border);
+    box-shadow: var(--e7-shadow-soft);
+    color: var(--e7-text-3);
+}
+
+#e7Body .e7-body .crumb #pills-tab .nav-item + .nav-item .nav-link {
+    border-left: none !important;
+}
+
+#e7Body .e7-body .crumb #pills-tab .nav-link,
+#e7Body .e7-body .crumb #pills-tab .nav-link.active,
+#e7Body .e7-body .crumb #pills-tab .nav-link:hover {
+    padding: 13px 12px 11px;
+    font-size: 13px;
+    border-bottom: 2px solid transparent !important;
+}
+
+#e7Body .e7-body .crumb #pills-tab .nav-item:first-child .nav-link { padding-left: 12px; }
+
+#e7Body .e7-body .crumb #pills-tab .nav-link { font-weight: 600; color: var(--e7-text-3) !important; }
+#e7Body .e7-body .crumb #pills-tab .nav-link:hover { color: var(--e7-text) !important; }
+
+#e7Body .e7-body .crumb #pills-tab .nav-link.active {
+    font-weight: 700;
+    color: var(--e7-accent-ink) !important;
+    border-bottom-color: var(--e7-accent) !important;
+}
+
+/* panels + heads */
+#e7Body .e7-body .panel,
+#e7Body .e7-body .panel.bg-Up {
+    margin-top: 16px;
+    border-radius: var(--sr-radius-card);
+    padding: 20px 22px;
+    box-shadow: var(--e7-shadow-card);
+}
+
+#e7Body .e7-body .TopBottom-padding { padding: 20px 22px !important; }
+
+#e7Body .e7-body .phead,
+#e7Body .e7-body .phead.bg-down {
+    padding: 0 0 14px;
+    font-size: 16.5px;
+    font-weight: 800;
+    letter-spacing: -.01em;
+    border-bottom-color: var(--e7-border);
+}
+
+#e7Body .e7-body .phead i { color: var(--e7-accent); }
+
+#e7Body .e7-body .phead .badge {
+    font-family: var(--sr-mono) !important;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 7px;
+    background: var(--e7-accent-soft);
+    border-color: transparent;
+    color: var(--e7-accent-ink);
+}
+
+#e7Body .e7-body .phead .live,
+#e7Body .e7-body .phead .live.bg-down {
+    font-family: var(--sr-mono) !important;
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 5px 11px;
+    border-radius: 7px;
+}
+
+/* asset tiles: label, a big count, three status rows */
+#e7Body .e7-body .asset-grid { gap: 14px; margin-top: 18px; }
+
+#e7Body .e7-body .asset {
+    padding: 16px 16px 12px;
+    border-radius: 14px;
+    border-color: var(--e7-border);
+    box-shadow: var(--e7-shadow-soft);
+}
+
+#e7Body .e7-body .asset::before {
+    height: 3px;
+    background: var(--e7-accent);
+    opacity: 0;
+    transition: opacity .18s ease;
+}
+
+#e7Body .e7-body .asset:hover {
+    transform: translateY(-2px);
+    border-color: var(--e7-border-2);
+    box-shadow: var(--e7-shadow-hover);
+}
+
+#e7Body .e7-body .asset:hover::before { opacity: 1; }
+
+#e7Body .e7-body .asset h6 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: var(--e7-text-3) !important;
+}
+
+#e7Body .e7-body .big {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -.03em;
+    line-height: 1.05;
+    margin: 4px 0 10px;
+}
+
+#e7Body .e7-body .asset p { font-size: 12.5px; padding: 6px 0; }
+
+/* report cards */
+#e7Body .e7-body .reports { gap: 14px; margin-top: 18px; }
+
+#e7Body .e7-body .report {
+    border-radius: 14px;
+    padding: 16px 18px 18px;
+}
+
+#e7Body .e7-body .report-title {
+    font-size: 11.5px;
+    font-weight: 800;
+    letter-spacing: .08em;
+}
+
+/* bottom summaries */
+#e7Body .e7-body .summary .num,
+#e7Body .e7-body .summary .totalHead .num {
+    font-weight: 800;
+    letter-spacing: -.03em;
+}
+
+/* ------------------------------------------------------------
+   7. Pages that pin their own copy of the old tokens
+   ChatBot / ChatbotNew re-declare --e7-* on #e7ChatBotMount; two ids
+   here beat their one-id selectors in both schemes.
+   ------------------------------------------------------------ */
+
+html[data-aurora="light"] #e7Body #e7ChatBotMount {
+    --e7-primary-dark: #0F2554;
+    --e7-primary-deep: #0B1B38;
+    --e7-accent: #2F6BFF;
+    --e7-accent-soft: rgba(47, 107, 255, .10);
+    --e7-page: #F4F6FA;
+    --e7-surface: #FFFFFF;
+    --e7-surface-muted: #F8FAFC;
+    --e7-border: #E4E8F0;
+    --e7-border-soft: #EEF1F6;
+    --e7-text: #0F172A;
+    --e7-text-muted: #475569;
+    --e7-text-soft: #5B6B82;
+    --cb-ans-h4: #1D4FD0;
+    --cb-code-text: #1D4FD0;
+    --cb-link: #1D4FD0;
+}
+
+html:not([data-aurora="light"]) #e7Body #e7ChatBotMount {
+    --e7-primary-dark: #9DBBFF;
+    --e7-primary-deep: #071226;
+    --e7-accent: #5B8CFF;
+    --e7-accent-soft: rgba(91, 140, 255, .15);
+    --e7-page: #0A1222;
+    --e7-surface: #111C30;
+    --e7-surface-muted: #0E1829;
+    --e7-border: #1E2C45;
+    --e7-border-soft: #18253D;
+    --e7-text: #E2E8F2;
+    --e7-text-muted: #AEBBD0;
+    --e7-text-soft: #8C9AB3;
+}
+
+/* ------------------------------------------------------------
+   8. Responsive — same breakpoints as the Energy7 theme
+   ------------------------------------------------------------ */
+
+@media (max-width: 1280px) {
+    :root { --sidebar-width: 226px; --e7-inset: 20px; }
+}
+
+@media (max-width: 991px) {
+    :root { --e7-frame: 0px; --e7-inset: 16px; }
+
+    #e7Body .e7-app { border-radius: 0; }
+
+    #e7Body .e7-sidebar {
+        width: 262px;
+        border-radius: 0 18px 18px 0;
+        box-shadow: 0 24px 50px rgba(5, 14, 30, .45) !important;
+    }
+
+    #e7Body .e7-main,
+    body#e7Body.sidebar-mini .e7-main {
+        padding-left: var(--e7-inset);
+    }
+
+    #e7Body .e7-body .filters:has(> .sys) { padding: 16px; }
+    #e7Body .e7-body .filters:has(> .sys) > b.h6 { font-size: 20px; flex: 1 1 100%; }
+    #e7Body .e7-body .filters:has(> .sys) .sys { margin-left: 0; }
+}
+
+@media (max-width: 640px) {
+    :root { --e7-frame: 0px; --e7-inset: 12px; }
+
+    #e7Body .e7-header .pill { height: 38px; }
+    #e7Body .e7-header .pill.icon-btn,
+    #e7Body .e7-menu-toggle.hamb { width: 38px; height: 38px; }
+
+    #e7Body .e7-body .filters:has(> .sys) .filter-item { flex: 1 1 140px; }
+    #e7Body .e7-body .filters:has(> .sys) .selectx { min-width: 0; width: 100%; }
+    #e7Body .e7-body .filters:has(> .sys) .sys { width: 100%; }
+    #e7Body .e7-body .filters:has(> .sys) .sys .gauge { flex: 1 1 0; width: auto; }
+    #e7Body .e7-body .panel,
+    #e7Body .e7-body .panel.bg-Up,
+    #e7Body .e7-body .TopBottom-padding { padding: 14px !important; }
+    #e7Body .e7-body .big { font-size: 28px; }
+}

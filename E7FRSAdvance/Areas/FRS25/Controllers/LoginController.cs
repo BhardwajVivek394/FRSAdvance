@@ -305,6 +305,58 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return Json(data);
         }
 
+        public ActionResult ForgotPassword()
+        {
+            return View(new Domain.Login());
+        }
+
+        [HttpPost]
+        public ActionResult ForgotPassword(Domain.Login mLogin)
+        {
+            try
+            {
+                APIResponse mAPIResponse = new APIResponse();
+                ModelState.Remove("Password");
+                if (ModelState.IsValid)
+                {
+                    using (var hcf = new HttpClientFactory())
+                    {
+                        var jsonStr = JsonConvert.SerializeObject(mLogin);
+                        StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                        var response = hcf.client.PostAsync(String.Format("Login/ForgotPassword"), str).Result;
+                        if (response.StatusCode == HttpStatusCode.OK)
+                        {
+                            string jsonString = response.Content.ReadAsStringAsync().Result;
+                            mAPIResponse = JsonConvert.DeserializeObject<APIResponse>(jsonString);
+                            if (mAPIResponse.IsSuccess)
+                            {
+                                ViewBag.Success = "Password has been sent to your registered email.";
+                                ModelState.Clear();
+                                mLogin = new Domain.Login();
+                            }
+                            else
+                            {
+                                ViewBag.Error = mAPIResponse.Message;
+                            }
+                        }
+                        else
+                        {
+                            ViewBag.Error = "Email id does not exist";
+                        }
+                    }
+                }
+                else
+                {
+                    ViewBag.Error = "Email address is required";
+                }
+            }
+            catch (Exception ex)
+            {
+                ViewBag.Error = ex.Message;
+            }
+            return View("ForgotPassword", mLogin);
+        }
+
         public string GetIPAddress()
         {
             string iPAddress = "";

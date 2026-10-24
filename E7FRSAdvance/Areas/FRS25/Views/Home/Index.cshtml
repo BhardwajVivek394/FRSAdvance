@@ -2,6 +2,8 @@
     Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
+<!-- Network Overview layout (Option C) — hero KPIs, zone heatmap, asset table, attention rail -->
+<link href="@Url.Content("~/Areas/FRS25/assets/css/e7-dashboard-overview.css")?v=@System.IO.File.GetLastWriteTimeUtc(Server.MapPath("~/Areas/FRS25/assets/css/e7-dashboard-overview.css")).Ticks" rel="stylesheet" />
 
 <style>
     /* ═══════════════════════════════════════════════════════
@@ -3509,14 +3511,61 @@
 <!-- Global backdrop for closing dropdowns on outside click -->
 <div id="backdrop" style="display:none;position:fixed;inset:0;z-index:199;"></div>
 
-<!-- ==================== FILTER BAR (mockup: .filters.bg-Up) ==================== -->
+<!-- ==================== NETWORK OVERVIEW HERO ====================
+     Title, scope, KPI tiles and the 24 h open-alert activity chart are filled by
+     e7-dashboard-overview.js from the same GetAssetList / GetWithOutAcknowledgementAlert
+     data the cards use. The filter bar (ids and handlers unchanged) is the hero's bottom row. -->
+<section class="ov-hero" id="ovHero" aria-labelledby="ovTitle">
+    <div class="ov-hero-head">
+        <div class="ov-hero-titles">
+            <h1 class="ov-title" id="ovTitle">Network overview</h1>
+            <div class="ov-sub">Remote diagnostics &amp; predictive maintenance <span class="ov-sub-sep">·</span> <span id="ovScopeText">All zones · All divisions · All stations</span></div>
+        </div>
+        <div class="ov-hero-meta">
+            <span class="ov-chip ov-chip-live"><span class="ov-live-dot" aria-hidden="true"></span>Live</span>
+            <span class="ov-chip" id="ovUpdated"><i class="fa fa-rotate-right" aria-hidden="true"></i> Updated --:--</span>
+        </div>
+    </div>
+
+    <div class="ov-hero-row">
+        <div class="ov-kpis">
+            <div class="ov-kpi">
+                <span class="ov-kpi-label">Monitored assets</span>
+                <span class="ov-kpi-num" id="ovKpiTotal">&mdash;</span>
+                <span class="ov-kpi-sub" id="ovKpiTotalSub">&nbsp;</span>
+            </div>
+            <div class="ov-kpi">
+                <span class="ov-kpi-label">Healthy <i class="ov-dot ov-dot-ok" aria-hidden="true"></i></span>
+                <span class="ov-kpi-num" id="ovKpiHealthy">&mdash;</span>
+                <span class="ov-kpi-sub ov-sub-ok" id="ovKpiHealthySub">&nbsp;</span>
+            </div>
+            <a class="ov-kpi" href="@Url.Content("~/FRS25/Alerts/Index")" title="Open the alert centre">
+                <span class="ov-kpi-label">Predictive <i class="ov-dot ov-dot-warn" aria-hidden="true"></i></span>
+                <span class="ov-kpi-num" id="ovKpiPred">&mdash;</span>
+                <span class="ov-kpi-sub ov-sub-warn" id="ovKpiPredSub">&nbsp;</span>
+            </a>
+            <a class="ov-kpi" href="@Url.Content("~/FRS25/Alerts/Index")" title="Open the alert centre">
+                <span class="ov-kpi-label">Failures <i class="ov-dot ov-dot-bad" aria-hidden="true"></i></span>
+                <span class="ov-kpi-num" id="ovKpiFail">&mdash;</span>
+                <span class="ov-kpi-sub ov-sub-bad" id="ovKpiFailSub">&nbsp;</span>
+            </a>
+        </div>
+
+        <div class="ov-activity">
+            <div class="ov-activity-head">
+                <span class="ov-activity-title">Open alerts raised · last 24 h</span>
+                <span class="ov-activity-legend"><span><i class="ov-sw ov-sw-pred"></i>Predictive</span><span><i class="ov-sw ov-sw-fail"></i>Failure</span></span>
+            </div>
+            <div class="ov-bars" id="ovActivityBars" role="img" aria-label="Open alerts raised per hour over the last 24 hours"></div>
+            <div class="ov-bars-axis" id="ovActivityAxis"><span>-24h</span><span>-18h</span><span>-12h</span><span>-6h</span><span>now</span></div>
+        </div>
+    </div>
+
 @* Every section below uses the Energy7 Dashboard 2 markup classes
    (filters / crumb / panel + phead / asset-grid / reports / bottom).
    Ids and the classes the page script reads (.asset-type-card, .f-style,
    .pie-chart-box, .gaph-assetType, .select-btn, *count-*, *-pct-*) are kept. *@
-<div class="filters bg-Up">
-    <b class="h6"><i class="fa fa-th" aria-hidden="true"></i> Dashboard</b>
-
+<div class="filters bg-Up ov-scope">
     <div class="filter-container">
         <!-- Zone -->
         <div class="filter-item">
@@ -3615,6 +3664,7 @@
         </div>
     </div>
 </div>
+</section>
 
 <!-- ==================== SITE TABS (mockup: .crumb.h6.bg-Up) ==================== -->
 <div class="crumb h6 bg-Up">
@@ -3624,33 +3674,159 @@
     </ul>
 </div>
 
-<!-- ==================== ASSET HEALTH SUMMARY (mockup: .panel.bg-Up.TopBottom-padding) ==================== -->
-<section class="panel bg-Up TopBottom-padding">
-    <div class="phead bg-down">
-        <i class="fa fa-database" aria-hidden="true"></i>&#12288;Asset Health Summary
-        <span class="badge badge-light ml-3 bg-Up HoverB">All Zones</span>
-        <span class="live bg-down">&#9679; Live</span>
-    </div>
-    <div class="asset-grid" id="assetTypeCardsContainer">
-        @if (ViewBag.FRSAssetType != null)
-        {
-            foreach (var assettype in ViewBag.FRSAssetType as List<Domain.AssetType>)
-            {
-                var key = System.Text.RegularExpressions.Regex.Replace(assettype.Name ?? "", "[^A-Za-z0-9_-]", "");
-                <div class="asset asset-type-card" data-asset-type-id="@assettype.Id" data-asset-type-name="@key">
-                    <h6 class="f-style">@assettype.Name <i class="fa-solid fa-arrow-trend-up upIcon" aria-hidden="true"></i></h6>
-                    <div class="big totalcount-@key">&mdash;</div>
-                    <p><span><i class="dot dgreen"></i>Healthy</span><span class="green healthycount-@key">&mdash;</span></p>
-                    <p><span><i class="dot dyellow"></i>Predictive</span><span class="text-warning predictivecount-@key">&mdash;</span></p>
-                    <p><span><i class="dot dred"></i>Failure</span><span class="text-danger failurecount-@key">&mdash;</span></p>
-                </div>
-            }
-        }
-    </div>
-</section>
+<!-- ==================== OVERVIEW GRID ====================
+     Left: open issues by zone × asset type, and the asset health table (each row is an
+     .asset-type-card, so the existing click → alert modal and the filter show/hide still
+     apply). Right: requires attention, predictive watchlist, divisions needing attention.
+     Everything here is drawn by e7-dashboard-overview.js. -->
+<div class="ov-grid">
+    <div class="ov-main">
 
-<!-- ==================== TODAY'S REPORT (mockup: .panel + .reports > .report) ==================== -->
-<section class="panel bg-Up TopBottom-padding">
+        <section class="panel bg-Up ov-panel" aria-labelledby="ovWhereTitle">
+            <div class="ov-phead">
+                <div>
+                    <h2 class="ov-h2" id="ovWhereTitle">Where the issues are</h2>
+                    <span class="ov-psub" id="ovWhereSub">Affected assets with an open alert</span>
+                </div>
+                <div class="ov-seg" data-role="group" role="tablist" aria-label="Group by">
+                    <button type="button" class="on" role="tab" aria-selected="true" data-group="zone">Zones</button>
+                    <button type="button" role="tab" aria-selected="false" data-group="division">Divisions</button>
+                </div>
+            </div>
+            <div class="ov-where" id="ovWhere"><div class="ov-empty">Loading&hellip;</div></div>
+        </section>
+
+        <section class="panel bg-Up ov-panel" aria-labelledby="ovAssetTitle">
+            <div class="ov-phead">
+                <div>
+                    <h2 class="ov-h2" id="ovAssetTitle">Asset health by type</h2>
+                    <span class="ov-psub" id="ovAssetSub">Types with open alerts first · click a row for its alerts</span>
+                </div>
+                <span class="ov-live-pill"><span class="ov-live-dot" aria-hidden="true"></span>Live</span>
+            </div>
+            <div class="ov-table-wrap">
+                <div class="ov-table" id="assetTypeCardsContainer" role="table" aria-label="Asset health by type">
+                    <div class="ov-tr ov-thead" role="row">
+                        <span role="columnheader">Asset type</span>
+                        <span role="columnheader" class="ov-r">Total</span>
+                        <span role="columnheader" class="ov-r">Healthy</span>
+                        <span role="columnheader" class="ov-r">Predictive</span>
+                        <span role="columnheader" class="ov-r">Failed</span>
+                        <span role="columnheader">Healthy rate</span>
+                    </div>
+                    @if (ViewBag.FRSAssetType != null)
+                    {
+                        foreach (var assettype in ViewBag.FRSAssetType as List<Domain.AssetType>)
+                        {
+                            var key = System.Text.RegularExpressions.Regex.Replace(assettype.Name ?? "", "[^A-Za-z0-9_-]", "");
+                            var nm = (assettype.Name ?? "").ToLowerInvariant();
+                            var icon = "fa-cube";
+                            if (nm.Contains("track")) { icon = "fa-grip-lines"; }
+                            else if (nm.Contains("signal") && !nm.Contains("current")) { icon = "fa-traffic-light"; }
+                            else if (nm.Contains("point")) { icon = "fa-code-branch"; }
+                            else if (nm.Contains("axle")) { icon = "fa-circle-dot"; }
+                            else if (nm.Contains("gate")) { icon = "fa-road-barrier"; }
+                            else if (nm.Contains("charger") || nm.Contains("ips")) { icon = "fa-car-battery"; }
+                            else if (nm.Contains("eld") || nm.Contains("earth")) { icon = "fa-bolt"; }
+                            else if (nm.Contains("relay")) { icon = "fa-toggle-on"; }
+                            else if (nm.Contains("bus bar")) { icon = "fa-grip-lines-vertical"; }
+                            else if (nm.Contains("voltage") || nm.Contains("current")) { icon = "fa-wave-square"; }
+                            else if (nm.Contains("ufsbi")) { icon = "fa-tower-broadcast"; }
+                            else if (nm.Contains("server")) { icon = "fa-server"; }
+                            else if (nm.Contains("time")) { icon = "fa-clock"; }
+                            else if (nm.Contains("ftu")) { icon = "fa-microchip"; }
+                            <div class="ov-tr ov-row asset-type-card" role="row" tabindex="0" data-asset-type-id="@assettype.Id" data-asset-type-name="@key">
+                                <span class="ov-name" role="cell">
+                                    <span class="ov-ic"><i class="fa-solid @icon" aria-hidden="true"></i></span>
+                                    <span class="f-style">@assettype.Name <i class="fa-solid fa-arrow-trend-up upIcon" aria-hidden="true"></i></span>
+                                </span>
+                                <span class="ov-r ov-total totalcount-@key" role="cell">&mdash;</span>
+                                <span class="ov-r ov-h" role="cell" data-ov="h">&mdash;</span>
+                                <span class="ov-r" role="cell"><span class="ov-chip-n" data-ov="p">&mdash;</span></span>
+                                <span class="ov-r" role="cell"><span class="ov-chip-n" data-ov="f">&mdash;</span></span>
+                                <span class="ov-rate" role="cell"><span class="ov-bar"><span data-ov="bar"></span></span><b data-ov="pct">&mdash;</b></span>
+                            </div>
+                        }
+                    }
+                    <button type="button" class="ov-more-rows" id="ovMoreRows" aria-expanded="false" hidden></button>
+                    <div class="ov-tr ov-tfoot" role="row">
+                        <span role="cell">Total</span>
+                        <span class="ov-r" role="cell" id="ovSumTotal">&mdash;</span>
+                        <span class="ov-r ov-h" role="cell" id="ovSumHealthy">&mdash;</span>
+                        <span class="ov-r ov-sum-p" role="cell" id="ovSumPred">&mdash;</span>
+                        <span class="ov-r ov-sum-f" role="cell" id="ovSumFail">&mdash;</span>
+                        <span class="ov-rate" role="cell"><b id="ovSumPct">&mdash;</b></span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <aside class="ov-rail" aria-label="Attention and connectivity">
+        <section class="panel bg-Up ov-panel" aria-labelledby="ovAttTitle">
+            <div class="ov-phead">
+                <h2 class="ov-h2" id="ovAttTitle">Needs attention</h2>
+                <div class="ov-seg ov-seg-alert" role="tablist" aria-label="Alert type">
+                    <button type="button" class="on" role="tab" aria-selected="true" data-kind="f">Failures <b id="ovAttCount">0</b></button>
+                    <button type="button" role="tab" aria-selected="false" data-kind="p">Predictive <b id="ovWatchCount">0</b></button>
+                </div>
+            </div>
+            <div class="ov-list" id="ovAttention"><div class="ov-empty">Loading&hellip;</div></div>
+            <a class="ov-foot-link" href="@Url.Content("~/FRS25/Alerts/Index")">Open alert centre <i class="fa fa-arrow-right" aria-hidden="true"></i></a>
+        </section>
+
+        <!-- Connectivity: the four live health cards (ids and station popups unchanged) -->
+        <section class="panel bg-Up ov-panel ov-conn" aria-labelledby="ovConnTitle">
+            <div class="ov-phead">
+                <div>
+                    <h2 class="ov-h2" id="ovConnTitle">Connectivity</h2>
+                    <span class="ov-psub">Live device &amp; sensor health · click for station detail</span>
+                </div>
+            </div>
+            <div class="ov-conn-list">
+                <div class="panel summary shm-clickable" onclick="openSensorHealthModal()" title="Station-wise faulty sensors">
+                    <div class="totalHead">
+                        <b class="f-style">SENSOR <i class="fa-solid fa-arrow-trend-down text-danger upIcon" id="sensorTrendIcon"></i></b>
+                        <span class="num" id="sensorTotalCount">&mdash;</span>
+                    </div>
+                    <p class="mt-3 mb-1 green">&#9679; Healthy <span class="float-right" id="SensorHealthyCount">&mdash;</span></p>
+                    <p class="text-danger">&#9679; Failure <span class="float-right" id="SensorFailureCount">&mdash;</span></p>
+                </div>
+                <div class="panel summary shm-clickable" id="iotCard" onclick="openSiteHealthModal()" title="Station-wise live health">
+                    <div class="totalHead">
+                        <b class="f-style">IOT <i class="fa-solid fa-arrow-trend-up text-success upIcon" id="iotTrendIcon"></i></b>
+                        <span class="num" id="iotTotalCount">&mdash;</span>
+                    </div>
+                    <p class="mt-3 mb-1 green">&#9679; Healthy <span class="float-right" id="iotHealthyCount">&mdash;</span></p>
+                    <p class="text-danger">&#9679; Failure <span class="float-right" id="iotFailureCount">&mdash;</span></p>
+                </div>
+                <div class="panel summary shm-clickable" onclick="openSiteHealthModal()" title="Station-wise live health">
+                    <div class="totalHead">
+                        <b class="f-style">NETWORK <i class="fa-solid fa-arrow-trend-up text-success upIcon" id="networkTrendIcon"></i></b>
+                        <span class="num" id="networkTotalCount">&mdash;</span>
+                    </div>
+                    <p class="mt-3 mb-1 green">&#9679; Wired Healthy <span class="float-right" id="networkWiredHealthy">&mdash;</span></p>
+                    <p class="mb-1 text-danger">&#9679; Wired Faulty <span class="float-right" id="networkWiredFaulty">&mdash;</span></p>
+                    <p class="mb-1 green">&#9679; Wireless Healthy <span class="float-right" id="networkWirelessHealthy">&mdash;</span></p>
+                    <p class="text-danger">&#9679; Wireless Faulty <span class="float-right" id="networkWirelessFaulty">&mdash;</span></p>
+                </div>
+                <div class="panel summary shm-clickable" id="gatwayCard" onclick="openSiteHealthModal()" title="Station-wise live health">
+                    <div class="totalHead">
+                        <b class="f-style">GATEWAY <i class="fa-solid fa-arrow-trend-up text-success upIcon" id="gatwayTrendIcon"></i></b>
+                        <span class="num" id="gatwayTotalCount">&mdash;</span>
+                    </div>
+                    <p class="mt-3 mb-1 green">&#9679; Healthy <span class="float-right" id="gatwayHealthyCount">&mdash;</span></p>
+                    <p class="text-danger">&#9679; Failure <span class="float-right" id="gatwayFailureCount">&mdash;</span></p>
+                </div>
+            </div>
+        </section>
+    </aside>
+</div>
+
+<!-- ==================== MORE: per-asset-type donuts (folded, unchanged ids) ==================== -->
+<details class="ov-more" id="ovDonutsMore">
+    <summary><span><i class="fa fa-adjust" aria-hidden="true"></i>Today's report by asset type</span><small>Healthy / predictive / failure donut per asset type</small></summary>
+    <section class="panel bg-Up TopBottom-padding ov-donuts">
     <div class="phead bg-down">
         <i class="fa fa-adjust" aria-hidden="true"></i>&#12288;Today's Report
         <span class="ml-auto text-muted"><i class="fa fa-calendar" aria-hidden="true"></i>&#12288;@DateTime.Now.ToString("dd-MM-yyyy")</span>
@@ -3679,13 +3855,16 @@
             }
         }
     </div>
-</section>
+    </section>
+</details>
 
-<!-- ==================== BOTTOM ROW (mockup: .bottom > column > .summary + .chartbox) ==================== -->
-<div class="bottom" id="dashboardBottom">
 
-    <!-- Total Assets -->
-    <div>
+<!-- ==================== MORE: charts (folded) ====================
+     The Total Assets card and the five health charts, unchanged (same ids). Folded so the
+     overview stays short; the ResizeObserver on #dashboardBottom re-fits the charts on open. -->
+<details class="ov-more" id="ovChartsMore">
+    <summary><span><i class="fa-solid fa-chart-column" aria-hidden="true"></i>Trend charts</span><small>Total assets · sensor · IoT · network · gateway</small></summary>
+    <div class="ov-charts" id="dashboardBottom">
         <div class="panel summary" id="totalAssetsCard">
             <div class="totalHead">
                 <b class="f-style">TOTAL ASSETS <i class="fa-solid fa-arrow-trend-up text-success upIcon" id="totalAssetsTrendIcon"></i></b>
@@ -3705,77 +3884,26 @@
             <span id="legendFailure" class="legend-failure hidden-color">.</span>
             <div class="chart e7-echart" id="TotalAssets"></div>
         </div>
-    </div>
-
-    <!-- Sensor -->
-    <div>
-        <div class="panel summary shm-clickable" onclick="openSensorHealthModal()" title="Station-wise faulty sensors">
-            <div class="totalHead">
-                <b class="f-style">SENSOR <i class="fa-solid fa-arrow-trend-down text-danger upIcon" id="sensorTrendIcon"></i></b>
-                <span class="num" id="sensorTotalCount">&mdash;</span>
-            </div>
-            <p class="mt-3 mb-1 green">&#9679; Healthy <span class="float-right" id="SensorHealthyCount">&mdash;</span></p>
-            <p class="text-danger">&#9679; Failure <span class="float-right" id="SensorFailureCount">&mdash;</span></p>
-        </div>
         <div class="panel chartbox bg-Up TopBottom-padding">
             <div class="phead bg-down">Sensor Health</div>
             <span id="axisColorRef" class="axis-label-color hidden-color">.</span>
             <div class="chart e7-echart" id="SensorChart"></div>
-        </div>
-    </div>
-
-    <!-- IOT -->
-    <div>
-        <div class="panel summary shm-clickable" id="iotCard" onclick="openSiteHealthModal()" title="Station-wise live health">
-            <div class="totalHead">
-                <b class="f-style">IOT <i class="fa-solid fa-arrow-trend-up text-success upIcon" id="iotTrendIcon"></i></b>
-                <span class="num" id="iotTotalCount">&mdash;</span>
-            </div>
-            <p class="mt-3 mb-1 green">&#9679; Healthy <span class="float-right" id="iotHealthyCount">&mdash;</span></p>
-            <p class="text-danger">&#9679; Failure <span class="float-right" id="iotFailureCount">&mdash;</span></p>
         </div>
         <div class="panel chartbox bg-Up TopBottom-padding">
             <div class="phead bg-down">IoT Health</div>
             <span id="axisColorRef2" class="axis-label-color hidden-color">.</span>
             <div class="chart e7-echart" id="SensorIoT"></div>
         </div>
-    </div>
-
-    <!-- Network -->
-    <div>
-        <div class="panel summary shm-clickable" onclick="openSiteHealthModal()" title="Station-wise live health">
-            <div class="totalHead">
-                <b class="f-style">NETWORK <i class="fa-solid fa-arrow-trend-up text-success upIcon" id="networkTrendIcon"></i></b>
-                <span class="num" id="networkTotalCount">&mdash;</span>
-            </div>
-            <p class="mt-3 mb-1 green">&#9679; Wired Healthy <span class="float-right" id="networkWiredHealthy">&mdash;</span></p>
-            <p class="mb-1 text-danger">&#9679; Wired Faulty <span class="float-right" id="networkWiredFaulty">&mdash;</span></p>
-            <p class="mb-1 green">&#9679; Wireless Healthy <span class="float-right" id="networkWirelessHealthy">&mdash;</span></p>
-            <p class="text-danger">&#9679; Wireless Faulty <span class="float-right" id="networkWirelessFaulty">&mdash;</span></p>
-        </div>
         <div class="panel chartbox bg-Up TopBottom-padding">
             <div class="phead bg-down">Network Health</div>
             <div class="chart e7-echart" id="SensorNetworkChart"></div>
-        </div>
-    </div>
-
-    <!-- Gateway -->
-    <div>
-        <div class="panel summary shm-clickable" id="gatwayCard" onclick="openSiteHealthModal()" title="Station-wise live health">
-            <div class="totalHead">
-                <b class="f-style">GATEWAY <i class="fa-solid fa-arrow-trend-up text-success upIcon" id="gatwayTrendIcon"></i></b>
-                <span class="num" id="gatwayTotalCount">&mdash;</span>
-            </div>
-            <p class="mt-3 mb-1 green">&#9679; Healthy <span class="float-right" id="gatwayHealthyCount">&mdash;</span></p>
-            <p class="text-danger">&#9679; Failure <span class="float-right" id="gatwayFailureCount">&mdash;</span></p>
         </div>
         <div class="panel chartbox bg-Up TopBottom-padding">
             <div class="phead bg-down">Gateway Health</div>
             <div class="chart e7-echart" id="GatwayNetwork"></div>
         </div>
     </div>
-
-</div>
+</details>
 
 <!-- ==================== ALERT MODAL ==================== -->
 <div class="alert-modal-overlay" id="alertModalOverlay">
@@ -3956,14 +4084,14 @@ var globalAssetData = null;
     function updateClrsForTheme() {
         var _t2 = document.documentElement.getAttribute('data-aurora') || document.documentElement.getAttribute('data-theme') || 'dark';
         var light = _t2 === 'light';
-        // Energy7 theme palette (mirrors e7-energy7-theme.css bar / text tokens)
-        CLRS.green = light ? '#35c9a1' : '#2fc596';
-        CLRS.amber = light ? '#f7bb2e' : '#e8ab1e';
-        CLRS.red = light ? '#f4697f' : '#f0687e';
-        // Chart chrome is read from the live theme tokens (canvas/SVG can't use var());
+        // Chart colours are read from the live theme tokens (canvas/SVG can't use var());
         // the literals are only fallbacks for when the theme sheet hasn't loaded.
         var _cs = getComputedStyle(document.documentElement);
         var tv = function (n, fb) { var x = _cs.getPropertyValue(n); return x && x.trim() ? x.trim() : fb; };
+        // status palette = the theme's status dot tokens (e7-signalroom-theme.css)
+        CLRS.green = tv('--e7-dot-green', light ? '#35c9a1' : '#2fc596');
+        CLRS.amber = tv('--e7-dot-amber', light ? '#f7bb2e' : '#e8ab1e');
+        CLRS.red = tv('--e7-dot-red', light ? '#f4697f' : '#f0687e');
         CLRS.blue = tv('--e7-accent', light ? '#2f9ec4' : '#5cc0e2');
         CLRS.muted = tv('--e7-text-3', light ? '#627186' : '#8391a3');
         CLRS.text = tv('--e7-text-2', light ? '#55657a' : '#aab6c6');
@@ -3979,7 +4107,7 @@ function e7TipCss() {
     return 'background:' + CLRS.tipBg + ' !important;border:1px solid ' + CLRS.tipBorder + ' !important;' +
         'backdrop-filter:none !important;-webkit-backdrop-filter:none !important;' +
         'box-shadow:' + (CLRS.tipShadow || '0 12px 28px rgba(20,44,74,0.18)') + ' !important;border-radius:10px !important;' +
-        "font-family:'Inter',sans-serif !important;";
+        "font-family:'Manrope','Inter',sans-serif !important;";
 }
 // Each chart registers how to redraw itself; a day/night toggle repaints them all
 // in the new palette from the data they already have (no re-fetch).
@@ -4458,6 +4586,7 @@ function fnBindWithOutAcknowledgementAlert(assetData, quiet) {
       });
       updateTotalAssetsCard({TotalAsset:totalA,Predictive:totalP,Fail:totalF});
       updateTotalAssetsChart({TotalAsset:totalA,Predictive:totalP,Fail:totalF});
+      if(window.e7Overview) e7Overview.update(data, assetData);   // Network Overview hero, heatmap, table, rail
     },
     error: function(){ if(seq===_ackAlertSeq) $("#loader").hide(); }
   });
@@ -5916,3 +6045,4 @@ var _alertCurrentAssetTypeId=null, _alertCurrentAssetTypeName='';
         });
     });
 </script>
+<script src="@Url.Content("~/Areas/FRS25/assets/js/e7-dashboard-overview.js")?v=@System.IO.File.GetLastWriteTimeUtc(Server.MapPath("~/Areas/FRS25/assets/js/e7-dashboard-overview.js")).Ticks"></script>
