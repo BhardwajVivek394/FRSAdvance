@@ -1,0 +1,171 @@
+/* ============================================================
+   e7-theme-compat.css
+   Energy7 RDPMS - theme compatibility fixes (light + dark)
+
+   Result of the 26-Oct-2026 theme audit of every FRS25 view:
+   each rule below fixes a component that did not follow the
+   light / dark switch (data-aurora on <html>/<body>), or that
+   failed contrast in one scheme. Only Energy7 tokens are used
+   (--e7-*), so both schemes follow automatically.
+
+   HOW IT PLUGS IN
+   - Loaded LAST in Areas/FRS25/Views/Shared/_Layout.cshtml,
+     right after e7-responsive-fixes.css.
+   - Rollback: delete its <link> line.
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   0. --e7-shell is TRANSPARENT in the Signal Room theme
+   (flat shell, no frame). Components the Energy7 theme painted
+   with var(--e7-shell) as an opaque surface became see-through:
+   the AI Assistant panel (every page) showed the page through
+   it, and text inked with var(--e7-shell) on a dark chip
+   disappeared. They get a real surface back here.
+   ------------------------------------------------------------ */
+#e7Body #aiChatPanel,
+#e7Body #aiChatPanel .ai-chat-header,
+#e7Body #aiChatPanel .ai-chat-messages {
+    background: var(--e7-surface) !important;
+}
+#e7Body #aiChatPanel .ai-chat-input-area { background: var(--e7-surface-2) !important; }
+#e7Body #aiChatTrigger { border-color: var(--e7-page) !important; }
+body#e7Body.sip-mini-mode .sip-card.sip-card-topbar.fullscreen { background: var(--e7-page) !important; }
+/* dark chips / tooltips inked with var(--e7-shell) */
+#e7Body #aaBoard .aa-mono-badge.aa-mono-badge { color: var(--e7-surface); }   /* the .on variant (2,3,0) keeps its own ink */
+#e7Body .alrt-page .fb-badge.has-more::after,
+#e7Body .fb-badge.has-more::after { color: var(--e7-surface) !important; }
+#e7Body [style*="color:var(--e7-shell"],
+#e7Body [style*="color: var(--e7-shell"] { color: var(--e7-surface) !important; }
+
+/* ------------------------------------------------------------
+   1. Header band (--e7-rail-*) - light scheme
+   The light band was #8AB2F8 -> #5E8EF7: white text on it is
+   2.1-3.1 : 1 (fails). 30+ pages paint headers, modal heads and
+   band buttons with white text on this band. The band moves to
+   the Option C accent family: white text >= 4.4 : 1 and the dark
+   headings the light theme forces stay >= 3.5 : 1.
+   ------------------------------------------------------------ */
+html[data-aurora="light"] {
+    --e7-rail-from: #3A70F0;
+    --e7-rail-mid: #2F6BFF;
+    --e7-rail-to: #2A63EE;
+}
+
+/* ------------------------------------------------------------
+   2. Buttons
+   ------------------------------------------------------------ */
+/* Telemetry History / Telemetry: light .at-btn sets a white background
+   with !important and .at-btn-primary only re-set the text to white ->
+   the Search button was white on white. */
+body[data-aurora="light"] .at-btn.at-btn-primary,
+html[data-aurora="light"] #e7Body .at-btn.at-btn-primary {
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to)) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+}
+
+/* Old cyan --primary (#22d3ee) buttons with white text (1.8 : 1):
+   Add Remark, Add Benchmarking, Add Cluster Category, Save Event ... */
+#e7Body .btn.btn-active,
+#e7Body .btn-active {
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to));   /* the Ask-AI / primary pair: white text in both schemes */
+    color: #fff;
+}
+#e7Body .btn.btn-active:hover,
+#e7Body .btn-active:hover { filter: brightness(1.06); color: #fff; }
+
+/* Legacy teal buttons on FRS Advanced dashboard / AI diagnostics
+   (#4FC9C6 with white text, 2.0 : 1) */
+#e7Body .frs-search-btn,
+#e7Body .frs-chart-toggle button.active {
+    background: linear-gradient(120deg, var(--e7-ask-from), var(--e7-ask-to)) !important;
+    border-color: transparent !important;
+    color: #fff !important;
+}
+
+/* Performance - Actual Failure Entry: the dark-scheme button ink rule
+   turned its white text grey on red (2.5 : 1). */
+#e7Body .btn-failure-entry,
+#e7Body .btn-failure-entry:hover { color: #fff !important; }
+
+/* Bootstrap nav tabs rendered as <button>: with color-scheme:dark the
+   browser paints its grey button face (#6B6B6B) behind the label. */
+#e7Body button.nav-link:not(.active) { background-color: transparent; }
+
+/* ------------------------------------------------------------
+   3. Status pills / badges
+   ------------------------------------------------------------ */
+/* Alert lists (.pill-green / -red / -yellow / -blue from style.css):
+   pastel fill + mid ink was 2.0-2.8 : 1 in both schemes. */
+#e7Body .badge.pill-green, #e7Body .pill-green { background-color: var(--e7-green-soft); border-color: var(--e7-green); color: var(--e7-green); }
+#e7Body .badge.pill-red, #e7Body .pill-red { background-color: var(--e7-red-soft); border-color: var(--e7-red); color: var(--e7-red); }
+#e7Body .badge.pill-yellow, #e7Body .pill-yellow { background-color: var(--e7-amber-soft); border-color: var(--e7-amber); color: var(--e7-amber); }
+#e7Body .badge.pill-blue, #e7Body .pill-blue { background-color: var(--e7-accent-soft); border-color: var(--e7-accent); color: var(--e7-accent-ink); }
+#e7Body .pill-green:hover, #e7Body .pill-red:hover, #e7Body .pill-yellow:hover, #e7Body .pill-blue:hover {
+    background-color: var(--e7-surface-3);   /* was the white --white-color in both schemes */
+}
+/* .badge-warning.text-white (Equipment Room history) - white on pale amber 1.1 : 1 */
+#e7Body .badge.badge-warning.text-white { color: var(--e7-amber) !important; }
+/* "no value" relay chips stayed light grey in the dark scheme */
+html:not([data-aurora="light"]) #e7Body .rdpms-dl-badge.null,
+html:not([data-aurora="light"]) #e7Body .at-pill.null {
+    background: var(--e7-surface-3) !important;
+    color: var(--e7-text-3) !important;
+    border-color: var(--e7-border-2) !important;
+}
+
+/* ------------------------------------------------------------
+   4. Cards / surfaces that kept one scheme
+   ------------------------------------------------------------ */
+/* User Site - station cards: dark glass card on the light page */
+html[data-aurora="light"] #e7Body .station-card {
+    background: var(--e7-surface) !important;
+    border: 1px solid var(--e7-border) !important;
+    box-shadow: var(--e7-shadow-card) !important;
+}
+html[data-aurora="light"] #e7Body .station-card::after { background: none !important; }
+html[data-aurora="light"] #e7Body .station-card:hover { box-shadow: var(--e7-shadow-hover) !important; }
+
+/* Track Leakage - condition header hover flashed #e2e8f0 in the dark scheme */
+html:not([data-aurora="light"]) #e7Body .condition-header:hover { background: var(--e7-surface-3) !important; }
+
+/* ------------------------------------------------------------
+   5. Script-built popups whose CSS is injected by JavaScript
+   ------------------------------------------------------------ */
+/* SIP telemetry popup (sip-telemetry.js #sipTelPopup .stp-*): navy only */
+#sipTelPopup { color: var(--e7-text) !important; }
+#sipTelPopup .stp-box { background: var(--e7-surface) !important; border-color: var(--e7-border) !important; box-shadow: var(--e7-shadow-pop) !important; }
+#sipTelPopup .stp-head { background: var(--e7-surface-2) !important; border-bottom-color: var(--e7-border) !important; }
+#sipTelPopup .stp-name { color: var(--e7-heading) !important; }
+#sipTelPopup .stp-sub, #sipTelPopup .stp-lbl, #sipTelPopup .stp-close, #sipTelPopup .stp-btn { color: var(--e7-text-3) !important; }
+#sipTelPopup .stp-type, #sipTelPopup .stp-bar, #sipTelPopup .stp-icon { color: var(--e7-accent-ink) !important; }
+#sipTelPopup .stp-type { background: var(--e7-accent-soft) !important; }
+#sipTelPopup .stp-close, #sipTelPopup .stp-btn { border-color: var(--e7-border-2) !important; background: transparent !important; }
+#sipTelPopup .stp-btn.pri { background: var(--e7-accent-soft) !important; border-color: var(--e7-accent) !important; color: var(--e7-accent-ink) !important; }
+#sipTelPopup .stp-btn:hover { color: var(--e7-heading) !important; border-color: var(--e7-accent) !important; }
+#sipTelPopup .stp-bar, #sipTelPopup .stp-foot { background: var(--e7-surface-2) !important; border-color: var(--e7-border) !important; }
+#sipTelPopup .stp-foot, #sipTelPopup .stp-empty { color: var(--e7-text-3) !important; }
+#sipTelPopup .stp-col:first-child { border-right-color: var(--e7-border) !important; }
+#sipTelPopup .stp-row { border-bottom-color: var(--e7-border) !important; background: transparent !important; }
+#sipTelPopup .stp-row:nth-child(even) { background: var(--e7-surface-2) !important; }
+#sipTelPopup .stp-row:hover { background: var(--e7-surface-3) !important; }
+#sipTelPopup .stp-val { color: var(--e7-text) !important; }
+#sipTelPopup .stp-val.warn { color: var(--e7-amber) !important; }
+#sipTelPopup .stp-val.ok { color: var(--e7-green) !important; }
+
+/* Popovers / tooltips opened by Bootstrap on alert lists ("Remark") */
+#e7Body .popover, body[data-aurora] .popover {
+    background: var(--e7-surface);
+    border-color: var(--e7-border);
+    box-shadow: var(--e7-shadow-pop);
+    color: var(--e7-text);
+}
+body[data-aurora] .popover .popover-header { background: var(--e7-surface-2); border-bottom-color: var(--e7-border); color: var(--e7-heading); }
+body[data-aurora] .popover .popover-body { color: var(--e7-text); }
+body[data-aurora] .popover .arrow::after { border-top-color: var(--e7-surface); border-bottom-color: var(--e7-surface); }
+
+
+/* Band header sub-lines that the light theme forces to dark paragraph ink
+   (stay light on the band, matching the white title) */
+html[data-aurora="light"] #e7Body .um-page-header .subtitle,
+html[data-aurora="light"] #e7Body .um-page-header p { color: rgba(255, 255, 255, .9) !important; }

@@ -1322,12 +1322,41 @@
         }).join('') + '</ul>';
     }
 
+    /* v618.44: the inspector body is re-drawn every 400 ms; the new markup is
+       MORPHED into the live nodes (same tag at the same place = node kept, only
+       changed attributes / text written), so rows, chips and inputs do not
+       flicker, hover stays and a click is never lost between mousedown and
+       mouseup. A focused input / select is left alone. */
+    function inspMorphAttrs(a, b) {
+        var i, n;
+        for (i = a.attributes.length - 1; i >= 0; i--) { n = a.attributes[i].name; if (!b.hasAttribute(n)) a.removeAttribute(n); }
+        for (i = 0; i < b.attributes.length; i++) { n = b.attributes[i]; if (a.getAttribute(n.name) !== n.value) a.setAttribute(n.name, n.value); }
+    }
+    function inspMorphChildren(a, b) {
+        var ac = a.firstChild, bc = b.firstChild, next, nx;
+        while (bc) {
+            next = bc.nextSibling;
+            if (!ac) { a.appendChild(bc); bc = next; continue; }
+            if (ac.nodeType === bc.nodeType && (ac.nodeType !== 1 || ac.nodeName === bc.nodeName)) {
+                if (ac.nodeType === 1) {
+                    if (ac === document.activeElement && /^(INPUT|SELECT|TEXTAREA)$/.test(ac.nodeName)) { /* user is on it */ }
+                    else { inspMorphAttrs(ac, bc); inspMorphChildren(ac, bc); }
+                } else if (ac.nodeValue !== bc.nodeValue) ac.nodeValue = bc.nodeValue;
+                ac = ac.nextSibling;
+            } else { nx = ac.nextSibling; a.replaceChild(bc, ac); ac = nx; }
+            bc = next;
+        }
+        while (ac) { nx = ac.nextSibling; a.removeChild(ac); ac = nx; }
+    }
     function inspSetBody(html) {
         var b = document.querySelector('#sipInspector .sip-insp-body');
         if (!b) return;
+        if (b.__inspHtml === html && b.firstChild) return;
+        b.__inspHtml = html;
         var sc = b.scrollTop;
-        b.innerHTML = html;
-        b.scrollTop = sc;
+        if (!b.firstChild) b.innerHTML = html;
+        else { var t = document.createElement('div'); t.innerHTML = html; inspMorphChildren(b, t); }
+        if (b.scrollTop !== sc) b.scrollTop = sc;
     }
     function inspLoadTab(force) {
         if (insp.tab === 'graph') inspLoadGraph(force);
@@ -3558,6 +3587,8 @@
         '.sip-dim{opacity:.28;}' +
         '.sip-highlight{filter:drop-shadow(0 0 4px rgba(59,201,219,.95)) drop-shadow(0 0 10px rgba(59,201,219,.55));}' +
         '.sip-stale{opacity:.5;}' +
+        /* v618.42: replay graph selection -- glow in the asset's graph colour */
+        '.sip-rp-mark{filter:drop-shadow(0 0 2px var(--sip-mark,#3BC9DB)) drop-shadow(0 0 7px var(--sip-mark,#3BC9DB));}' +
         '.sip-pm-gap-layer{pointer-events:none;}' +
         /* v618.14: failure (alertTypeId 2) flashing during replay */
         '.sip-fail-flash{animation:sipFailBlink .9s steps(2,jump-none) infinite;filter:drop-shadow(0 0 5px rgba(255,59,48,.95)) drop-shadow(0 0 12px rgba(255,59,48,.6));}' +
@@ -3574,12 +3605,13 @@
             else if (!state.highlightMarkOnly) cls += ' sip-dim';
         }
         if (c._sipStale) cls += ' sip-stale';
+        if (c._sipMark && _replayOn) cls += ' sip-rp-mark';
         if (c._sipFail) cls += ' sip-fail-flash';
         if (c._sipAlert && !_replayOn) cls += ' sip-alert-flash';   // v618.0: no live alert flash over a replay
         return cls;
     }
     function cellStyle(c) {
-        return 'cursor:pointer;pointer-events:all;' + (c._sipAlert ? '--sip-alert-color:' + c._sipAlert + ';' : '');
+        return 'cursor:pointer;pointer-events:all;' + (c._sipAlert ? '--sip-alert-color:' + c._sipAlert + ';' : '') + (c._sipMark ? '--sip-mark:' + c._sipMark + ';' : '');
     }
 
     function requestRender() {
@@ -4131,9 +4163,35 @@
         }
         _failSet = want;
     }
+    /* v618.42: replay selection marks {assetName: colour} -- glow per cell */
+    var _markSet = {};
+    function replaySetMarks(map) {
+        var want = {}, k, c, g, i, j;
+        for (var name in (map || {})) {
+            if (!map.hasOwnProperty(name)) continue;
+            var cs = findCells(name);
+            for (j = 0; j < cs.length; j++) want[cs[j].id] = { c: cs[j], col: map[name] };
+        }
+        for (k in _markSet) {
+            if (!_markSet.hasOwnProperty(k) || (want[k] && want[k].col === _markSet[k].col)) continue;
+            c = _markSet[k].c;
+            c._sipMark = '';
+            g = state.domCells[c.id];
+            if (g) { g.setAttribute('class', cellClass(c)); g.setAttribute('style', cellStyle(c)); }
+        }
+        for (k in want) {
+            if (!want.hasOwnProperty(k) || (_markSet[k] && _markSet[k].col === want[k].col)) continue;
+            c = want[k].c;
+            c._sipMark = want[k].col;
+            g = state.domCells[c.id];
+            if (g) { g.setAttribute('class', cellClass(c)); g.setAttribute('style', cellStyle(c)); }
+        }
+        _markSet = want;
+    }
     function replayEnd(silent) {
         if (!_replayOn) return;
         replaySetFaults([]);
+        replaySetMarks({});
         _replayOn = false;
         if (_replaySaved) {
             state.assets = _replaySaved.assets || {};
@@ -4168,7 +4226,8 @@
         assetNameOf: getCellAssetName,
         record: function (name) { return state.assets[name] || null; },
         setStatus: setStatus,
-        setFaults: replaySetFaults
+        setFaults: replaySetFaults,
+        setMarks: replaySetMarks
     };
 
     /* =========================================================================
