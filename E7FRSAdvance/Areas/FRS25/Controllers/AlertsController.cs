@@ -102,7 +102,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 mFRSAlertLister.SearchCriteria.IsAcknowledgement =
                     alertStatus == 1 ? true : alertStatus == 2 ? false : (bool?)null;
                 // Same as 616 AlertLive/_List: SP gets AlertStatus = 0; Pending/Cleared is driven by IsAcknowledgement only
-                mFRSAlertLister.SearchCriteria.AlertStatus = 0;
+                //mFRSAlertLister.SearchCriteria.AlertStatus = 0;
 
                 mFRSAlertLister.Pager.Take = mFRSAlertLister.Pager.PageSize;
                 mFRSAlertLister = _frsAlertService.GetListerWithPagination(mFRSAlertLister);
