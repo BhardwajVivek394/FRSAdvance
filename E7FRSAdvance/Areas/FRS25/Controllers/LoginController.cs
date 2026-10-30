@@ -5,6 +5,7 @@ using E7FRSAdvance.Utility;
 using E7FRSAdvance.Interface;
 using E7FRSAdvance.Utility;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Dynamic;
@@ -84,97 +85,88 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         mLogin.MacAddress = Request.Cookies["deviceId"].Value.ToString();
                     }
 
-                    Domain.User mUser = new Domain.User();
                     using (var hcf = new HttpClientFactory())
                     {
                         var jsonStr = JsonConvert.SerializeObject(mLogin);
                         StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
-                        var response = hcf.client.PostAsync(String.Format("Login/Authenticate"), str).Result;
+                        var response = hcf.client.PostAsync(String.Format("Login"), str).Result;
                         if (response.StatusCode == HttpStatusCode.OK)
                         {
                             string jsonString = response.Content.ReadAsStringAsync().Result;
-                            mUser = JsonConvert.DeserializeObject<Domain.User>(jsonString);
-                            if (mUser != null && !mUser.IsBlockIp)
+                            JObject jo = JObject.Parse(jsonString);
+
+                            bool isBlockIp = jo["IsBlockIp"]?.Value<bool>() ?? false;
+                            bool isMacIdApproved = jo["IsMacIdApproved"]?.Value<bool>() ?? false;
+                            bool isSendOtpToUser = jo["IsSendOtpToUser"]?.Value<bool>() ?? false;
+
+                            if (isBlockIp)
                             {
-                                if (mUser.IsMacIdApproved)
-                                {
-                                    if (mUser != null && mUser.Id > 0)
-                                    {
-                                        if (!mUser.IsActive)
-                                        {
-                                            ViewBag.Error = "You are not authorize to access the portal";
-                                            return View("Index");
-                                        }
+                                ViewBag.Error = "Invalid User Id or password";
+                                return View("Index", mLogin);
+                            }
 
-                                        if (mLogin.RememberMe)
-                                        {
-                                            HttpCookie loginCookie = new HttpCookie("LoginUser");
-                                            //Set the Cookie value.
-                                            loginCookie.Values.Add("EmailAddress", mLogin.EmailAddress);
-                                            loginCookie.Values.Add("Password", mLogin.Password);
-                                            loginCookie.Values.Add("RememberMe", Convert.ToString(mLogin.RememberMe));
-                                            //Set the Expiry date.
-                                            loginCookie.Expires = DateTime.Now.AddDays(15);
-                                            //Add the Cookie to Browser.
-                                            Response.Cookies.Add(loginCookie);
-                                        }
-                                        else
-                                        {
-                                            var loginCookie = new HttpCookie("LoginUser");
-                                            //Set the Expiry date.
-                                            loginCookie.Expires = DateTime.Now.AddDays(-1);
-                                            //Add the Cookie to Browser.
-                                            Response.Cookies.Add(loginCookie);
-                                        }
-                                        ClsHttpContent.LoginUser = mUser;
-                                        int annexureId = (int)E7FRSAdvance.Utility.Utility.Annexure.FRS_25;
-                                        ClsHttpContent.LoginUser.AnnexureId = annexureId;
-                                        MenuFactory menuFactory = new MenuFactory(ClsHttpContent.LoginUser);
-                                        IMenuBuilder menuBuilder = menuFactory.CreateInstanceAnnexure(annexureId);
-                                        ClsHttpContent.FRS25Menus = menuBuilder.Build(ClsHttpContent.LoginUser);
+                            if (!isMacIdApproved)
+                            {
+                                ViewBag.Error = "Suspicious Login detected!! Kindly Contact Admin.";
+                                return View("Index", mLogin);
+                            }
 
+                            if (isSendOtpToUser)
+                            {
+                                // OTP required — session is NOT set here. Only the opaque
+                                // OtpSessionId (server-resolved identity) is carried forward.
+                                ViewBag.PhoneNumberMasked = jo["PhoneNumberMasked"]?.Value<string>();
+                                ViewBag.OtpSessionId = jo["OtpSessionId"]?.Value<string>();
+                                ViewBag.IsRedirect = true;
+                                ViewBag.OTPResendDelay = GetOTPResendDelay();
+                                return View("Index", mLogin);
+                            }
 
+                            // No OTP required — full user + real token returned directly.
+                            Domain.User mUser = jo.ToObject<Domain.User>();
 
-                                        if (mUser.IsSendOtpToUser)
-                                        {
-                                            ViewBag.MobileNumber = mUser.PhoneNumber;
-                                            ViewBag.MacAddress = mLogin.MacAddress;
-                                            ViewBag.UserId = mUser.Id;
-                                            ViewBag.IsRedirect = true;
-                                            ViewBag.OTPResendDelay = GetOTPResendDelay();
+                            if (mUser == null || mUser.Id <= 0)
+                            {
+                                ViewBag.Error = "Invalid User Id or password";
+                                return View("Index", mLogin);
+                            }
 
-                                            return View("Index", mLogin);
-                                        }
-                                        else
-                                        {
-                                            return RedirectToAction("Index", "Home", new { area = "FRS25" });
-                                        }
+                            if (!mUser.IsActive)
+                            {
+                                ViewBag.Error = "You are not authorize to access the portal";
+                                return View("Index");
+                            }
 
-
-                                        //if (mUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
-                                        //    return RedirectToAction("Index", "Home", new { area = "FRS25" });
-                                        //else
-                                        //{
-                                        //    return RedirectToAction("Index", "Home", new { area = "FRS25" });
-                                        //}
-                                    }
-                                    else
-                                    {
-                                        ViewBag.Error = "Invalid User name or password";
-                                        return View("Index", mLogin);
-                                    }
-                                }
-                                else
-                                {
-                                    ViewBag.Error = "Suspicious Login detected!! Kindly Contact Admin.";
-                                    return View("Index", mLogin);
-                                }
+                            if (mLogin.RememberMe)
+                            {
+                                HttpCookie loginCookie = new HttpCookie("LoginUser");
+                                loginCookie.Values.Add("EmailAddress", mLogin.EmailAddress);
+                                loginCookie.Values.Add("Password", mLogin.Password);
+                                loginCookie.Values.Add("RememberMe", Convert.ToString(mLogin.RememberMe));
+                                loginCookie.Expires = DateTime.Now.AddDays(15);
+                                Response.Cookies.Add(loginCookie);
                             }
                             else
                             {
-                                ViewBag.Error = "Invalid User name or password";
-                                return View("Index", mLogin);
+                                var loginCookie = new HttpCookie("LoginUser");
+                                loginCookie.Expires = DateTime.Now.AddDays(-1);
+                                Response.Cookies.Add(loginCookie);
                             }
+
+                            ClsHttpContent.LoginUser = mUser;
+                            int annexureId = (int)E7FRSAdvance.Utility.Utility.Annexure.FRS_25;
+                            ClsHttpContent.LoginUser.AnnexureId = annexureId;
+                            MenuFactory menuFactory = new MenuFactory(ClsHttpContent.LoginUser);
+                            IMenuBuilder menuBuilder = menuFactory.CreateInstanceAnnexure(annexureId);
+                            ClsHttpContent.FRS25Menus = menuBuilder.Build(ClsHttpContent.LoginUser);
+
+                            return RedirectToAction("Index", "Home", new { area = "FRS25" });
+                        }
+                        else if (response.StatusCode == (HttpStatusCode)429)
+                        {
+                            string jsonString = response.Content.ReadAsStringAsync().Result;
+                            ViewBag.Error = JsonConvert.DeserializeObject<string>(jsonString);
+                            return View("Index", mLogin);
                         }
                         else
                         {
@@ -214,29 +206,35 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         }
 
-        public JsonResult ResendOtp(string mobileNumber)
+        /// <summary>
+        /// Resend OTP during the pre-auth OTP step. No session/token exists yet —
+        /// identity is resolved server-side from the OtpSessionId.
+        /// </summary>
+        public JsonResult ResendOtp(string otpSessionId)
         {
             dynamic data = new ExpandoObject();
             try
             {
-                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                using (var hcf = new HttpClientFactory())
                 {
-                    var response = hcf.client.GetAsync(String.Format($"SMS/SendSMS/MobileNumber/{mobileNumber}")).Result;
-                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    var payload = new { OtpSessionId = otpSessionId };
+                    var jsonStr = JsonConvert.SerializeObject(payload);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("SMS/ResendOtp", str).Result;
+
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
-                        data = new { type = "success", message = "OTP send successfully" };
-                        //sites.Insert(0, new Domain.Site { Id = 0, Name = "Select site" });
+                        data = new { type = "success", message = "OTP sent successfully" };
                     }
                     else
                     {
-                        data = new { type = "error", message = "Internal" };
+                        data = new { type = "error", message = "Failed to resend OTP" };
                     }
                 }
             }
             catch (Exception ex)
             {
-                throw ex;
+                data = new { type = "error", message = "Something went wrong. Please try again later." };
             }
 
             return Json(data);
@@ -247,9 +245,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             int value = 0;
             try
             {
-                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                using (var hcf = new HttpClientFactory())
                 {
-                    var response = hcf.client.GetAsync(String.Format($"AppConfig/GroupName/SecurityParams/AppKey/OTPResendDelay")).Result;
+                    var response = hcf.client.GetAsync(String.Format($"AppConfig/GetSecurityParams")).Result;
                     string jsonString = response.Content.ReadAsStringAsync().Result;
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
@@ -269,37 +267,69 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return value;
         }
 
-        public JsonResult VerifyOtp(OtpData otpData)
+        /// <summary>
+        /// Verifies the OTP for the pre-auth session. On success, the API returns the
+        /// full User + real Token — THIS is where the session gets set, not before.
+        /// </summary>
+        public JsonResult VerifyOtp(string otpSessionId, string otp)
         {
             dynamic data = new ExpandoObject();
             try
             {
-                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                using (var hcf = new HttpClientFactory())
                 {
-                    var jsonStr = JsonConvert.SerializeObject(otpData);
+                    var payload = new { OtpSessionId = otpSessionId, Otp = otp };
+                    var jsonStr = JsonConvert.SerializeObject(payload);
                     StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
-                    var response = hcf.client.PostAsync(String.Format("SMS/VerifyOtp"), str).Result;
+                    var response = hcf.client.PostAsync(String.Format("SMS/VerifyOtpWithSession"), str).Result;
+
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
                         string jsonString = response.Content.ReadAsStringAsync().Result;
-                        var dsds = JsonConvert.DeserializeObject<Domain.SMS.OtpResult>(jsonString);
-                        if (dsds.Success)
+                        JObject jo = JObject.Parse(jsonString);
+                        bool success = jo["Success"]?.Value<bool>() ?? false;
+                        string message = jo["Message"]?.Value<string>();
+
+                        if (success)
                         {
-                            //UpdateLastOTPTime();
-                            data = new { type = "success", message = dsds.Message };
+                            // OTP verified — set the real session now, from the User
+                            // object this response returned, not from a prior call.
+                            Domain.User verifiedUser = jo["User"]?.ToObject<Domain.User>();
+                            if (verifiedUser != null && verifiedUser.Id > 0)
+                            {
+                                ClsHttpContent.LoginUser = verifiedUser;
+                                int annexureId = (int)E7FRSAdvance.Utility.Utility.Annexure.FRS_25;
+                                ClsHttpContent.LoginUser.AnnexureId = annexureId;
+                                MenuFactory menuFactory = new MenuFactory(ClsHttpContent.LoginUser);
+                                IMenuBuilder menuBuilder = menuFactory.CreateInstanceAnnexure(annexureId);
+                                ClsHttpContent.FRS25Menus = menuBuilder.Build(ClsHttpContent.LoginUser);
+
+                                data = new
+                                {
+                                    type = "success",
+                                    message = message,
+                                    redirectUrl = Url.Action("Index", "Home", new { area = "FRS25" })
+                                };
+                            }
+                            else
+                            {
+                                data = new { type = "error", message = "Verification succeeded but session could not be established." };
+                            }
                         }
                         else
                         {
-
-                            data = new { type = "error", message = dsds.Message };
+                            data = new { type = "error", message = message };
                         }
-                        //sites.Insert(0, new Domain.Site { Id = 0, Name = "Select site" });
+                    }
+                    else
+                    {
+                        data = new { type = "error", message = "Session expired. Please log in again." };
                     }
                 }
             }
             catch (Exception ex)
             {
-                throw ex;
+                data = new { type = "error", message = "Something went wrong. Please try again later." };
             }
 
             return Json(data);

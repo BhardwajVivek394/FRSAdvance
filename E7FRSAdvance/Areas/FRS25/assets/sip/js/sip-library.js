@@ -380,12 +380,18 @@
      *  renderPointGapLayer() (top layer, live view only).
      *  attrs.pm options still honoured: labelSide, labelOffset, indRadius,
      *  indOffset. Operating (attrs.pmBlink) = the status dot flashes.
+     *  Failed (attrs.pmFail: NWKR + RWKR both dropped > 1 min) = curve and
+     *  dot flash red.
      * ----------------------------------------------------------------------- */
     function renderPointMachine(cell, mirror) {
         const pos = pmPosOf(cell);
         const P = pmCurveOf(cell, mirror);
         const d = bezD(P);
-        const col = pos === 'R' ? T.route : T.free;
+        const pmFail = !!(cell.attrs && cell.attrs.pmFail);
+        const col = pmFail ? T.fault : pos === 'R' ? T.route : T.free;
+        const failBlink = pmFail
+            ? `<animate attributeName="opacity" values="1;0.25;1" dur="0.9s" repeatCount="indefinite"/>`
+            : '';
 
         const labelAttrs = (cell.attrs && cell.attrs.label) || {};
         const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
@@ -397,8 +403,8 @@
         const pmBlink = !!(cell.attrs && cell.attrs.pmBlink);
 
         let svg = `<g class="sip-asset sip-pm" data-id="${cell.id}" data-type="${cell.type}">`;
-        if (pos === 'R') svg += glowStroke(d, col, TRACK_W);
-        svg += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${TRACK_W}" stroke-linecap="round"/>`;
+        if (pos === 'R' || pmFail) svg += glowStroke(d, col, TRACK_W);
+        svg += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${TRACK_W}" stroke-linecap="round">${failBlink}</path>`;
 
         /* status dot: beside the curve midpoint, on the outer (lower) side */
         const mid = bezAt(P, 0.5);
@@ -411,8 +417,8 @@
         const off = TRACK_W / 2 + indR + 6 + (+(pmProps.indOffset) || 0);
         const dcx = mid[0] + perpX * off * sign;
         const dcy = mid[1] + perpY * off * sign;
-        const dotCol = pos === 'N' ? T.pmN : pos === 'R' ? T.pmR : T.pmUnknown;
-        const blink = pmBlink
+        const dotCol = pmFail ? T.fault : pos === 'N' ? T.pmN : pos === 'R' ? T.pmR : T.pmUnknown;
+        const blink = pmFail ? failBlink : pmBlink
             ? `<animate attributeName="opacity" values="1;0.15;1" dur="0.7s" repeatCount="indefinite"/>`
             : '';
         svg += `<circle cx="${dcx.toFixed(2)}" cy="${dcy.toFixed(2)}" r="${indR}" fill="${dotCol}" ` +

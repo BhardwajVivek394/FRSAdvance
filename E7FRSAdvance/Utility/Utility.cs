@@ -369,7 +369,19 @@ namespace E7FRSAdvance.Utility
             True = 2,
             False = 3,
             Maintenace = 4,
-            PT = 5
+            PT = 5,
+            Acknowledge = 6
+        }
+
+        /* 616: AppConfig.Unit for the Alert Feedback Time window */
+        public enum Unit
+        {
+            MilliSecond = 1,
+            Seconds = 2,
+            Minutes = 3,
+            Hours = 4,
+            Days = 5,
+            Percentage = 6
         }
 
         public enum PMScale

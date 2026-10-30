@@ -152,7 +152,7 @@
             <!-- OTP Card -->
             <div class="otp-card text-center" id="otpCard">
                 <h2 class="otp-title mb-2">Enter code</h2>
-                <p class="otp-subtitle mb-4">We sent a code to <a href="#" class="text-white" id="displayMobile">@ViewBag.MobileNumber</a>.</p>
+                <p class="otp-subtitle mb-4">We sent a code to <a href="#" class="text-white" id="displayMobile">@ViewBag.PhoneNumberMasked</a>.</p>
 
                 <div class="otp-inputs d-flex justify-content-center mb-3">
                     <input type="text" class="otp-input text-center mx-1" maxlength="1" data-index="0">
@@ -179,10 +179,8 @@
         </div>
     </div>
 
-    <!-- Hidden field for mobile number -->
-    <input type="hidden" id="hdnMobileNumber" value="@ViewBag.MobileNumber" />
-    <input type="hidden" id="hdnMacAddress" value="@ViewBag.MacAddress" />
-    <input type="hidden" id="hdnUserId" value="@ViewBag.UserId" />
+    <!-- Hidden field for the pre-auth OTP session -->
+    <input type="hidden" id="hdnOtpSessionId" value="@ViewBag.OtpSessionId" />
 
     <!-- Use full jQuery (not slim) for AJAX support -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -190,9 +188,7 @@
     <script src="~/Areas/FRS25/assets/js/bootstrap.min.js"></script>
 
     <script>
-        var mobileNumber = '';
-        var macAddress = '';
-        var userId = '';
+        var otpSessionId = '';
         var timerInterval;
 
         $(document).ready(function () {
@@ -202,10 +198,8 @@
 
                      alert('@ViewBag.Error');
             }
-            // Get mobile number from hidden field
-            mobileNumber = $('#hdnMobileNumber').val();
-            macAddress =  $('#hdnMacAddress').val();
-            userId =  $('#hdnUserId').val();
+            // Get OTP session id from hidden field
+            otpSessionId = $('#hdnOtpSessionId').val();
             // Check if OTP card should be shown
             var isRedirect = '@ViewBag.IsRedirect';
             if (isRedirect != null && isRedirect != '' && isRedirect != 'False') {
@@ -291,10 +285,8 @@
                 url: '@Url.Action("VerifyOtp", "Login")',
                 type: 'POST',
                 data: {
-                    Mobile: mobileNumber,
-                    otp: otp,
-                    MacAddress : macAddress,
-                    userId : userId,
+                    otpSessionId: otpSessionId,
+                    otp: otp
                 },
                 success: function (response) {
                     $('#otpLoader').hide();
@@ -346,9 +338,7 @@
             $.ajax({
                 url: '@Url.Action("ResendOtp", "Login")',
                 type: 'POST',
-                data: {
-                    mobileNumber: mobileNumber
-                },
+                data: { otpSessionId: otpSessionId },
                 success: function (response) {
                     if (response.type == "success") {
                         debugger;

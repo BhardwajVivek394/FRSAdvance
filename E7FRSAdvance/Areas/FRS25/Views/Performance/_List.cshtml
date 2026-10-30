@@ -1,7 +1,10 @@
 ﻿@model Domain.FRSAlertLister
+@using Newtonsoft.Json
 
 @{ // Process data once at the top for better performance
     var alertSummaryReport = new List<dynamic>();
+    // Breakup: per-station alert details for the % click-through popup
+    string perfBreakupJson = "{}";
 
     if (Model != null && Model.mFRSAlerts != null && Model.mFRSAlerts.Count > 0)
     {
@@ -23,51 +26,118 @@
          TrueCount = gcs.Count(x => x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True),
          PTCount = gcs.Count(x => x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT),
          FalseCount = gcs.Count(x => x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False),
-         FailCount = gcs.Count(x => x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure),
-         PredictiveCount = gcs.Count(x => x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive),
+
+         RDPMS_True_PT_FailCount = gcs.Count(x => x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True
+         || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT) && x.isManual==0),
+
+
+         RDPMS_True_PT_False_FailCount = gcs.Count(x =>
+    x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure
+    && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True
+        || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT
+        || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)
+    && x.isManual == 0),
+
+
+
+         RDPMS_True_PT_PredictiveCount = gcs.Count(x =>
+     x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive
+     && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True
+         || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)
+     && x.isManual == 0),
+
+         //RDPMS_True_PT_False_FailCount = gcs.Count(x => x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT
+         //|| x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False && x.isManual == 0),
+
+         RDPMS_True_PT_False_PredictiveCount = gcs.Count(x =>
+ x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive
+ && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True
+ || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT
+ || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)
+ && x.isManual == 0),
+
+
+         //PredictiveCount = gcs.Count(x => x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive),
+
+
+
 
 
          //1st
-         TotalPTFailAlerts = gcs.Count(x =>
-            x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
-            (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
-             x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
+         //TotalPTFailAlerts = gcs.Count(x =>
+         //   x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
+         //   (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+         //    x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
 
-         TotalFailAlerts = gcs.Count(x =>
-             x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
-             (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
-              x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
+         //TotalFailAlerts = gcs.Count(x =>
+         //    x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
+         //    (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+         //     x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
 
 
          //2nd
-         TotalPTPredictiveAlerts = gcs.Count(x =>
-                     x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive &&
-            (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
-             x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
+         //TotalPTPredictiveAlerts = gcs.Count(x =>
+         //            x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive &&
+         //   (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+         //    x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
 
-         TotalPredictiveAlerts = gcs.Count(x =>
-             x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive &&
-             (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
-              x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
+         //TotalPredictiveAlerts = gcs.Count(x =>
+         //    x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive &&
+         //    (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+         //     x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
          //
 
 
          //3rd
+         //TruePTFailAlertCountRDPMS = gcs.Count(x =>
+         //            x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
+         //            (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+         //             x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT) &&
+         //            x.isManual == 0),
+
+         //TotalActualFailAlertCount = gcs.Count(x =>
+         //     x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
+         //    (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+         //     x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
+
+
          TruePTFailAlertCountRDPMS = gcs.Count(x =>
-                     x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
-                     x.isManual == 0 &&
-                     (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
-                      x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
+        x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure &&
+        (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+        x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT) &&
+        x.isManual == 0),
 
          TotalActualFailAlertCount = gcs.Count(x =>
-              x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && x.isManual == 1 &&
-             (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
-              x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False)),
+            x.AlertCategoryId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True ||
+            x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)),
+
+
      })
      .OrderBy(x => x.ZoneName)
      .ThenBy(x => x.DivisionName)
      .ThenBy(x => x.SiteName)
      .ToList<dynamic>();
+
+        // Per-station raw alert rows for the % breakup popup
+        var breakupMap = Model.mFRSAlerts
+            .GroupBy(x => x.SiteName ?? "")
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(x => new
+                {
+                    assetName = x.AssetName ?? "",
+                    cause = x.CauseCode ?? "",
+                    setTime = (x.SetTimeStamp == DateTime.MinValue) ? "" : x.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss"),
+                    resetTime = (x.ResetTimeStamp == null || x.ResetTimeStamp == DateTime.MinValue) ? "" : x.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss"),
+                    feedback = x.Remark ?? "",
+                    maintainerName = x.MaintainerName ?? "",
+                    alertCat = (int)x.AlertCategoryId,
+                    ackStatus = (int)x.AcknowledgemenStatusId,
+                    isManual = (int)x.isManual
+                }).ToList()
+            );
+        perfBreakupJson = JsonConvert.SerializeObject(breakupMap)
+            .Replace("</", "<\\/"); // safe to embed inside a <script> block
     } }
 
 <style>
@@ -181,30 +251,50 @@
     }*/
 </style>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<!-- Fix 6: exceljs + FileSaver loaded lazily on first export click -->
+<script>
+    var _excelJsLoadedList = false;
+    function ensureExcelJsList(callback) {
+        if (_excelJsLoadedList || typeof ExcelJS !== 'undefined') { _excelJsLoadedList = true; callback(); return; }
+        var s1 = document.createElement('script');
+        s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js';
+        s1.onload = function () {
+            var s2 = document.createElement('script');
+            s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js';
+            s2.onload = function () { _excelJsLoadedList = true; callback(); };
+            document.head.appendChild(s2);
+        };
+        document.head.appendChild(s1);
+    }
+</script>
 
 <div id="listView">
     <div class="d-flex justify-content-end align-items-center btn-icon-size">
         <div id="buttonGroupLeft"></div>
         <!-- Download Dropdown – right corner -->
-        <div class="dropdown">
-            <button class="btn btn-inactive" id="btnDownload" data-toggle="dropdown"
-                    aria-haspopup="true" aria-expanded="false" title="Download">
-                <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
-                     stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-                    <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' />
-                </svg>
-            </button>
-            <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnDownload" style="min-width: 130px;">
-                <a class="dropdown-item" href="javascript:void(0);" onclick="perfDownload('excel')">
-                    <i class="fa fa-file-excel mr-2" style="color:var(--e7-dot-green, #22c55e);"></i> Excel
-                </a>
-                <a class="dropdown-item" href="javascript:void(0);" onclick="perfDownload('csv')">
-                    <i class="fa fa-file-alt mr-2" style="color:var(--e7-accent, #3b82f6);"></i> CSV
-                </a>
+        @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId != E7FRSAdvance.Utility.Utility.UserClass.Guest.GetHashCode())
+        {
+            <div class="dropdown">
+                <button class="btn btn-inactive" id="btnDownload" data-toggle="dropdown"
+                        aria-haspopup="true" aria-expanded="false" title="Download">
+                    <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
+                         stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                        <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' />
+                    </svg>
+                </button>
+                <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnDownload" style="min-width: 130px;">
+                    <a class="dropdown-item" href="javascript:void(0);" onclick="perfDownload('excel')">
+                        <i class="fa fa-file-excel mr-2" style="color:var(--e7-dot-green, #22c55e);"></i> Excel
+                    </a>
+                    <a class="dropdown-item" href="javascript:void(0);" onclick="perfDownload('csv')">
+                        <i class="fa fa-file-alt mr-2" style="color:var(--e7-accent, #3b82f6);"></i> CSV
+                    </a>
+                    <a class="dropdown-item" href="javascript:void(0);" onclick="perfDownload('pdf')">
+                        <i class="fa fa-file-pdf mr-2" style="color:var(--e7-dot-red, #ef4444);"></i> PDF
+                    </a>
+                </div>
             </div>
-        </div>
+        }
     </div>
     <div class="table-responsive">
         <table class="table table-hover" id="tblPerformance">
@@ -235,137 +325,195 @@
                         int trueCount = (int)item.TrueCount;
                         int falseCount = (int)item.FalseCount;
                         int ptCount = (int)item.PTCount;
-                        int failCount = (int)item.FailCount;
-                        int predictiveCount = (int)item.PredictiveCount;
+                        //int failCount = (int)item.FailCount;
+                        //int predictiveCount = (int)item.PredictiveCount;
                         int totalTruePT = trueCount + ptCount + falseCount;
 
 
+                        int RDPMS_True_PT_FailCount = (int)item.RDPMS_True_PT_FailCount;
+                        int RDPMS_True_PT_False_FailCount = (int)item.RDPMS_True_PT_False_FailCount;
+
 
                         //1st
-                        int TotalPTFailAlerts = item.TotalPTFailAlerts;
-                        int TotalFailAlerts = item.TotalFailAlerts;
+                        //int TotalPTFailAlerts = item.TotalPTFailAlerts;
+                        //int TotalFailAlerts = item.TotalFailAlerts;
 
-                        double FailureTotalAlertRatio = TotalFailAlerts > 0
-                        ? Math.Round((double)TotalPTFailAlerts / TotalFailAlerts * 100, 2)
-                        : 0.0;
+                        //double FailureTotalAlertRatio = TotalFailAlerts > 0
+                        //? Math.Round((double)TotalPTFailAlerts / TotalFailAlerts * 100, 2)
+                        //: 0.0;
                         //
+
+                        double FailureTotalAlertRatio = RDPMS_True_PT_False_FailCount > 0
+                        ? Math.Round((double)RDPMS_True_PT_FailCount / RDPMS_True_PT_False_FailCount * 100, 2)
+                        : 0.0;
 
 
                         //2nd
-                        int TotalPTPredictiveAlerts = item.TotalPTPredictiveAlerts;
-                        int TotalPredictiveAlerts = item.TotalPredictiveAlerts;
+                        //int TotalPTPredictiveAlerts = item.TotalPTPredictiveAlerts;
+                        //int TotalPredictiveAlerts = item.TotalPredictiveAlerts;
 
-                        double PredictiveTotalAlertRatio = TotalPredictiveAlerts > 0
-                        ? Math.Round((double)TotalPTPredictiveAlerts / TotalPredictiveAlerts * 100, 2)
-                        : 0.0;
+                        //double PredictiveTotalAlertRatio = TotalPredictiveAlerts > 0
+                        //? Math.Round((double)TotalPTPredictiveAlerts / TotalPredictiveAlerts * 100, 2)
+                        //: 0.0;
+
+                        //int RDPMS_True_PT_PredictiveCount = (int)item.RDPMS_True_PT_PredictiveCount;
+                        //int RDPMS_True_PT_False_PredictiveCount = (int)item.RDPMS_True_PT_False_PredictiveCount;
+
+                        //double PredictiveTotalAlertRatio = RDPMS_True_PT_PredictiveCount > 0
+                        //? Math.Round((double)RDPMS_True_PT_PredictiveCount / RDPMS_True_PT_False_PredictiveCount * 100, 2)
+                        //: 0.0;
 
                         //
 
 
 
                         //3rd
-                        int TruePTFailAlertCountRDPMS = item.TruePTFailAlertCountRDPMS;        // IsManual = 0
-                        int TotalActualFailAlertCount = TruePTFailAlertCountRDPMS + item.TotalActualFailAlertCount;  // IsManual = 0 && IsManual = 1 both
+                        //int TruePTFailAlertCountRDPMS = item.TruePTFailAlertCountRDPMS;        // IsManual = 0
+                        //int TotalActualFailAlertCount = item.TotalActualFailAlertCount;  // IsManual = 0 && IsManual = 1 both
 
 
-                        double RDPMSFailureTotalAlertRatio = TotalActualFailAlertCount > 0
-                         ? Math.Round((double)TruePTFailAlertCountRDPMS / TotalActualFailAlertCount * 100, 2)
-                         : 0.0;
 
-                        //3rd
-
-
-                        //
+                        //double RDPMSFailureTotalAlertRatio = TotalActualFailAlertCount > 0
+                        // ? Math.Round((double)TruePTFailAlertCountRDPMS / TotalActualFailAlertCount * 100, 2)
+                        //: 0.0;
 
 
 
 
-                        //// Total denominator = system + manual
-                        //int truePtFailTotal = truePtFailAlertCount + truePtFailManualAlertCount;
-
-                        //// Percentage of system-generated (IsManual=0) out of combined total
-                        //double failPercentage = (truePtFailTotal > 0)
-                        //    ? Math.Round(((double)truePtFailAlertCount / truePtFailTotal) * 100, 2)
+                        //double RDPMSFailureTotalAlertRatio = TruePTFailAlertCountRDPMS > 0
+                        //    ? (TruePTFailAlertCountRDPMS / (double)TotalActualFailAlertCount) * 100
                         //    : 0;
 
+                        //3rd
 
+
+                        //
+
+                        // 2nd
+                        int RDPMS_True_PT_PredictiveCount = (int)item.RDPMS_True_PT_PredictiveCount;
+                        int RDPMS_True_PT_False_PredictiveCount = (int)item.RDPMS_True_PT_False_PredictiveCount;
+
+                        double PredictiveTotalAlertRatio = RDPMS_True_PT_False_PredictiveCount > 0
+                            ? Math.Round((double)RDPMS_True_PT_PredictiveCount / RDPMS_True_PT_False_PredictiveCount * 100, 2)
+                            : 0.0;
+
+
+                        // 3rd
+                        int TruePTFailAlertCountRDPMS = (int)item.TruePTFailAlertCountRDPMS;
+                        int TotalActualFailAlertCount = (int)item.TotalActualFailAlertCount;
+
+                        double RDPMSFailureTotalAlertRatio = TotalActualFailAlertCount > 0
+                            ? Math.Round((double)TruePTFailAlertCountRDPMS / TotalActualFailAlertCount * 100, 2)
+                            : 0.0;
 
 
                         // Calculate percentages
-                        int total = falseCount + predictiveCount + trueCount;
+                        //int total = falseCount + predictiveCount + trueCount;
 
-                        double failPercentage = (total > 0) ? Math.Round(((double)falseCount / total) * 100, 2) : 0;
-                        double predictivePercentage = (total > 0) ? Math.Round(((double)predictiveCount / total) * 100, 2) : 0;
-                        double healthyPercentage = (total > 0) ? Math.Round(((double)trueCount / total) * 100, 2) : 0;
-                        //double failPercentage = (failCount > 0 && totalTruePT > 0) ? Math.Round(((double)falseCount / totalTruePT) * 100) : 0;
+                        //double failPercentage = (total > 0) ? Math.Round(((double)falseCount / total) * 100, 2) : 0;
+                        //double predictivePercentage = (total > 0) ? Math.Round(((double)predictiveCount / total) * 100, 2) : 0;
+                        //double healthyPercentage = (total > 0) ? Math.Round(((double)trueCount / total) * 100, 2) : 0;
+                        ////double failPercentage = (failCount > 0 && totalTruePT > 0) ? Math.Round(((double)falseCount / totalTruePT) * 100) : 0;
                         //double predictivePercentage = (predictiveCount > 0 && totalTruePT > 0) ? Math.Round(((double)predictiveCount / totalTruePT) * 100) : 0;
                         double rdpmsPercentage = 100;<!-- Data attributes for chart parsing -->
-                                            <tr data-station="@item.SiteName"
-                                                data-failure="@FailureTotalAlertRatio"
-                                                data-predictive="@PredictiveTotalAlertRatio"
-                                                data-rdpms="@RDPMSFailureTotalAlertRatio">
-                                                <td>@counter</td>
-                                                <td>@item.ZoneName</td>
-                                                <td>@item.DivisionName</td>
-                                                <td>@item.SiteName</td>
-                                                <td class="text-center">
-                                                    @if (FailureTotalAlertRatio > 0)
-                                                    {
-                                <span>@FailureTotalAlertRatio%</span> }
-                            else
-                            {
-        <span class="text-muted">-</span>}
-                                                </td>
-                                                <td class="text-center">
-                                                    @if (PredictiveTotalAlertRatio > 0)
-                                                    {
-                                <span>@PredictiveTotalAlertRatio%</span> }
-                            else
-                            {
-        <span class="text-muted">-</span>}
-                                                </td>
-                                                <td class="text-center">
-                                                    <span>@RDPMSFailureTotalAlertRatio%</span>
-                                                </td>
-                                            </tr>
- }
-                                    }
-                                    else
-                                    {
-                        <tr>
-                            <td colspan="7" class="text-center py-4 text-muted">
-                                <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
-                                No data found
+                        <tr data-station="@item.SiteName"
+                            data-failure="@FailureTotalAlertRatio"
+                            data-predictive="@PredictiveTotalAlertRatio"
+                            data-rdpms="@RDPMSFailureTotalAlertRatio">
+                            <td>@counter</td>
+                            <td>@item.ZoneName</td>
+                            <td>@item.DivisionName</td>
+                            <td>@item.SiteName</td>
+                            <td class="text-center">
+                                @if (RDPMS_True_PT_False_FailCount > 0)
+                                {
+                                    <span>@FailureTotalAlertRatio%</span>
+                                    <a href="javascript:void(0);" class="perf-breakup-btn ml-1"
+                                       title="Break up"
+                                       data-station="@item.SiteName"
+                                       data-col="failure"
+                                       data-pct="@FailureTotalAlertRatio">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V10M10 19V5M16 19v-7"></path><path d="M4 19h16"></path></svg>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @if (RDPMS_True_PT_False_PredictiveCount > 0)
+                                {
+                                    <span>@PredictiveTotalAlertRatio%</span>
+                                    <a href="javascript:void(0);" class="perf-breakup-btn ml-1"
+                                       title="Break up"
+                                       data-station="@item.SiteName"
+                                       data-col="predictive"
+                                       data-pct="@PredictiveTotalAlertRatio">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V10M10 19V5M16 19v-7"></path><path d="M4 19h16"></path></svg>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                            <td class="text-center">
+                                @if (TotalActualFailAlertCount > 0)
+                                {
+                                    <span>@RDPMSFailureTotalAlertRatio%</span>
+                                    <a href="javascript:void(0);" class="perf-breakup-btn ml-1"
+                                       title="Break up"
+                                       data-station="@item.SiteName"
+                                       data-col="rdpms"
+                                       data-pct="@RDPMSFailureTotalAlertRatio">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V10M10 19V5M16 19v-7"></path><path d="M4 19h16"></path></svg>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
                             </td>
                         </tr>
-}
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="7" class="text-center py-4 text-muted">
+                            <i class="fas fa-inbox fa-2x mb-2 d-block"></i>
+                            No data found
+                        </td>
+                    </tr>
+                }
             </tbody>
         </table>
     </div>
 
     @if (alertSummaryReport.Count > 0)
     {<!-- Pagination -->
-                        <div class="d-flex justify-content-between align-items-center px-md-4 px-2 py-3 border-top">
-                            <div class="text-muted" id="paginationInfo" style="font-size: 13px;">
-                                Showing <strong><span id="showingFrom">1</span></strong> to
-                                <strong><span id="showingTo">10</span></strong> of
-                                <strong>@alertSummaryReport.Count</strong> records
-                            </div>
-                            <nav>
-                                <ul class="pagination mb-0" id="pager">
-                                    <li class="page-item" id="prevBtn">
-                                        <a class="page-link" href="javascript:void(0);" onclick="changePage('prev')">
-                                            <i class="fas fa-chevron-left"></i> Previous
-                                        </a>
-                                    </li>
-                                    <li class="page-item" id="nextBtn">
-                                        <a class="page-link" href="javascript:void(0);" onclick="changePage('next')">
-                                            Next <i class="fas fa-chevron-right"></i>
-                                        </a>
-                                    </li>
-                                </ul>
-                            </nav>
-                        </div>}
+        <div class="d-flex justify-content-between align-items-center px-md-4 px-2 py-3 border-top">
+            <div class="text-muted" id="paginationInfo" style="font-size: 13px;">
+                Showing <strong><span id="showingFrom">1</span></strong> to
+                <strong><span id="showingTo">10</span></strong> of
+                <strong>@alertSummaryReport.Count</strong> records
+            </div>
+            <nav>
+                <ul class="pagination mb-0" id="pager">
+                    <li class="page-item" id="prevBtn">
+                        <a class="page-link" href="javascript:void(0);" onclick="changePage('prev')">
+                            <i class="fas fa-chevron-left"></i> Previous
+                        </a>
+                    </li>
+                    <li class="page-item" id="nextBtn">
+                        <a class="page-link" href="javascript:void(0);" onclick="changePage('next')">
+                            Next <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </div>}
 </div>
 
 <script>
@@ -473,115 +621,890 @@
         if (m) m.classList.remove('open');
     });
 
-    // ── Collect table data ────────────────────────────────────────────
     function getPerfTableData() {
         var headers = [
-            'Sr.No', 'Zone', 'Division', 'Station',
-            '% Failure Alerts (True+PT) / Total Failure',
-            '% Predictive Alerts (True+PT) / Total Predictive',
-            '% RDPMS Failure / Total Actual Failures'
+            'Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name',
+            '% of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated',
+            '% of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated',
+            '% of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station'
         ];
+        // Robust text extraction: strip HTML, collapse whitespace, fallback to innerText
+        function cellText(td) {
+            var $td = $(td);
+            var t = $td.text().trim();
+            if (!t) t = (td.innerText || '').trim();
+            if (!t) t = $td.html().replace(/<[^>]*>/g, '').trim();
+            return t || '—';
+        }
         var rows = [];
         $('#tblPerformance tbody tr').each(function () {
             var tds = $(this).find('td');
             if (tds.eq(0).attr('colspan')) return;
+            if (tds.length < 7) return;
             rows.push([
-                tds.eq(0).text().trim(),
-                tds.eq(1).text().trim(),
-                tds.eq(2).text().trim(),
-                tds.eq(3).text().trim(),
-                tds.eq(4).text().trim(),
-                tds.eq(5).text().trim(),
-                tds.eq(6).text().trim()
+                cellText(tds[0]),
+                cellText(tds[1]),
+                cellText(tds[2]),
+                cellText(tds[3]),
+                'Energy7',
+                cellText(tds[4]),
+                cellText(tds[5]),
+                cellText(tds[6])
             ]);
         });
         return { headers: headers, rows: rows };
     }
 
-    // ── Main download function ────────────────────────────────────────
+    // Replace the entire perfDownload function
+    // Replace the entire perfDownload function
     window.perfDownload = function (type) {
-        var data = getPerfTableData();
-        if (data.rows.length === 0) {
-            alert('No data to download.');
+        // Fix 6: Lazy-load ExcelJS on first Excel export
+        if (type !== 'csv' && type !== 'pdf' && typeof ExcelJS === 'undefined') {
+            ensureExcelJsList(function () { window.perfDownload(type); });
             return;
         }
-
-        var fileName = 'PerformanceReport_' + new Date().toISOString().split('T')[0];
-
-        if (type === 'csv') {
-            // ── CSV ──────────────────────────────────────────────────
-            var allRows = [data.headers].concat(data.rows);
-            var csv = allRows.map(function (r) {
-                return r.map(function (c) {
-                    return '"' + String(c || '').replace(/"/g, '""') + '"';
-                }).join(',');
-            }).join('\r\n');
-
-            var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-            saveAs(blob, fileName + '.csv');
-
-        } else {
-            // ── Excel via ExcelJS ────────────────────────────────────
-            var workbook = new ExcelJS.Workbook();
-            workbook.creator = 'Energy7';
-            workbook.created = new Date();
-
-            var worksheet = workbook.addWorksheet('Performance Report');
-
-            // Column widths
-            worksheet.columns = [
-                { key: 'a', width: 8 },
-                { key: 'b', width: 16 },
-                { key: 'c', width: 20 },
-                { key: 'd', width: 20 },
-                { key: 'e', width: 36 },
-                { key: 'f', width: 36 },
-                { key: 'g', width: 36 }
-            ];
-
-            // Header row
-            var headerRow = worksheet.addRow(data.headers);
-            headerRow.eachCell(function (cell) {
-                cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A2D5A' } };
-                cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-                cell.border = {
-                    top: { style: 'thin', color: { argb: 'FFB0B8D1' } },
-                    left: { style: 'thin', color: { argb: 'FFB0B8D1' } },
-                    bottom: { style: 'thin', color: { argb: 'FFB0B8D1' } },
-                    right: { style: 'thin', color: { argb: 'FFB0B8D1' } }
-                };
-            });
-            headerRow.height = 40;
-
-            // Data rows
-            data.rows.forEach(function (row, idx) {
-                var dataRow = worksheet.addRow(row);
-                var bgColor = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8FAFF';
-                dataRow.eachCell(function (cell) {
-                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
-                    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-                    cell.border = {
-                        top: { style: 'thin', color: { argb: 'FFEDF0F8' } },
-                        left: { style: 'thin', color: { argb: 'FFEDF0F8' } },
-                        bottom: { style: 'thin', color: { argb: 'FFEDF0F8' } },
-                        right: { style: 'thin', color: { argb: 'FFEDF0F8' } }
-                    };
-                });
-                // Left-align text columns
-                dataRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
-                dataRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'left' };
-                dataRow.getCell(3).alignment = { vertical: 'middle', horizontal: 'left' };
-                dataRow.getCell(4).alignment = { vertical: 'middle', horizontal: 'left' };
-                dataRow.height = 22;
-            });
-
-            workbook.xlsx.writeBuffer().then(function (buffer) {
-                var blob = new Blob([buffer], {
-                    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-                });
-                saveAs(blob, fileName + '.xlsx');
-            });
+        var data = getPerfTableData();
+        if (data.rows.length === 0) {
+            showWarning('No data to download.', 'Download');
+            return;
         }
+        if (type === 'pdf' && typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+            showError('PDF library not loaded.', 'Error');
+            return;
+        }
+        var fileName = 'PerformanceReport_' + new Date().toISOString().split('T')[0];
+        $("#loader").show();
+
+        // All three formats need filter values — fetch once, shared.
+        getReportFilterValues(function (fv) {
+            try {
+                // Derive Zone/Division/Station from actual data when filters say "All" or "Select"
+                function isUnset(v) { return !v || v === 'All' || v === 'Select' || v === '--Select--'; }
+                if (isUnset(fv.zone) && data.rows.length > 0) {
+                    var zones = []; data.rows.forEach(function (r) { if (r[1] && zones.indexOf(r[1]) === -1) zones.push(r[1]); });
+                    if (zones.length === 1) fv.zone = zones[0];
+                    else if (zones.length > 1) fv.zone = zones.join(', ');
+                }
+                if (isUnset(fv.division) && data.rows.length > 0) {
+                    var divs = []; data.rows.forEach(function (r) { if (r[2] && divs.indexOf(r[2]) === -1) divs.push(r[2]); });
+                    if (divs.length === 1) fv.division = divs[0];
+                    else if (divs.length > 1) fv.division = divs.join(', ');
+                }
+                if (isUnset(fv.station) && data.rows.length > 0) {
+                    var stns = []; data.rows.forEach(function (r) { if (r[3] && stns.indexOf(r[3]) === -1) stns.push(r[3]); });
+                    if (stns.length === 1) fv.station = stns[0];
+                    else if (stns.length > 1) fv.station = stns.join(', ');
+                }
+
+                var _now = new Date();
+                var _date = ('0' + _now.getDate()).slice(-2) + '/' + ('0' + (_now.getMonth() + 1)).slice(-2) + '/' + _now.getFullYear();
+                var _time = ('0' + _now.getHours()).slice(-2) + ':' + ('0' + _now.getMinutes()).slice(-2) + ':' + ('0' + _now.getSeconds()).slice(-2);
+                var fromDate = $('#txtFromDate').val() || '';
+                var toDate = $('#txtToDate').val() || '';
+
+                // ----- CSV -----
+                if (type === 'csv') {
+                    var esc = function (v) { return '"' + String(v || '').replace(/"/g, '""') + '"'; };
+                    var csvLines = [];
+
+                    // Meta header (matches Telemetry History)
+                    csvLines.push(esc('Performance Report'));
+                    csvLines.push([esc('Zone'), esc(fv.zone || 'All'), esc('Division'), esc(fv.division || 'All'), esc('Station'), esc(fv.station || 'All')].join(','));
+                    csvLines.push([esc('Generated Date'), esc(_date + ' ' + _time)].join(','));
+                    csvLines.push([esc('Period From'), esc(fromDate), esc('Period To'), esc(toDate)].join(','));
+                    csvLines.push('');
+
+                    // Data header + rows
+                    csvLines.push(data.headers.map(esc).join(','));
+                    data.rows.forEach(function (r) {
+                        csvLines.push(r.map(esc).join(','));
+                    });
+
+                    var blob = new Blob(['\uFEFF' + csvLines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+                    saveAs(blob, fileName + '.csv');
+                }
+                // ----- Excel -----
+                else if (type === 'excel') {
+                    var workbook = new ExcelJS.Workbook();
+                    workbook.creator = 'Energy7';
+                    var ws = workbook.addWorksheet('Performance Report');
+                    ws.columns = [
+                        { key: 'a', width: 8 }, { key: 'b', width: 16 }, { key: 'c', width: 20 },
+                        { key: 'd', width: 20 }, { key: 'e', width: 18 }, { key: 'f', width: 40 },
+                        { key: 'g', width: 40 }, { key: 'h', width: 40 }
+                    ];
+                    var totalCols = data.headers.length;
+
+                    // Row 1: Title (matches Telemetry History)
+                    var r1 = ws.addRow(['Performance Report']);
+                    r1.height = 32;
+                    ws.mergeCells(1, 1, 1, totalCols);
+                    var c1 = r1.getCell(1);
+                    c1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4338CA' } };
+                    c1.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 15, name: 'Segoe UI' };
+                    c1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+                    // Row 2: Filter info
+                    var r2txt = 'Zone: ' + (fv.zone || 'All')
+                        + '   |   Division: ' + (fv.division || 'All')
+                        + '   |   Station: ' + (fv.station || 'All')
+                        + '   |   Period: ' + fromDate + ' to ' + toDate
+                        + '   |   Generated: ' + _date + ' ' + _time;
+                    var r2 = ws.addRow([r2txt]);
+                    r2.height = 18;
+                    ws.mergeCells(2, 1, 2, totalCols);
+                    var c2 = r2.getCell(1);
+                    c2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+                    c2.font = { italic: true, size: 9, color: { argb: 'FF3730A3' }, name: 'Segoe UI' };
+                    c2.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                    // Row 3: Spacer
+                    ws.addRow([]).height = 4;
+
+                    // Row 4: Data headers
+                    var headerRow = ws.addRow(data.headers);
+                    headerRow.eachCell(function (cell) {
+                        cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11, name: 'Segoe UI' };
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+                        cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                        cell.border = {
+                            bottom: { style: 'thin', color: { argb: 'FF93C5FD' } },
+                            right: { style: 'hair', color: { argb: 'FF3B5270' } }
+                        };
+                    });
+                    headerRow.height = 45;
+                    ws.views = [{ state: 'frozen', ySplit: 4 }];
+
+                    data.rows.forEach(function (row, idx) {
+                        var dataRow = ws.addRow(row);
+                        var bgColor = idx % 2 === 0 ? 'FFFFFFFF' : 'FFF8FAFF';
+                        dataRow.eachCell(function (cell) {
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                        });
+                        dataRow.height = 24;
+                    });
+                    workbook.xlsx.writeBuffer().then(function (buffer) {
+                        saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), fileName + '.xlsx');
+                    });
+                }
+                // ----- PDF (unchanged — already matches Telemetry History) -----
+                else if (type === 'pdf') {
+                    var jsPDF = window.jspdf ? window.jspdf.jsPDF : window.jsPDF;
+                    var doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
+                    var pageWidth = doc.internal.pageSize.getWidth();
+                    var pageHeight = doc.internal.pageSize.getHeight();
+                    var margin = 10;
+
+                    var primaryColor = [67, 56, 202];
+                    var headerBg = [15, 43, 76];
+                    var accentLine = [96, 165, 250];
+                    var textDark = [30, 41, 59];
+                    var textMuted = [100, 116, 139];
+                    var fixedEven = [232, 240, 254];
+                    var fixedOdd = [240, 247, 255];
+                    var dataEven = [248, 250, 252];
+                    var dataOdd = [255, 255, 255];
+
+                    var headers = data.headers;
+                    var body = data.rows;
+
+                    // Title bar
+                    doc.setFillColor.apply(doc, primaryColor);
+                    doc.rect(margin, margin, pageWidth - 2 * margin, 12, 'F');
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(13);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text('Performance Report', pageWidth / 2, margin + 8, { align: 'center' });
+
+                    // Accent line
+                    doc.setDrawColor.apply(doc, accentLine);
+                    doc.setLineWidth(0.7);
+                    doc.line(margin, margin + 12, pageWidth - margin, margin + 12);
+
+                    // Info row
+                    doc.setFillColor(238, 242, 255);
+                    doc.rect(margin, margin + 13, pageWidth - 2 * margin, 7, 'F');
+                    doc.setFont('helvetica', 'italic');
+                    doc.setFontSize(7.5);
+                    doc.setTextColor.apply(doc, textMuted);
+                    var infoText = 'Zone: ' + fv.zone + '  |  Division: ' + fv.division
+                        + '  |  Station: ' + fv.station
+                        + '  |  Period: ' + fromDate + ' to ' + toDate
+                        + '  |  Generated: ' + _date + ' ' + _time;
+                    doc.text(infoText, pageWidth / 2, margin + 17.5, { align: 'center' });
+
+                    // Normalize percentage cells: "-" or "—" → "0%" for clean PDF output
+                    var pdfBody = body.map(function (row) {
+                        return row.map(function (cell, ci) {
+                            if (ci >= 5) { // percentage columns (after Sr.No, Zone, Division, Station, Vendor)
+                                var v = String(cell || '').trim();
+                                if (v === '-' || v === '—' || v === '' || v === '–') return '0%';
+                            }
+                            return cell;
+                        });
+                    });
+
+                    // AutoTable
+                    var colCount = headers.length;
+                    var fontSize = 8;
+
+                    doc.autoTable({
+                        startY: margin + 28,
+                        head: [headers],
+                        body: pdfBody,
+                        theme: 'grid',
+                        margin: { left: margin, right: margin, top: margin + 28, bottom: 14 },
+                        styles: {
+                            fontSize: fontSize,
+                            cellPadding: 1.5,
+                            lineColor: [226, 232, 240],
+                            lineWidth: 0.2,
+                            textColor: textDark,
+                            font: 'helvetica',
+                            overflow: 'linebreak',
+                            valign: 'middle'
+                        },
+                        headStyles: {
+                            fillColor: headerBg,
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold',
+                            halign: 'center',
+                            valign: 'middle',
+                            fontSize: fontSize,
+                            cellPadding: 2,
+                            lineColor: [59, 89, 152],
+                            lineWidth: 0.3
+                        },
+                        columnStyles: (function () {
+                            var cs = {};
+                            var availWidth = pageWidth - 2 * margin;
+                            var fixedUsed = 12 + 22 + 28 + 30 + 22; // S.No + Zone + Division + Station + Vendor
+                            var percCount = colCount - 5;
+                            var percWidth = percCount > 0 ? (availWidth - fixedUsed) / percCount : 50;
+
+                            cs[0] = { halign: 'center', cellWidth: 12 };           // S.No
+                            cs[1] = { halign: 'left', fontStyle: 'bold', cellWidth: 22 };  // Zone
+                            cs[2] = { halign: 'left', fontStyle: 'bold', cellWidth: 28 };  // Division
+                            cs[3] = { halign: 'left', fontStyle: 'bold', cellWidth: 30 };  // Station
+                            cs[4] = { halign: 'center', fontStyle: 'bold', cellWidth: 22 }; // Vendor
+                            for (var i = 5; i < colCount; i++) {
+                                cs[i] = {
+                                    halign: 'center',
+                                    cellWidth: percWidth,
+                                    fontSize: 9,
+                                    fontStyle: 'bold'
+                                };
+                            }
+                            return cs;
+                        })(),
+                        didParseCell: function (data) {
+                            if (data.section === 'body') {
+                                var isEven = data.row.index % 2 === 0;
+                                if (data.column.index < 5) {
+                                    data.cell.styles.fillColor = isEven ? fixedEven : fixedOdd;
+                                } else {
+                                    data.cell.styles.fillColor = isEven ? dataEven : dataOdd;
+                                }
+                                var val = String(data.cell.raw || '');
+                                if (data.column.index >= 5 && val !== '' && !isNaN(val.replace('%', ''))) {
+                                    data.cell.styles.halign = 'right';
+                                }
+                            }
+                        },
+                        didDrawPage: function (data) {
+                            doc.setDrawColor(200, 200, 200);
+                            doc.setLineWidth(0.3);
+                            doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+                            doc.setFont('helvetica', 'normal');
+                            doc.setFontSize(7);
+                            doc.setTextColor.apply(doc, textMuted);
+                            doc.text('RDPMS — Performance Report', margin, pageHeight - 6);
+                            var pageNum = doc.internal.getCurrentPageInfo().pageNumber;
+                            doc.text('Page ' + pageNum, pageWidth / 2, pageHeight - 6, { align: 'center' });
+                            doc.text(_date + ' ' + _time, pageWidth - margin, pageHeight - 6, { align: 'right' });
+                        }
+                    });
+
+                    var totalPages = doc.internal.getNumberOfPages();
+                    for (var p = 1; p <= totalPages; p++) {
+                        doc.setPage(p);
+                        doc.setFont('helvetica', 'normal');
+                        doc.setFontSize(7);
+                        doc.setTextColor.apply(doc, textMuted);
+                        doc.setFillColor(255, 255, 255);
+                        doc.rect(pageWidth / 2 - 20, pageHeight - 10, 40, 6, 'F');
+                        doc.text('Page ' + p + ' of ' + totalPages, pageWidth / 2, pageHeight - 6, { align: 'center' });
+                    }
+
+                    doc.save(fileName + '.pdf');
+                    showSuccess('PDF downloaded!', 'Download Complete');
+                }
+
+            } catch (err) {
+                console.error('[Download] Error:', err);
+                showError('Failed to download ' + type.toUpperCase() + '.', 'Download Error');
+            } finally {
+                $("#loader").hide();
+            }
+        }); // end getReportFilterValues
     };
+
+    // Helper: get filter values (same as Telemetry History)
+    function getReportFilterValues(callback) {
+        var zoneName = $('#drpZones option:selected').text().trim() || 'All';
+        var divisionName = $('#drpDivisions option:selected').text().trim() || 'All';
+        var stationName = $('#drpSite option:selected').text().trim() || 'All';
+        var assetTypeName = $('#drpAssetType option:selected').text().trim() || 'All';
+        var siteId = $('#drpSite').val();
+
+        var values = { zone: zoneName, division: divisionName, station: stationName, vendorName: 'Energy7', assetType: assetTypeName };
+
+        if (siteId && siteId !== '' && siteId !== '0' && (zoneName === 'All' || divisionName === 'All')) {
+            $.ajax({
+                url: '/FRS25/Performance/GetSiteById?siteId=' + siteId,
+                type: 'GET',
+                success: function (data) {
+                    if (data) {
+                        if (zoneName === 'All') values.zone = data.ZoneName || data.Zone || data.ZoneCode || 'All';
+                        if (divisionName === 'All') values.division = data.DivisionName || data.Division || data.DivisionCode || 'All';
+                        values.station = data.Name || data.SiteName || stationName;
+                    }
+                    callback(values);
+                },
+                error: function () { callback(values); }
+            });
+        } else {
+            callback(values);
+        }
+    }
+
+    // ── Breakup popup: click the icon after each % to see the details ───────────
+    (function () {
+        // Data pushed from Razor: { "<StationName>": [ {assetName, cause, setTime, resetTime, feedback, maintainerName, alertCat, ackStatus, isManual}, ... ] }
+        window.perfBreakupData = @Html.Raw(perfBreakupJson);
+
+        // Column-type -> title used in the popup header
+        var colTitleMap = {
+            failure: '% of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated',
+            predictive: '% of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated',
+            rdpms: '% of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station'
+        };
+
+        // Acknowledgement status IDs (match E7FRSAdvance.Utility.Utility.AcknowledgemenStatus)
+        var ACK_TRUE = @((int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True);
+        var ACK_PT   = @((int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT);
+        var ACK_FALSE = @((int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False);
+
+        // Alert category IDs
+        var CAT_FAILURE   = @((int)E7FRSAdvance.Utility.Utility.AlertType.Failure);
+        var CAT_PREDICTIVE = @((int)E7FRSAdvance.Utility.Utility.AlertType.Predictive);
+
+        // Filter rows for a given column
+        function filterRows(rows, col) {
+            if (!rows || !rows.length) return [];
+            if (col === 'failure') {
+                return rows.filter(function (r) {
+                    return r.alertCat === CAT_FAILURE && r.isManual === 0
+                        && (r.ackStatus === ACK_TRUE || r.ackStatus === ACK_PT || r.ackStatus === ACK_FALSE);
+                });
+            }
+            if (col === 'predictive') {
+                return rows.filter(function (r) {
+                    return r.alertCat === CAT_PREDICTIVE && r.isManual === 0
+                        && (r.ackStatus === ACK_TRUE || r.ackStatus === ACK_PT || r.ackStatus === ACK_FALSE);
+                });
+            }
+            if (col === 'rdpms') {
+                // Denominator of the RDPMS column = all actual failures with True or PT
+                // (manual + non-manual). Numerator = the subset with isManual = 0.
+                return rows.filter(function (r) {
+                    return r.alertCat === CAT_FAILURE
+                        && (r.ackStatus === ACK_TRUE || r.ackStatus === ACK_PT);
+                });
+            }
+            return [];
+        }
+
+        function ackBadge(id) {
+            if (id === ACK_TRUE)  return '<span class="status-badge status-t">T</span>';
+            if (id === ACK_PT)    return '<span class="status-badge status-pt">PT</span>';
+            if (id === ACK_FALSE) return '<span class="status-badge status-f">F</span>';
+            return '<span class="status-badge status-na">-</span>';
+        }
+
+        function esc(s) {
+            if (s === null || s === undefined) return '';
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function openBreakup(station, col, pct) {
+            var rows = filterRows((window.perfBreakupData || {})[station] || [], col);
+
+            var total = rows.length;
+            var t  = rows.filter(function (r) { return r.ackStatus === ACK_TRUE;  }).length;
+            var pt = rows.filter(function (r) { return r.ackStatus === ACK_PT;    }).length;
+            var f  = rows.filter(function (r) { return r.ackStatus === ACK_FALSE; }).length;
+
+            // The RDPMS column measures actual failures at the station, so False
+            // alerts never enter this set (see filterRows) and the F tile would
+            // always read 0. The meaningful figure there is "Missed": every
+            // manually logged failure, i.e. the ones RDPMS did not raise itself.
+            // Those manual rows carry their own T/PT feedback, but they are not
+            // RDPMS detections, so they are excluded from the T and PT tiles --
+            // which keeps Total = T + PT + Missed and makes the tiles agree with
+            // the percentage (numerator = RDPMS T + PT only).
+            var isRdpms = (col === 'rdpms');
+            var missed = rows.filter(function (r) { return r.isManual === 1; }).length;
+            var tRdpms  = rows.filter(function (r) { return r.ackStatus === ACK_TRUE && r.isManual === 0; }).length;
+            var ptRdpms = rows.filter(function (r) { return r.ackStatus === ACK_PT   && r.isManual === 0; }).length;
+
+            $('#perfBreakupTitle').text(colTitleMap[col] || 'Break up');
+            $('#perfBreakupStation').text(station || '-');
+            $('#perfBreakupPct').text((pct !== undefined && pct !== null && pct !== '') ? (pct + '%') : '-');
+            $('#perfBreakupTotal').text(total);
+            $('#perfBreakupT').text(isRdpms ? tRdpms : t);
+            $('#perfBreakupPT').text(isRdpms ? ptRdpms : pt);
+            $('#perfBreakupFLabel').text(isRdpms ? 'Missed' : 'False (F)');
+            $('#perfBreakupF').text(isRdpms ? missed : f);
+
+            var $body = $('#perfBreakupTbody').empty();
+            if (!rows.length) {
+                var emptySpan = (col === 'rdpms') ? 9 : 8;
+                $body.append('<tr><td colspan="' + emptySpan + '" class="text-center text-muted py-3">No records</td></tr>');
+            } else {
+                rows.forEach(function (r, i) {
+                    var src = (col === 'rdpms')
+                        ? (r.isManual === 0 ? '<span class="src-badge src-rdpms">RDPMS</span>'
+                                            : '<span class="src-badge src-manual">Manual</span>')
+                        : '';
+                    var srcCell = (col === 'rdpms') ? ('<td class="text-center">' + src + '</td>') : '';
+                    $body.append(
+                        '<tr>' +
+                            '<td class="text-center col-sno">' + (i + 1) + '</td>' +
+                            '<td>' + esc(r.assetName) + '</td>' +
+                            '<td>' + esc(r.cause) + '</td>' +
+                            '<td class="text-center">' + esc(r.setTime) + '</td>' +
+                            '<td class="text-center">' + esc(r.resetTime) + '</td>' +
+                            '<td class="text-center">' + ackBadge(r.ackStatus) + '</td>' +
+                            '<td>' + esc(r.feedback) + '</td>' +
+                            '<td>' + esc(r.maintainerName) + '</td>' +
+                            srcCell +
+                        '</tr>'
+                    );
+                });
+            }
+
+            // Show/hide "Source" column depending on the column-type
+            if (col === 'rdpms') {
+                $('#perfBreakupSourceHead').show();
+            } else {
+                $('#perfBreakupSourceHead').hide();
+            }
+
+            showBreakupModal();
+        }
+
+        // The popup markup is rendered inside #divTableContainer, which the theme
+        // styles with a low z-index (position:relative; z-index:1). The search
+        // filter section sits at z-index:100, so anything left inside that
+        // container paints UNDER the filters. Moving the backdrop + modal to be
+        // direct children of <body> lifts them out of that trapped stacking
+        // context so their own z-index actually wins.
+        function ensureBreakupInBody() {
+            var modal = document.getElementById('perfBreakupModal');
+            var backdrop = document.getElementById('perfBreakupBackdrop');
+            if (!modal) return;
+
+            // A fresh partial load re-injects this markup, so a copy from a
+            // previous load may still be parked on <body>. Remove those stale
+            // duplicates before parking the current one, to avoid dup IDs.
+            document.querySelectorAll('#perfBreakupModal').forEach(function (m) {
+                if (m !== modal && m.parentElement === document.body) { m.parentNode.removeChild(m); }
+            });
+            document.querySelectorAll('#perfBreakupBackdrop').forEach(function (b) {
+                if (b !== backdrop && b.parentElement === document.body) { b.parentNode.removeChild(b); }
+            });
+
+            if (backdrop && backdrop.parentElement !== document.body) {
+                document.body.appendChild(backdrop);
+            }
+            if (modal && modal.parentElement !== document.body) {
+                document.body.appendChild(modal);
+            }
+        }
+
+        function showBreakupModal() {
+            ensureBreakupInBody();
+            $('#perfBreakupBackdrop').css('display', 'block');
+            $('#perfBreakupModal').addClass('show').attr('aria-hidden', 'false');
+            $('body').addClass('perf-breakup-open');
+        }
+        function hideBreakupModal() {
+            $('#perfBreakupBackdrop').css('display', 'none');
+            $('#perfBreakupModal').removeClass('show').attr('aria-hidden', 'true');
+            $('body').removeClass('perf-breakup-open');
+        }
+
+        // Wire up clicks on the break-up icons (delegated so it survives pagination)
+        $(document).off('click.perfBreakup', '.perf-breakup-btn')
+                   .on('click.perfBreakup', '.perf-breakup-btn', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var $b = $(this);
+            openBreakup($b.data('station'), $b.data('col'), $b.data('pct'));
+        });
+
+        // Close handlers – backdrop click, [x] button, footer Close, Esc
+        $(document).off('click.perfBreakupClose', '[data-breakup-close]')
+                   .on('click.perfBreakupClose', '[data-breakup-close]', function (e) {
+            e.preventDefault();
+            hideBreakupModal();
+        });
+        $(document).off('click.perfBreakupBackdrop', '#perfBreakupBackdrop')
+                   .on('click.perfBreakupBackdrop', '#perfBreakupBackdrop', function () {
+            hideBreakupModal();
+        });
+        $(document).off('keydown.perfBreakupEsc')
+                   .on('keydown.perfBreakupEsc', function (e) {
+            if (e.key === 'Escape' && $('#perfBreakupModal').hasClass('show')) {
+                hideBreakupModal();
+            }
+        });
+    })();
 </script>
+
+<!-- ── Break-up popup styles ──────────────────────────────────────── -->
+<style>
+    .perf-breakup-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 7px;
+        background: var(--e7-accent-soft, #eef2ff);
+        color: var(--e7-accent, #4338ca);
+        text-decoration: none !important;
+        transition: background 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s;
+        vertical-align: middle;
+        margin-left: 6px;
+        line-height: 1;
+    }
+
+        .perf-breakup-btn:hover {
+            background: var(--e7-accent, #4338ca);
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: var(--e7-shadow-hover, 0 3px 8px rgba(67,56,202,0.35));
+        }
+
+        .perf-breakup-btn:focus-visible {
+            outline: 2px solid var(--e7-accent, #4338ca);
+            outline-offset: 2px;
+        }
+
+        .perf-breakup-btn svg {
+            display: block;
+            width: 14px;
+            height: 14px;
+        }
+
+    #perfBreakupBackdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        z-index: 100000;
+        display: none;
+    }
+    body.perf-breakup-open { overflow: hidden; }
+
+    #perfBreakupModal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 100001;
+        overflow-y: auto;
+        padding: 24px 16px;
+        font-family: inherit;
+    }
+        #perfBreakupModal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: perfBreakupFade 0.18s ease-out;
+        }
+
+        @@keyframes perfBreakupFade {
+            from { opacity: 0; transform: translateY(-8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        #perfBreakupModal .breakup-card {
+            width: 100%;
+            max-width: 1100px;
+            max-height: calc(100vh - 48px);
+            margin: 0 auto;
+            background: var(--e7-surface);
+            color: var(--e7-text);
+            border-radius: var(--e7-r-lg, 12px);
+            box-shadow: var(--e7-shadow-pop, 0 25px 60px rgba(15, 23, 42, 0.45));
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid var(--e7-border);
+        }
+
+        #perfBreakupModal .breakup-header {
+            background: linear-gradient(135deg, var(--e7-accent, #4338ca) 0%, var(--e7-violet, #8b5cf6) 100%);
+            color: #ffffff;
+            padding: 16px 24px;
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 16px;
+        }
+            #perfBreakupModal .breakup-header .breakup-title-wrap { min-width: 0; flex: 1; }
+            #perfBreakupModal .breakup-header .breakup-eyebrow {
+                font-size: 10.5px;
+                letter-spacing: 1.2px;
+                color: rgba(255,255,255,0.72);
+                text-transform: uppercase;
+                font-weight: 600;
+                margin-bottom: 2px;
+            }
+            #perfBreakupModal .breakup-header .breakup-title {
+                font-size: 15px;
+                line-height: 1.45;
+                font-weight: 600;
+                color: #ffffff;
+                margin: 0;
+            }
+            #perfBreakupModal .breakup-header .breakup-close {
+                background: rgba(255,255,255,0.15);
+                border: 0;
+                color: #ffffff;
+                width: 30px;
+                height: 30px;
+                border-radius: 6px;
+                font-size: 20px;
+                line-height: 1;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.15s;
+                flex-shrink: 0;
+            }
+                #perfBreakupModal .breakup-header .breakup-close:hover { background: rgba(255,255,255,0.28); }
+
+        #perfBreakupModal .breakup-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 28px;
+            padding: 12px 24px;
+            background: var(--e7-surface-2);
+            border-bottom: 1px solid var(--e7-border);
+            font-size: 13px;
+            color: var(--e7-text);
+        }
+            #perfBreakupModal .breakup-meta .lbl {
+                color: var(--e7-text-muted);
+                margin-right: 6px;
+                font-weight: 500;
+            }
+            #perfBreakupModal .breakup-meta strong { color: var(--e7-heading); font-weight: 700; }
+
+        #perfBreakupModal .breakup-summary {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+            padding: 14px 24px;
+            background: var(--e7-surface);
+            border-bottom: 1px solid var(--e7-border);
+        }
+            #perfBreakupModal .breakup-summary .tile {
+                border-radius: 8px;
+                padding: 10px 14px;
+                border: 1px solid var(--e7-border);
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+                #perfBreakupModal .breakup-summary .tile .tile-label {
+                    font-size: 10.5px;
+                    letter-spacing: .5px;
+                    text-transform: uppercase;
+                    font-weight: 600;
+                    opacity: 0.85;
+                }
+                #perfBreakupModal .breakup-summary .tile .tile-value {
+                    font-size: 20px;
+                    font-weight: 700;
+                    line-height: 1.2;
+                }
+            #perfBreakupModal .breakup-summary .tile-total { background: var(--e7-accent-soft); color: var(--e7-accent); }
+            #perfBreakupModal .breakup-summary .tile-t     { background: var(--e7-green-soft); color: var(--e7-green); }
+            #perfBreakupModal .breakup-summary .tile-pt    { background: var(--e7-amber-soft); color: var(--e7-amber); }
+            #perfBreakupModal .breakup-summary .tile-f     { background: var(--e7-red-soft); color: var(--e7-red); }
+
+        #perfBreakupModal .breakup-body {
+            background: var(--e7-surface);
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow: auto;
+        }
+
+        #perfBreakupModal .breakup-footer {
+            padding: 12px 24px;
+            background: var(--e7-surface-2);
+            border-top: 1px solid var(--e7-border);
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+            #perfBreakupModal .breakup-footer .btn-close-secondary {
+                background: var(--e7-surface);
+                color: var(--e7-text);
+                border: 1px solid var(--e7-border);
+                padding: 6px 16px;
+                border-radius: 6px;
+                font-size: 13px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: background 0.15s;
+            }
+                #perfBreakupModal .breakup-footer .btn-close-secondary:hover {
+                    background: var(--e7-surface-3);
+                }
+
+    #perfBreakupTable {
+        width: 100%;
+        margin: 0;
+        border-collapse: collapse;
+        font-size: 13px;
+        color: var(--e7-text);
+        background: var(--e7-surface);
+    }
+        #perfBreakupTable thead th {
+            background: var(--e7-surface-2);
+            font-weight: 600;
+            font-size: 12px;
+            color: var(--e7-heading);
+            vertical-align: middle;
+            padding: 10px 12px;
+            border-bottom: 2px solid var(--e7-border);
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            text-align: left;
+        }
+        #perfBreakupTable thead th.text-center { text-align: center; }
+        #perfBreakupTable th.col-sno,
+        #perfBreakupTable td.col-sno {
+            width: 58px;
+            white-space: nowrap;
+            padding-left: 8px;
+            padding-right: 8px;
+            font-variant-numeric: tabular-nums;
+        }
+        #perfBreakupTable tbody td {
+            vertical-align: middle;
+            padding: 9px 12px;
+            border-bottom: 1px solid var(--e7-border-soft, var(--e7-border));
+        }
+        #perfBreakupTable tbody tr:hover td { background: var(--e7-surface-2); }
+        #perfBreakupTable .status-badge {
+            display: inline-block;
+            min-width: 30px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: .3px;
+        }
+        #perfBreakupTable .status-t  { background: var(--e7-green-soft); color: var(--e7-green); }
+        #perfBreakupTable .status-pt { background: var(--e7-amber-soft); color: var(--e7-amber); }
+        #perfBreakupTable .status-f  { background: var(--e7-red-soft); color: var(--e7-red); }
+        #perfBreakupTable .status-na { background: var(--e7-surface-3); color: var(--e7-text-muted); }
+        #perfBreakupTable .src-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        #perfBreakupTable .src-rdpms  { background: var(--e7-accent-soft); color: var(--e7-accent); }
+        #perfBreakupTable .src-manual { background: var(--e7-surface-3); color: var(--e7-text-muted); }
+
+    @@media (max-width: 575.98px) {
+        #perfBreakupModal .breakup-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+</style>
+
+<!-- ── Break-up popup markup ─────────────────────────────────────── -->
+<div id="perfBreakupBackdrop"></div>
+<div id="perfBreakupModal" role="dialog" aria-labelledby="perfBreakupTitle" aria-hidden="true">
+    <div class="breakup-card" role="document">
+        <div class="breakup-header">
+            <div class="breakup-title-wrap">
+                <div class="breakup-eyebrow">Break Up</div>
+                <div class="breakup-title" id="perfBreakupTitle">Break up</div>
+            </div>
+            <button type="button" class="breakup-close" data-breakup-close="1" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="breakup-meta">
+            <div><span class="lbl">Station:</span> <strong id="perfBreakupStation">-</strong></div>
+            <div><span class="lbl">Percentage:</span> <strong id="perfBreakupPct">-</strong></div>
+        </div>
+
+        <div class="breakup-summary">
+            <div class="tile tile-total">
+                <span class="tile-label">Total</span>
+                <span class="tile-value" id="perfBreakupTotal">0</span>
+            </div>
+            <div class="tile tile-t">
+                <span class="tile-label">True (T)</span>
+                <span class="tile-value" id="perfBreakupT">0</span>
+            </div>
+            <div class="tile tile-pt">
+                <span class="tile-label">Partially True (PT)</span>
+                <span class="tile-value" id="perfBreakupPT">0</span>
+            </div>
+            <div class="tile tile-f">
+                <span class="tile-label" id="perfBreakupFLabel">False (F)</span>
+                <span class="tile-value" id="perfBreakupF">0</span>
+            </div>
+        </div>
+
+        <div class="breakup-body">
+            <table id="perfBreakupTable">
+                <thead>
+                    <tr>
+                        <th class="text-center col-sno">S.No</th>
+                        <th>Asset Name</th>
+                        <th>Cause</th>
+                        <th class="text-center">Incidence Date & Time</th>
+                        <th class="text-center">Rectification Date & Time</th>
+                        <th class="text-center" style="width:70px;">Alert feedback</th>
+                        <th>Remark</th>
+                        <th>Maintainer Name</th>
+                        <th class="text-center" id="perfBreakupSourceHead" style="width:90px; display:none;">Source</th>
+                    </tr>
+                </thead>
+                <tbody id="perfBreakupTbody"></tbody>
+            </table>
+        </div>
+
+        <div class="breakup-footer">
+            <button type="button" class="btn-close-secondary" data-breakup-close="1">Close</button>
+        </div>
+    </div>
+</div>

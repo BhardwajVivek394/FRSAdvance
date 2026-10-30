@@ -16,6 +16,7 @@ using System.Web;
 using System.Web.Mvc;
 using static E7FRSAdvance.Utility.Utility;
 using System.IO;
+using E7MRIWeb.Areas.FRS25.Controllers;   // Domain AI types (CauseCatalog)
 
 namespace E7FRSAdvance.Areas.FRS25.Controllers
 {
@@ -491,6 +492,228 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             var jsonResult = Json(mMaintenanceModes, JsonRequestBehavior.AllowGet);
             jsonResult.MaxJsonLength = int.MaxValue;
             return jsonResult;
+        }
+
+        // Alert History report for the Export menu (CSV / Excel / PDF). Same columns and remark /
+        // rectification logic as 616 AlertDetailReportController.Download, but filtered the same
+        // way as GetAlertList so the report holds what the Alerts list shows.
+        [HttpPost]
+        public ActionResult DownloadAlertHistory(Domain.FRSAlertLister mFRSAlertLister)
+        {
+            if (ClsHttpContent.LoginUser == null)
+            {
+                return new HttpStatusCodeResult(HttpStatusCode.Unauthorized);
+            }
+
+            int alertStatus = mFRSAlertLister.SearchCriteria.AlertStatus;
+            mFRSAlertLister.SearchCriteria.IsAcknowledgement =
+                alertStatus == 1 ? true : alertStatus == 2 ? false : (bool?)null;
+            mFRSAlertLister.Pager.Take = mFRSAlertLister.Pager.PageSize;
+
+            var result = _frsAlertService.GetListerWithPagination(mFRSAlertLister);
+            var mFRSAlerts = result?.mFRSAlerts ?? new List<Domain.FRSAlert>();
+            if (alertStatus == 1)
+            {
+                mFRSAlerts = mFRSAlerts.Where(x => x.AcknowledgemenTimeStamp != null).ToList();
+            }
+            else if (alertStatus == 2)
+            {
+                mFRSAlerts = mFRSAlerts.Where(x => x.AcknowledgemenTimeStamp == null).ToList();
+            }
+
+            var mFRSAlertRemarks = GetFRSAlertRemark(mFRSAlerts.Select(x => x.Id).ToList())
+                                   ?? new List<Domain.FRSAlertRemark>();
+
+            var askIds = new List<int>();
+            askIds.Add(E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode());
+            askIds.Add(E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True.GetHashCode());
+            askIds.Add(E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode());
+            askIds.Add(E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace.GetHashCode());
+            foreach (var item in mFRSAlerts)
+            {
+                var fRSAlertRemarks = mFRSAlertRemarks.Where(x => x.FRSAlertId == item.Id && askIds.Contains(x.AcknowledgementStatusId)).ToList();
+                if (fRSAlertRemarks.Count > 0)
+                {
+                    var remark = string.Empty;
+                    foreach (var frsr in fRSAlertRemarks.OrderBy(x => x.CreatedDate))
+                    {
+                        remark += $"{frsr.MaintainerDesignation} : {frsr.Remark} \n";
+                    }
+
+                    item.Remark = remark;
+                }
+            }
+
+            var records = mFRSAlerts.Select((item, idx) =>
+            {
+                var mFRSAlertRemark = mFRSAlertRemarks
+                    .Where(x => x.FRSAlertId == item.Id && x.RectificationDateTime != null)
+                    .OrderByDescending(x => x.Id)
+                    .FirstOrDefault();
+
+                DateTime? effectiveRectificationDateTime;
+
+                if (mFRSAlertRemark != null)
+                {
+                    bool isInvalidRemarkDate = mFRSAlertRemark.RectificationDateTime < item.SetTimeStamp
+                                                && item.ResetTimeStamp != null
+                                                && item.ResetTimeStamp != DateTime.MinValue;
+
+                    effectiveRectificationDateTime = isInvalidRemarkDate
+                        ? item.ResetTimeStamp
+                        : mFRSAlertRemark.RectificationDateTime;
+                }
+                else
+                {
+                    effectiveRectificationDateTime = (item.ResetTimeStamp != null && item.ResetTimeStamp.Value != DateTime.MinValue)
+                        ? item.ResetTimeStamp
+                        : null;
+                }
+
+                bool isFeedbackGiven = item.AcknowledgemenStatusId != (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given;
+                bool showMaintainer = isFeedbackGiven
+                                      && item.AcknowledgemenStatusId != (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Pending
+                                      && item.AcknowledgemenTimeStamp != null
+                                      && item.AcknowledgemenTimeStamp != DateTime.MinValue;
+
+                return new
+                {
+                    SrNo = idx + 1,
+                    Zone = item.ZoneName,
+                    Division = ToTitleCase(item.DivisionName),
+                    Station = ToTitleCase(item.SiteName),
+                    AlertType = item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure ? "Failure"
+                              : item.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive ? "Predictive" : "",
+                    AssetType = ToTitleCase(item.AssetType),
+                    AssetNumber = item.AssetName,
+                    AlertStatus = isFeedbackGiven ? "Cleared" : "Pending",
+                    CauseOfFailure = SanitizeText(item.CauseCode),
+                    AlertFeedback = GetFeedbackText(item.AcknowledgemenStatusId),
+                    IncidenceDateTime = item.SetTimeStamp != DateTime.MinValue ? item.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss") : "-",
+                    RectificationDateTime = effectiveRectificationDateTime.HasValue
+                                            ? effectiveRectificationDateTime.Value.ToString("dd/MM/yyyy HH:mm:ss") : "-",
+                    IncidenceDuration = effectiveRectificationDateTime.HasValue
+                                        ? FormatDuration(effectiveRectificationDateTime.Value.Subtract(item.SetTimeStamp)) : "-",
+                    FeedbackDateTime = (item.AcknowledgemenTimeStamp != null && item.AcknowledgemenTimeStamp != DateTime.MinValue)
+                                        ? item.AcknowledgemenTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss") : "-",
+                    MaintainerName = showMaintainer ? ToTitleCase(item.MaintainerName) : "",
+                    MaintainerDesignation = showMaintainer ? (item.MaintainerDesignation ?? "") : "",
+                    MaintainerMobile = showMaintainer ? (item.MaintainerMobileNumber ?? "") : "",
+                    Remarks = isFeedbackGiven ? SanitizeText(item.Remark ?? "") : ""
+                };
+            }).ToList();
+
+            var jsonResult = Json(new { Records = records });
+            jsonResult.MaxJsonLength = int.MaxValue;
+            return jsonResult;
+        }
+
+        /// <summary>
+        /// Same as 616 AlertDetailReportController.SanitizeText: replaces invisible / non-standard
+        /// Unicode that renders with a phantom width in PDF/Excel viewers. Newlines and tabs are kept.
+        /// </summary>
+        private string SanitizeText(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return input;
+
+            var sb = new StringBuilder(input.Length + 16);
+            foreach (var ch in input)
+            {
+                switch (ch)
+                {
+                    // Unicode space separators -> normal space
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case ' ':
+                    case '　': sb.Append(' '); break;
+
+                    // Zero-width / invisible formatting -> drop
+                    case '​':
+                    case '‌':
+                    case '‍':
+                    case '⁠':
+                    case '﻿':
+                    case '‎':
+                    case '‏': break;
+
+                    // Dashes / minus -> hyphen
+                    case '‐':
+                    case '‑':
+                    case '‒':
+                    case '–':
+                    case '—':
+                    case '―':
+                    case '−': sb.Append('-'); break;
+
+                    // Smart quotes -> straight quotes
+                    case '‘': case '’': case '‚': case '′': sb.Append('\''); break;
+                    case '“': case '”': case '„': case '″': sb.Append('"'); break;
+
+                    case '…': sb.Append("..."); break;
+                    case '•': case '·': case '‧': sb.Append('-'); break;
+
+                    // Arrows / math symbols -> ASCII equivalents
+                    case '→': case '↦': sb.Append("->"); break;
+                    case '←': sb.Append("<-"); break;
+                    case '↔': sb.Append("<->"); break;
+                    case '↑': sb.Append('^'); break;
+                    case '↓': sb.Append('v'); break;
+                    case '×': case '✕': sb.Append('x'); break;
+                    case '≠': sb.Append("!="); break;
+                    case '≤': sb.Append("<="); break;
+                    case '≥': sb.Append(">="); break;
+                    case '±': sb.Append("+/-"); break;
+                    case '≈': sb.Append('~'); break;
+                    case '√': sb.Append("sqrt"); break;
+                    case '°': sb.Append(" deg"); break;
+                    case 'µ': case 'μ': sb.Append('u'); break;
+                    case 'Ω': case 'Ω': sb.Append("ohm"); break;
+
+                    default:
+                        if (ch == '\n' || ch == '\r' || ch == '\t') sb.Append(ch);          // keep
+                        else if (ch >= ' ' && ch <= '~') sb.Append(ch);                       // printable ASCII
+                        else if (char.IsControl(ch)) { /* drop other control chars */ }
+                        else sb.Append('?');                                                  // any other non-ASCII
+                        break;
+                }
+            }
+
+            // Collapse runs of spaces/tabs (newlines preserved), then trim
+            var cleaned = System.Text.RegularExpressions.Regex.Replace(sb.ToString(), "[ \t]+", " ");
+            return cleaned.Trim();
+        }
+
+        private string ToTitleCase(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+            return System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(input.ToLower());
+        }
+
+        private string GetFeedbackText(int statusId)
+        {
+            if (statusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given) return "Not Given";
+            if (statusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True) return "T";
+            if (statusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False) return "F";
+            if (statusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace) return "M";
+            if (statusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT) return "PT";
+            return "";
+        }
+
+        private string FormatDuration(TimeSpan span)
+        {
+            return ((int)span.TotalHours) + ":" + span.Minutes.ToString("D2") + ":" + span.Seconds.ToString("D2");
         }
 
         public ActionResult UpdateMaintenanceInActiveMode(Domain.MaintenanceMode mMaintenanceMode)
@@ -1693,6 +1916,12 @@ x.Value.Timestamp.TimestampDevice.Second == timeStamp.Second)
             {
                 mFRSAlertRemarks = new List<Domain.FRSAlertRemark>();
             }
+            finally
+            {
+                // 616: the alert's set time fills the "Incidence Date & Time" column
+                try { ViewBag.FRSAlert = GetFRSAlert(id); }
+                catch (Exception) { ViewBag.FRSAlert = null; }
+            }
             return PartialView(mFRSAlertRemarks);
         }
         public JsonResult GetBy(int id)
@@ -1717,7 +1946,10 @@ x.Value.Timestamp.TimestampDevice.Second == timeStamp.Second)
                                 var mAlertInfos = GetAlertInfos(mFRSAlert.AssetTypeId);
                                 if (mAlertInfos != null && mAlertInfos.Count > 0)
                                 {
-                                    mAlertInfos = mAlertInfos.Where(x => x.Id != mFRSAlert.AlertInfoId).ToList();
+                                    // Partial True: only SPN-defined causes of the same alert type (Failure/Predictive)
+                                    mAlertInfos = mAlertInfos.Where(x => x.Id != mFRSAlert.AlertInfoId
+                                                                      && x.AlertType == mFRSAlert.AlertTypeId
+                                                                      && CauseCatalog.DbIdToCause.ContainsKey(x.Id)).ToList();
 
                                     mFRSAlert.mAlertInfos = mAlertInfos;
                                 }

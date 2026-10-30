@@ -5,7 +5,154 @@
 }
 
 <script src="~/assets/js/jquery-3.5.1.min.js"></script>
-<script src="~/assets/js/paho-mqtt.js"></script>
+<style>
+    .pictorial-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 16px;
+        padding: 16px;
+    }
+
+    .room-card-pictorial {
+        background: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 160px;
+        color: var(--text-secondary);
+    }
+
+    .rcp-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+        margin-bottom: 4px;
+    }
+
+    .rcp-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        flex: 1;
+        min-width: 0;
+        word-break: break-word;
+    }
+
+    .rcp-badges {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-shrink: 0;
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .dl-badge-wrap .badge-success,
+    .dl-badge-wrap .badge-warning {
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 4px;
+    }
+
+    .rcp-body {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        min-width: 0;
+    }
+
+    .rcp-icon {
+        width: 70px;
+        height: 70px;
+        border-radius: 10px;
+        background: var(--blue-dim);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+        .rcp-icon img {
+            width: 48px;
+            height: 48px;
+        }
+
+    .rcp-metrics {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .rcp-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        flex-wrap: nowrap;
+    }
+
+    .rcp-chip {
+        background-color: var(--blue);
+        width: 28px;
+        height: 28px;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+        .rcp-chip img {
+            width: 18px;
+            height: 18px;
+        }
+
+    .rcp-row-inner {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .rcp-row-top {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+        .rcp-row-top .label-text {
+            min-width: 65px;
+            flex-shrink: 0;
+        }
+
+    .rcp-meta-time {
+        font-size: 11px;
+        color: var(--text-muted);
+        white-space: nowrap;
+        margin-top: 2px;
+    }
+
+    .val-temp {
+        color: var(--red);
+        font-weight: 600;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    .val-hum {
+        color: var(--blue);
+        font-weight: 600;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+</style>
 <section class="section">
     <div class="row">
         <div class="col-lg-12">
@@ -49,23 +196,23 @@
                             <div class="d-lg-flex d-md-flex d-flex flex-md-nowrap flex-wrap alertsearchform gap-10">
                                 <div class="form-group  w-100 w-sm-48">
                                     <label for="sel1">Zone</label>
-                                    @Html.DropDownList("drpZone", (IEnumerable<SelectListItem>)ViewBag.Zones, "All", new { @class = "form-control", tabindex = 1 })
+                                    @Html.DropDownList("drpZone", (IEnumerable<SelectListItem>)ViewBag.Zones, "Select", new { @class = "form-control", tabindex = 1 })
                                 </div>
 
                                 <div class="form-group  w-100 w-sm-48">
                                     <label for="sel1">Division</label>
-                                    @Html.DropDownList("drpDivision", (IEnumerable<SelectListItem>)ViewBag.Divisions, "All", new { @class = "form-control", tabindex = 2 })
+                                    @Html.DropDownList("drpDivision", (IEnumerable<SelectListItem>)ViewBag.Divisions, "Select", new { @class = "form-control", tabindex = 2 })
 
                                 </div>
 
                                 <div class="form-group  w-100 w-sm-48">
                                     <label for="sel1">Station</label>
-                                    @Html.DropDownList("drpSite", (IEnumerable<SelectListItem>)ViewBag.Sites, "All", new { @class = "form-control", tabindex = 3 })
+                                    @Html.DropDownList("drpSite", (IEnumerable<SelectListItem>)ViewBag.Sites, "Select", new { @class = "form-control", tabindex = 3 })
 
                                 </div>
                                 <div class="form-group w-100 w-sm-48">
                                     <label for="sel1">View</label>
-                                    <select class="form-control">
+                                    <select class="form-control" name="drpView">
                                         <option>Table</option>
                                         <option>Pictorial</option>
                                     </select>
@@ -136,7 +283,7 @@
                 }
             })
         } else {
-            alert('Please select site');
+            alert('Please select station');
         }
        
     }
@@ -152,7 +299,7 @@
                 success: function (data) {
                     $("#loader").hide();
                     $($division).empty();
-                    $($division).append($("<option></option>").val('0').html('All'));
+                    $($division).append($("<option></option>").val('0').html('Select'));
                     $.each(data, function (key, value) {
                         if ($($seldivid).val() != '0' && $($seldivid).val() == value.Id) {
                             $($division).append($("<option selected></option>").val(value.Id).html(value.Name));
@@ -181,7 +328,7 @@
                 success: function (data) {
                     $("#loader").hide();
                     $($drpSiteId).empty();
-                    $($drpSiteId).append($("<option></option>").val('0').html('All'));
+                    $($drpSiteId).append($("<option></option>").val('0').html('Select'));
                     $.each(data, function (key, value) {
 
                         if ($($selsiteid).val() != '0' && $($selsiteid).val() == value.Id) {

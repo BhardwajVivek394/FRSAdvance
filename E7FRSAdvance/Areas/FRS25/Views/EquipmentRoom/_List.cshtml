@@ -32,8 +32,8 @@
                                 <th>Division</th>
                                 <th>Station</th>
                                 <th>Equipment Room Type</th>
-                                <th class="text-center">Temperature</th>
-                                <th class="text-center">Humidity</th>
+                                <th class="text-center">Temperature(°C)</th>
+                                <th class="text-center">Humidity(%)</th>
                                 <th class="text-center">Open/Close</th>
                             </tr>
                         </thead>
@@ -83,7 +83,7 @@
                                                 <td class="text-center">
                                                     @if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.Count > 0)
                                                     {
-                                                        var mAssetInfoDatalogger = item.mAssetInfoDataloggers.Where(x => x.DataloggerAttribute.EndsWith(siteAttribute)).FirstOrDefault();
+                                                        var mAssetInfoDatalogger = item.mAssetInfoDataloggers.Where(x => x.DataloggerAttribute.Contains(siteAttribute)).FirstOrDefault();
 
                                                         if (mAssetInfoDatalogger != null && mAssetInfoDatalogger.DataloggerAttributeId > 0)
                                                         {
@@ -95,27 +95,6 @@
                                         }
                                     }
 
-                                    @*if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.Count > 0)
-                                    {
-                                        foreach (var dl in item.mAssetInfoDataloggers)
-                                        {
-                                            counter++;
-                                            <tr>
-                                                <td>@counter</td>
-                                                <td>@item.Zone</td>
-                                                <td>@item.Division</td>
-                                                <td>@item.SiteName</td>
-                                                <td>
-                                                    <span>@dl.DataloggerAttribute</span>
-                                                </td>
-                                                <td class="text-center">-</td>
-                                                <td class="text-center">-</td>
-                                                <td class="text-center">
-                                                    <a class="DLAttribute@(item.Id)@(dl.DataloggerAttributeId)"></a>
-                                                </td>
-                                            </tr>
-                                        }
-                                    }*@
 
                                 }
 
@@ -125,22 +104,88 @@
                     </table>
                 </div>
                 <!-- Pagination aligned to bottom right -->
-                @*<nav>
-                        <ul class="pagination mb-0" id="pager">
-                            <li class="page-item" id="prevBtn">
-                                <a class="page-link" href="javascript:void(0);" onclick="changePage('prev')">
-                                    <i class="fas fa-chevron-left"></i> Previous
-                                </a>
-                            </li>
-                            <li class="page-item" id="nextBtn">
-                                <a class="page-link" href="javascript:void(0);" onclick="changePage('next')">
-                                    Next <i class="fas fa-chevron-right"></i>
-                                </a>
-                            </li>
-                        </ul>
-                    </nav>*@
             </div>
 
+            <div id="pictorialView" style="display:none;">
+                <div class="pictorial-grid">
+                    @foreach (var item in (Model != null && Model.mAssets != null ? Model.mAssets : new List<Domain.Asset>()).Where(x => x.siteAttributeDatasList != null))
+                    {
+                        foreach (var siteAttribute in item.siteAttributeDatasList)
+                        {
+                            var temp = item.assetAttributes.FirstOrDefault(x => x.Title.EndsWith(siteAttribute) && x.Title.ToLower().Contains("temperature"));
+                            var hum = item.assetAttributes.FirstOrDefault(x => x.Title.EndsWith(siteAttribute) && x.Title.ToLower().Contains("humidity"));
+                            Domain.AssetInfoDatalogger dl = null;
+                            if (item.mAssetInfoDataloggers != null)
+                            {
+                                dl = item.mAssetInfoDataloggers.FirstOrDefault(x => x.DataloggerAttribute.StartsWith(siteAttribute));
+                            }
+                            <div class="room-card-pictorial">
+                                <div class="rcp-header">
+                                    <span class="rcp-title">@siteAttribute</span>
+                                    <div class="rcp-badges">
+                                        @if (dl != null && dl.DataloggerAttributeId > 0)
+                                        {
+                                            <span class="badge-time rcptime@(item.Id)@(dl != null ? dl.DataloggerAttributeId.ToString() : "0")">--:--:--</span>
+                                            <a class="DLAttribute@(item.Id)@(dl.DataloggerAttributeId) dl-badge-wrap"></a>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="rcp-body">
+                                    <div class="rcp-icon">
+                                        @if (dl != null && dl.DataloggerAttributeId > 0)
+                                        {
+                                            <img class="hdnImgRelayRoom@(item.Id)@(dl.DataloggerAttributeId)" src="~/Areas/FRS25/assets/img/icon_close_door.svg" />
+                                        }
+                                        else
+                                        {
+                                            <img src="~/Areas/FRS25/assets/img/icon_close_door.svg" />
+                                        }
+                                    </div>
+                                    <div class="rcp-metrics">
+                                        <div class="rcp-row">
+                                            <span class="rcp-chip">
+                                                <img src="~/Areas/FRS25/assets/img/temperature.svg" />
+                                            </span>
+                                            <div class="rcp-row-inner">
+                                                <div class="rcp-row-top">
+                                                    <span class="label-text">Temp :</span>
+                                                    @if (temp != null && temp.Id > 0)
+                                                    {
+                                                        <strong class="hdnAttributeData@(temp.Id)@(item.Id) val-temp">--</strong>
+                                                    }
+                                                </div>
+                                                @if (temp != null && temp.Id > 0)
+                                                {
+                                                    <span class="rcp-meta-time rcptime@(temp.Id)@(item.Id)"></span>
+                                                }
+                                            </div>
+                                        </div>
+
+                                        <div class="rcp-row">
+                                            <span class="rcp-chip">
+                                                <img src="~/Areas/FRS25/assets/img/humidity.svg" />
+                                            </span>
+                                            <div class="rcp-row-inner">
+                                                <div class="rcp-row-top">
+                                                    <span class="label-text">Humidity :</span>
+                                                    @if (hum != null && hum.Id > 0)
+                                                    {
+                                                        <strong class="hdnAttributeData@(hum.Id)@(item.Id) val-hum">--</strong>
+                                                    }
+                                                </div>
+                                                @if (hum != null && hum.Id > 0)
+                                                {
+                                                    <span class="rcp-meta-time rcptime@(hum.Id)@(item.Id)"></span>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
         </div>
 
     </div>
@@ -172,291 +217,31 @@
 
         mQTT = @Html.Raw(Json.Encode(ViewBag.MQTTDetail));
 
+        // Add to $(document).ready in EquipmentRoomLive.cshtml
+
+        var loadview = $("select[name='drpView']").val();
+        if (loadview === 'Pictorial') {
+            $('#listView').hide();
+            $('#pictorialView').show();
+        } else {
+            $('#listView').show();
+            $('#pictorialView').hide();
+        }
+
+        $("select[name='drpView']").change(function () {
+            var view = $(this).val();
+            if (view === 'Pictorial') {
+                $('#listView').hide();
+                $('#pictorialView').show();
+            } else {
+                $('#listView').show();
+                $('#pictorialView').hide();
+            }
+        });
 
     });
 
 
-
-    (function () {
-        var rowsPerPage = 10;
-        var $table = $('#tblEquipmentRoom');
-        var $rows = $table.find('tbody tr');
-        var totalRows = $rows.length;
-        var totalPages = Math.ceil(totalRows / rowsPerPage);
-        var currentPage = 1;
-
-        // Check if we have data rows (not "no data" row)
-        if (totalRows === 1 && $rows.first().find('td[colspan]').length > 0) {
-            // No data row - hide pagination
-            $('#paginationInfo').parent().hide();
-        } else if (totalRows > 0) {
-            showPage(1);
-        }
-
-        function showPage(page) {
-            if (page < 1) page = 1;
-            if (page > totalPages) page = totalPages;
-            currentPage = page;
-
-            var start = (page - 1) * rowsPerPage;
-            var end = start + rowsPerPage;
-
-            $rows.hide();
-            $rows.slice(start, end).show();
-
-            var showEnd = Math.min(end, totalRows);
-            $('#showingFrom').text(totalRows > 0 ? start + 1 : 0);
-            $('#showingTo').text(showEnd);
-
-            renderPagination();
-        }
-
-        function renderPagination() {
-            var $pager = $('#pager');
-            $pager.find('.page-number').remove();
-
-            if (currentPage <= 1) {
-                $('#prevBtn').addClass('disabled');
-            } else {
-                $('#prevBtn').removeClass('disabled');
-            }
-
-            if (currentPage >= totalPages) {
-                $('#nextBtn').addClass('disabled');
-            } else {
-                $('#nextBtn').removeClass('disabled');
-            }
-
-            var $nextBtn = $('#nextBtn');
-            var pagesToShow = [];
-
-            if (totalPages <= 7) {
-                for (var i = 1; i <= totalPages; i++) {
-                    pagesToShow.push(i);
-                }
-            } else {
-                pagesToShow.push(1);
-                if (currentPage > 3) pagesToShow.push('...');
-                for (var i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
-                    if (pagesToShow.indexOf(i) === -1 && i !== '...') pagesToShow.push(i);
-                }
-                if (currentPage < totalPages - 2) pagesToShow.push('...');
-                if (pagesToShow.indexOf(totalPages) === -1) pagesToShow.push(totalPages);
-            }
-
-            for (var j = 0; j < pagesToShow.length; j++) {
-                var p = pagesToShow[j];
-                var $li;
-                if (p === '...') {
-                    $li = $('<li class="page-item page-number disabled"><span class="page-link">...</span></li>');
-                } else {
-                    var activeClass = (p === currentPage) ? 'active' : '';
-                    $li = $('<li class="page-item page-number ' + activeClass + '">' +
-                        '<a class="page-link" href="javascript:void(0);" onclick="goToPage(' + p + ')">' + p + '</a></li>');
-                }
-                $li.insertBefore($nextBtn);
-            }
-        }
-
-        window.changePage = function (direction) {
-            if (direction === 'prev' && currentPage > 1) {
-                showPage(currentPage - 1);
-            } else if (direction === 'next' && currentPage < totalPages) {
-                showPage(currentPage + 1);
-            }
-        };
-
-        window.goToPage = function (page) {
-            showPage(page);
-        };
-    })();
-
-
-    function onMessageArrived(message) {
-
-
-        if (message.destinationName.includes("/dl/")) {
-
-            var parseJson = JSON.parse(message.payloadString);
-            if (parseJson != null && parseJson != undefined && parseJson != '') {
-                var jsonData = parseJson['bits'];
-                var tsTime = parseJson['ts'];
-
-                if (jsonData != null && jsonData != undefined && jsonData.length > 0) {
-                    var jsonArrayString = '';
-                    for (var i = 0; i < jsonData.length; i++) {
-                        var decimalNumber = decimalToBinary(jsonData[i]);
-                        if (decimalNumber != null) {
-                            if (decimalNumber.length != 8) {
-                                decimalNumber = ("00000000" + decimalNumber.toString(2)).substr(-8);
-                            }
-                            const reversedString = decimalNumber.split("").reduce((acc, char) => char + acc, "");
-
-                            jsonArrayString += reversedString;
-                        }
-                    }
-                    var jsonArray = jsonArrayString.split('');
-                    if (jsonArray != null && jsonArray != undefined && jsonArray.length > 0) {
-                        try {
-                            BindDataLoggerAttribute(jsonArray);
-                        }
-                        catch (err) {
-
-                        }
-                    }
-                }
-            }
-        }
-        else {
-            if (message.payloadString.includes("roles") && message.payloadString.includes("ts")) {
-                var parseJson = JSON.parse(message.payloadString);
-                if (parseJson != null && parseJson != undefined && parseJson != '') {
-
-                    var roletsArray = parseJson['role_ts'];
-                    var array = parseJson['roles'];
-                    var tsarray = parseJson['ts'];
-                    if (array != null && array != undefined && array.length > 0) {
-                        BindData(message.destinationName, array, tsarray, roletsArray);
-
-                    }
-                }
-            }
-            else {
-                var channeldata = message.payloadString.split(',');
-                BindData(message.destinationName, channeldata);
-            }
-
-            for (var i = 0; i < channels.length; i++) {
-                if (channels[i] != null && channels[i] != "null" && channels[i] != "") {
-                    var name = mQQTPath.toLowerCase() + channels[i].toLowerCase();
-                    if (message.destinationName.toLowerCase() == name.toLowerCase()) {
-                        var d = new Date();
-                        var time = d.getHours() + ":" + d.getMinutes() + ":" + d.getSeconds();
-                        $("#c" + i).html(time);
-                    }
-                }
-            }
-        }
-
-    }
-
-
-    function BindData(basePath, data, tsarray, roletsArray) {
-        $.each(json.mAssets, function (id, item) {
-
-            if (item.assetAttributes != null && item.assetAttributes.length > 0) {
-                $.each(item.assetAttributes, function (idx, inItem) {
-                    var str1 = basePath.toLowerCase();
-                    if (inItem.AssetInfoChannel != null) {
-                        var str2 = inItem.AssetInfoChannel.toLowerCase();
-                        if (str1.indexOf(str2) != -1) {
-                            var infoValue = inItem.AssetInfoValue;
-                            var infoMultiplication = inItem.Multiplication;
-                            if (infoValue != null) {
-                                var dataValue = data[infoValue];
-                                var id = ".hdnAttributeData" + inItem.Id + item.Id;
-
-                                if (infoMultiplication != null) {
-
-                                    var mainData = parseFloat(infoMultiplication) * parseFloat(dataValue);
-                                    var v = (Math.round(mainData * 100) / 100).toFixed(1);
-                                    if (parseFloat(v) <= 0) {
-                                        v = '0.0';
-                                    }
-                                    if (inItem.Title.toLowerCase().includes("temperature")) {
-                                        $(id).text(v + " °C");
-                                    } else if (inItem.Title.toLowerCase().includes("humidity")) {
-                                        $(id).text(v + " %");
-                                    }
-
-                                }
-
-                            }
-                            else {
-                                var id = ".hdnAttributeData" + inItem.Id + item.Id;
-                                var v = (Math.round(dataValue * 100) / 100).toFixed(1);
-
-                                if (inItem.Title.toLowerCase().includes("temperature")) {
-                                    $(id).text(v + " °C");
-                                } else if (inItem.Title.toLowerCase().includes("humidity")) {
-                                    $(id).text(v + " %");
-                                }
-
-                            }
-                        }
-                    }
-                });
-            }
-
-
-
-
-        });
-
-
-        $('[data-bs-toggle="popover"]').popover({
-            trigger: 'hover',  // or 'click'
-            html: true
-        });
-    }
-
-    function BindDataLoggerAttribute(data) {
-
-        //Bind Datalogger Attribute
-        $.each(json.mAssets, function (id, item) {
-            if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.length > 0) {
-                $.each(item.mAssetInfoDataloggers, function (idx, inItem) {
-                    if (inItem.Value != null && inItem.Value != '') {
-                        var dataValue = data[inItem.Value - 1];
-                        if (dataValue != null) {
-                            var id = ".DLAttribute" + item.Id + inItem.DataloggerAttributeId;
-
-                            //if (isDataLoggerJsonReverse == "True") {
-
-                            //    if (parseInt(dataValue) == 0)
-                            //        dataValue = 1;
-                            //    else if (parseInt(dataValue) == 1)
-                            //        dataValue = 0;
-                            //}
-                            if (parseInt(dataValue) == 0)
-                                dataValue = 1;
-                            else if (parseInt(dataValue) == 1)
-                                dataValue = 0;
-
-                            if (inItem.ContactType != null && inItem.ContactType != undefined && inItem.ContactType.toLowerCase() == 'front') {
-                                if (parseInt(dataValue) == 1) {
-                                    $(id).html("<span class='badge badge-success'>Open</span>");
-                                }
-                                else if (parseInt(dataValue) == 0) {
-                                    $(id).html("<span class='badge badge-warning text-white'>Close</span>");
-                                }
-                            } else if (inItem.ContactType != null && inItem.ContactType != undefined && inItem.ContactType.toLowerCase() == 'back') {
-                                if (parseInt(dataValue) == 1) {
-                                    $(id).html("<span class='badge badge-warning text-white'>Close</span>");
-
-                                }
-                                else if (parseInt(dataValue) == 0) {
-
-                                    $(id).html("<span class='badge badge-success'>Open</span>");
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-        });
-
-    }
-
-    function decimalToBinary(num) {
-        let binary = "";
-        while (num > 0) {
-            let digit = num % 2;
-            binary = "" + digit + binary;
-            num = parseInt(num / 2);
-        }
-        return binary.padStart(8, '0');
-    }
 </script>
 
 <script>
@@ -481,6 +266,48 @@
     var wsHeartbeatInterval = null;
     var wsLastMessageTime = null;
     var WS_HEARTBEAT_TIMEOUT = 30000;
+
+    // ===== TEMPERATURE / HUMIDITY RANGE VALIDATION =====
+    // Valid ranges. Anything outside these is treated as an incorrect reading.
+    var TEMP_MIN = 25;
+    var TEMP_MAX = 45;
+    var HUM_MIN = 40;
+    var HUM_MAX = 70;
+
+    // Fixed fallback value per Equipment Room Type, used when a live reading
+    // for that room falls outside the valid range above.
+    var FIXED_VALUES_BY_ROOM_TYPE = {
+        "MaintainerRoom": { temp: 32, hum: 72 },
+        "LocationBox": { temp: 40, hum: 44 },
+        "RelayRoom": { temp: 30, hum: 46 },
+        "BatteryRoom": { temp: 34, hum: 59 },
+        "IPSRoom": { temp: 39, hum: 39 },
+        "Outdoor": { temp: 33, hum: 62 }
+    };
+
+    // Determines the Equipment Room Type from the attribute title, mirroring
+    // the Razor logic: x.Title.EndsWith(siteAttribute)
+    function getRoomTypeFromTitle(title) {
+        var roomTypes = Object.keys(FIXED_VALUES_BY_ROOM_TYPE);
+        for (var i = 0; i < roomTypes.length; i++) {
+            if (title.indexOf(roomTypes[i]) !== -1) {
+                return roomTypes[i];
+            }
+        }
+        return null;
+    }
+
+    function getValidatedValue(title, value, min, max, fixedField) {
+        if (value >= min && value <= max) {
+            return { value: value, isValid: true };
+        }
+        var roomType = getRoomTypeFromTitle(title);
+        if (roomType && FIXED_VALUES_BY_ROOM_TYPE[roomType]) {
+            return { value: FIXED_VALUES_BY_ROOM_TYPE[roomType][fixedField], isValid: false };
+        }
+        // No fixed value configured for this room type - fall back to raw value
+        return { value: value, isValid: false };
+    }
 
     $(document).ready(function () {
 
@@ -522,7 +349,6 @@
         showWsStatus('connecting');
 
         try {
-            debugger;
 
             if (window.isSecure && window.APP_CONFIG && window.APP_CONFIG.WebSocketAuthToken) {
                 var separator = wsUrl.indexOf('?') > -1 ? '&' : '?';
@@ -560,24 +386,13 @@
 
                 try {
                     try {
-                        // Step 1: Parse outer batch
                         const batch = JSON.parse(event.data);
-
-                        // Step 2: Each item in Messages[] is itself a JSON string — parse again
                         const liveValues = batch.Messages.map(function (msgStr) {
                             return JSON.parse(msgStr);
                         });
 
                         if (liveValues != null) {
-                            // Step 3: Access fields
                             liveValues.forEach(function (lv) {
-                                //console.log("Asset     :", lv.AssetName);
-                                //console.log("Attribute :", lv.AssetAttributeName);
-                                //console.log("Value     :", lv.Value);
-                                //console.log("Local Time:", lv.TimestampLocal);
-                                //console.log("Change    :", lv.TimestampChange);
-                                //console.log("Source    :", lv.DataSource);
-
                                 $.each(json.mAssets, function (id, item) {
 
                                     if (item.assetAttributes != null && item.assetAttributes.length > 0) {
@@ -587,68 +402,64 @@
 
                                                 var dsds = liveValues;
                                                 var id = ".hdnAttributeData" + inItem.Id + item.Id;
-
+                                                var timeid = ".rcptime" + inItem.Id + item.Id;
                                                 if (lv.Value != null && lv.Value != undefined) {
-                                                    if (inItem.Title.toLowerCase().includes("temperature")) {
-                                                        $(id).text(lv.Value + " °C");
-                                                    } else if (inItem.Title.toLowerCase().includes("humidity")) {
-                                                        $(id).text(lv.Value + " %");
+                                                    var titleLower = inItem.Title.toLowerCase();
+
+                                                    if (titleLower.includes("temperature")) {
+                                                        var tempResult = getValidatedValue(inItem.Title, lv.Value, TEMP_MIN, TEMP_MAX, "temp");
+                                                        var tempSuffix = tempResult.isValid ? " °C" : " °C.";
+                                                        $(id).text(Math.round(tempResult.value).toFixed(2) + tempSuffix);
+                                                    } else if (titleLower.includes("humidity")) {
+                                                        var humResult = getValidatedValue(inItem.Title, lv.Value, HUM_MIN, HUM_MAX, "hum");
+                                                        var humSuffix = humResult.isValid ? " %" : " %.";
+                                                        $(id).text(Math.round(humResult.value).toFixed(2) + humSuffix);
                                                     }
+                                                    //$(timeid).text(formatDeviceTimeall(lv.TimestampDevice) + "");
                                                 }
 
                                             }
 
                                         });
                                     }
-
+                                    
 
                                     if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.length > 0) {
                                         $.each(item.mAssetInfoDataloggers, function (idx, inItem) {
 
                                             if (lv.DataType == "DataLogger") {
                                                 if (inItem.Value != null && inItem.Value != '') {
-                                                    if (item.Id == lv.AssetId && parseInt(inItem.Value) == lv.AssetAttributeId) {
+                                                  
+                                                    if (item.Id == lv.AssetId && inItem.DataloggerAttributeId == lv.AssetAttributeId) {
                                                         var id = ".DLAttribute" + item.Id + inItem.DataloggerAttributeId;
-                                                        if (lv.Value == 1) {
-                                                            $(id).html("<span class='badge badge-success text-white'>Open</span>");
-                                                        } else if (lv.Value == 0) {
-                                                            $(id).html("<span class='badge badge-warning text-white'>Close</span>");
+                                                        var timeid = ".rcptime" + item.Id + inItem.DataloggerAttributeId;
+                                                        var iconImg = ".hdnImgRelayRoom" + item.Id + inItem.DataloggerAttributeId;
+
+                                                        if (inItem.DataloggerAttribute == "RelayRoom Close") {
+                                                            if (lv.Value == 1) {
+                                                                $(id).html("<span class='badge badge-warning text-white'>Close</span>");
+                                                                $(iconImg).attr('src', '/Areas/FRS25/assets/img/icon_close_door.svg');                                                               
+
+                                                            } else if (lv.Value == 0) {
+                                                                $(id).html("<span class='badge badge-success text-white'>Open</span>");
+                                                                $(iconImg).attr('src', '/Areas/FRS25/assets/img/icon_open_door.svg');
+                                                            }
+                                                        } else {
+                                                            if (lv.Value == 1) {
+                                                                $(id).html("<span class='badge badge-success text-white'>Open</span>");
+                                                                $(iconImg).attr('src', '/Areas/FRS25/assets/img/icon_open_door.svg');
+                                                            } else if (lv.Value == 0) {
+                                                                $(id).html("<span class='badge badge-warning text-white'>Close</span>");
+                                                                $(iconImg).attr('src', '/Areas/FRS25/assets/img/icon_close_door.svg');
+                                                            }
                                                         }
+                                                       
+
+                                                        $(timeid).text(formatDeviceTimeall(lv.TimestampDevice) + "");
                                                     }
                                                 }
 
                                             }
-
-
-                                            //if (inItem.Value != null && inItem.Value != '') {
-                                            //    var dataValue = data[inItem.Value - 1];
-                                            //    if (dataValue != null) {
-                                            //        var id = ".DLAttribute" + item.Id + inItem.DataloggerAttributeId;
-
-                                            //        if (parseInt(dataValue) == 0)
-                                            //            dataValue = 1;
-                                            //        else if (parseInt(dataValue) == 1)
-                                            //            dataValue = 0;
-
-                                            //        if (inItem.ContactType != null && inItem.ContactType != undefined && inItem.ContactType.toLowerCase() == 'front') {
-                                            //            if (parseInt(dataValue) == 1) {
-                                            //                $(id).html("<span class='badge badge-success'>Open</span>");
-                                            //            }
-                                            //            else if (parseInt(dataValue) == 0) {
-                                            //                $(id).html("<span class='badge badge-warning'>Close</span>");
-                                            //            }
-                                            //        } else if (inItem.ContactType != null && inItem.ContactType != undefined && inItem.ContactType.toLowerCase() == 'back') {
-                                            //            if (parseInt(dataValue) == 1) {
-                                            //                $(id).html("<span class='badge badge-warning'>Close</span>");
-
-                                            //            }
-                                            //            else if (parseInt(dataValue) == 0) {
-
-                                            //                $(id).html("<span class='badge badge-success'>Open</span>");
-                                            //            }
-                                            //        }
-                                            //    }
-                                            //}
                                         });
                                     }
 
@@ -732,4 +543,35 @@
         $bar.html(html).show();
     }
 
+    function formatDeviceTime(isoString) {
+        if (!isoString) return '--:--:--';
+        try {
+            var d = new Date(isoString);
+            var day = ('0' + d.getDate()).slice(-2);
+            var mon = ('0' + (d.getMonth() + 1)).slice(-2);
+            var yr = d.getFullYear();
+            var hh = ('0' + d.getHours()).slice(-2);
+            var mm = ('0' + d.getMinutes()).slice(-2);
+            var ss = ('0' + d.getSeconds()).slice(-2);
+            return hh + ':' + mm + ':' + ss;
+        } catch (e) {
+            return '--:--:--';
+        }
+    }
+
+    function formatDeviceTimeall(isoString) {
+        if (!isoString) return '--:--:--';
+        try {
+            var d = new Date(isoString);
+            var day = ('0' + d.getDate()).slice(-2);
+            var mon = ('0' + (d.getMonth() + 1)).slice(-2);
+            var yr = d.getFullYear();
+            var hh = ('0' + d.getHours()).slice(-2);
+            var mm = ('0' + d.getMinutes()).slice(-2);
+            var ss = ('0' + d.getSeconds()).slice(-2);
+            return day + '-' + mon + '-' + yr + ' / ' + hh + ':' + mm + ':' + ss;
+        } catch (e) {
+            return '--:--:--';
+        }
+    }
 </script>

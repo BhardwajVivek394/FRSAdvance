@@ -1,10 +1,14 @@
 ﻿@model Domain.AssetLister
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+@{
+    // Rows are pre-computed in the controller (EquipmentRoomController.BuildHistoryRows).
+    // Row format: [Zone, Division, Station, DateTime, RoomType, Temperature, Humidity, Door("Open"/"Close"/"")]
+    string erRowsJson = (ViewBag.ErRowsJson as string) ?? "[]";
+}
+<!-- chart.js is already loaded once in History.cshtml - do not load it again on every search -->
 
 <div class="table-border">
     <div class="row">
-        <div class="col-6">
+        <div class="col-12 col-md-6">
             <div id="selectedRangeBar" style="
     display: flex;
     align-items: center;
@@ -140,28 +144,34 @@
                 <div class="d-flex align-items-center badge-cl gap-10">
                     <span id="dataInfo" class="text-muted" style="font-size: 12px;"></span>
                 </div>
-                <div class="d-flex justify-content-between align-items-center btn-icon-size">
-                    <div class="d-flex justify-content-end px-md-3 px-2 py-2">
-                        <!-- Download Dropdown -->
-                        <div class="dropdown">
-                            <button class="btn btn-inactive" id="btnDownload" data-toggle="dropdown"
-                                    aria-haspopup="true" aria-expanded="false" title="Download">
-                                <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
-                                     stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12"></path>
-                                </svg>
-                            </button>
-                            <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnDownload">
-                                <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadExcel()">
-                                    <i class="fa fa-file-excel mr-2" style="color:var(--e7-dot-green, #22c55e);"></i> Excel
-                                </a>
-                                <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadCSV()">
-                                    <i class="fa fa-file-alt mr-2" style="color:var(--e7-accent, #3b82f6);"></i> CSV
-                                </a>
+                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId != E7FRSAdvance.Utility.Utility.UserClass.Guest.GetHashCode())
+                {
+                    <div class="d-flex justify-content-between align-items-center btn-icon-size">
+                        <div class="d-flex justify-content-end px-md-3 px-2 py-2">
+                            <!-- Download Dropdown -->
+                            <div class="dropdown">
+                                <button class="btn btn-inactive" id="btnDownload" data-toggle="dropdown"
+                                        aria-haspopup="true" aria-expanded="false" title="Download">
+                                    <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"
+                                         stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12"></path>
+                                    </svg>
+                                </button>
+                                <div class="dropdown-menu dropdown-menu-right" aria-labelledby="btnDownload">
+                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadExcel()">
+                                        <i class="fa fa-file-excel mr-2" style="color:var(--e7-dot-green, #22c55e);"></i> Excel
+                                    </a>
+                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadCSV()">
+                                        <i class="fa fa-file-alt mr-2" style="color:var(--e7-accent, #3b82f6);"></i> CSV
+                                    </a>
+                                    <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadPDF()">
+                                        <i class="fa fa-file-pdf mr-2" style="color:var(--e7-red, #ef4444);"></i> PDF
+                                    </a>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
+                }
             </div>
         </div>
 
@@ -183,138 +193,32 @@
                                         <th>Station</th>
                                         <th>Date &amp; Time</th>
                                         <th>Equipment Room Type</th>
-                                        <th class="text-center">Temperature</th>
-                                        <th class="text-center">Humidity</th>
+                                        <th class="text-center">Temperature(°C)</th>
+                                        <th class="text-center">Humidity(%)</th>
                                         <th class="text-center">(Open/Close)</th>
                                     </tr>
                                 </thead>
-                                <tbody>
-                                    @if (Model != null && Model.mAssets != null)
-                                    {
-                                        int counter = 0;
-                                        foreach (var item in Model.mAssets)
-                                        {
-                                            if (item.siteAttributeDatasList != null && item.siteAttributeDatasList.Count > 0)
-                                            {
-                                                foreach (var siteAttribute in item.siteAttributeDatasList)
-                                                {
-                                                    var assetAttributeTemperature = item.assetAttributes.Where(x => x.Title.EndsWith(siteAttribute) && x.Title.ToLower().Contains("temperature")).FirstOrDefault();
-                                                    var assetAttributeHumidity = item.assetAttributes.Where(x => x.Title.EndsWith(siteAttribute) && x.Title.ToLower().Contains("humidity")).FirstOrDefault();
-
-
-                                                    if (item.siteAttributeDatas != null && item.siteAttributeDatas.Count > 0 && assetAttributeTemperature != null && assetAttributeTemperature.Id > 0 && assetAttributeHumidity != null && assetAttributeHumidity.Id > 0)
-                                                    {
-                                                        string tempratureValue = string.Empty;
-                                                        string humidityValue = string.Empty;
-                                                        string dataLoggerValue = string.Empty;
-                                                        var tempData = item.siteAttributeDatas.Where(x => x.AttributeId == assetAttributeTemperature.Id).OrderByDescending(x => x.TimeStamp).FirstOrDefault();
-                                                        if (tempData != null)
-                                                        {
-                                                            tempratureValue = tempData.AttributeData;
-                                                        }
-                                                        var humidityData = item.siteAttributeDatas.Where(x => x.AttributeId == assetAttributeHumidity.Id).OrderByDescending(x => x.TimeStamp).FirstOrDefault();
-                                                        if (humidityData != null)
-                                                        {
-                                                            humidityValue = humidityData.AttributeData;
-                                                        }
-
-                                                        if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.Count > 0)
-                                                        {
-                                                            var mAssetInfoDatalogger = item.mAssetInfoDataloggers.Where(x => x.DataloggerAttribute.EndsWith(siteAttribute)).FirstOrDefault();
-
-                                                            if (mAssetInfoDatalogger != null && mAssetInfoDatalogger.DataloggerAttributeId > 0 && mAssetInfoDatalogger.mDataloggers != null && mAssetInfoDatalogger.mDataloggers.Count > 0)
-                                                            {
-                                                                var datalogger = mAssetInfoDatalogger.mDataloggers.OrderByDescending(x => x.Timestamp).FirstOrDefault();
-                                                                if (datalogger != null)
-                                                                {
-                                                                    dataLoggerValue = datalogger.CurrentValue;
-                                                                }
-                                                            }
-                                                        }
-
-                                                        foreach (var attributeData in item.siteAttributeDatas.Where(x => x.AttributeId == assetAttributeTemperature.Id || x.AttributeId == assetAttributeHumidity.Id).OrderByDescending(x => x.TimeStamp))
-                                                        {
-                                                            if (attributeData.AttributeId == assetAttributeTemperature.Id)
-                                                            {
-                                                                tempratureValue = attributeData.AttributeData;
-                                                            }
-                                                            if (attributeData.AttributeId == assetAttributeHumidity.Id)
-                                                            {
-                                                                humidityValue = attributeData.AttributeData;
-                                                            }
-
-                                                            counter++;
-                                                            <tr>
-                                                                <td>@counter</td>
-                                                                <td>@item.Zone</td>
-                                                                <td>@item.Division</td>
-                                                                <td>@item.SiteName</td>
-                                                                <td>@attributeData.TimeStamp</td>
-                                                                <td>@siteAttribute</td>
-                                                                <td class="text-center">
-                                                                    @tempratureValue °C
-                                                                </td>
-                                                                <td class="text-center">
-                                                                    @humidityValue %
-                                                                </td>
-                                                                <td class="text-center">
-
-                                                                    @if (item.mAssetInfoDataloggers != null && item.mAssetInfoDataloggers.Count > 0)
-                                                                    {
-                                                                        var mAssetInfoDatalogger = item.mAssetInfoDataloggers.Where(x => x.DataloggerAttribute.EndsWith(siteAttribute)).FirstOrDefault();
-
-                                                                        if (mAssetInfoDatalogger != null && mAssetInfoDatalogger.DataloggerAttributeId > 0 && mAssetInfoDatalogger.mDataloggers != null && mAssetInfoDatalogger.mDataloggers.Count > 0)
-                                                                        {
-                                                                            var datalogger = mAssetInfoDatalogger.mDataloggers.Where(x => x.Date >= attributeData.TimeStamp).FirstOrDefault();
-                                                                            if (datalogger != null)
-                                                                            {
-                                                                                dataLoggerValue = datalogger.CurrentValue;
-                                                                            }
-
-                                                                            if (dataLoggerValue == "Pickup")
-                                                                            {
-                                                                                <span class='badge badge-success'>Open</span>
-                                                                            }
-                                                                            else if (dataLoggerValue == "Drop")
-                                                                            {
-                                                                                <span class='badge badge-warning text-white'>Close</span>
-                                                                            }
-                                                                        }
-
-                                                                    }
-                                                                </td>
-                                                            </tr>
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                        }
-                                    }
-                                </tbody>
+                                <tbody id="erTbody"></tbody>
                             </table>
                         </div>
 
                         <!-- Pagination -->
-                        @if (Model.mAssets.Count > 0)
-                        {
-                            <div class="d-flex justify-content-between align-items-center px-4 py-3 border-top">
-                                <nav>
-                                    <ul class="pagination mb-0" id="pager">
-                                        <li class="page-item" id="prevBtn">
-                                            <a class="page-link" href="javascript:void(0);" onclick="changePage('prev')">
-                                                <i class="fas fa-chevron-left"></i> Previous
-                                            </a>
-                                        </li>
-                                        <li class="page-item" id="nextBtn">
-                                            <a class="page-link" href="javascript:void(0);" onclick="changePage('next')">
-                                                Next <i class="fas fa-chevron-right"></i>
-                                            </a>
-                                        </li>
-                                    </ul>
-                                </nav>
-                            </div>
-                        }
+                        <div id="erPagerWrap" class="d-flex justify-content-between align-items-center px-4 py-3 border-top">
+                            <nav>
+                                <ul class="pagination mb-0" id="pager">
+                                    <li class="page-item" id="prevBtn">
+                                        <a class="page-link" href="javascript:void(0);" onclick="changePage('prev')">
+                                            <i class="fas fa-chevron-left"></i><span class="d-none d-sm-inline"> Previous</span>
+                                        </a>
+                                    </li>
+                                    <li class="page-item" id="nextBtn">
+                                        <a class="page-link" href="javascript:void(0);" onclick="changePage('next')">
+                                            <span class="d-none d-sm-inline">Next </span><i class="fas fa-chevron-right"></i>
+                                        </a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
                     </div>
 
                     <!-- Chart View -->
@@ -329,19 +233,34 @@
 
 <script>
     // ==========================================================================
-    // PAGINATION (original)
+    // DATA + CLIENT-SIDE PAGINATION
+    // Data arrives once as a compact JSON array; only the CURRENT page (10 rows)
+    // is ever turned into DOM. 1 lakh+ rows stay in memory as plain arrays.
     // ==========================================================================
+    var erRows = @Html.Raw(erRowsJson);
+
+    function erEsc(v) {
+        if (v === null || v === undefined) return '';
+        return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function erDoorBadge(v) {
+        if (v === 'Open') return '<span class="badge badge-success">Open</span>';
+        if (v === 'Close') return '<span class="badge badge-warning text-white">Close</span>';
+        return '';
+    }
+
     (function () {
         var rowsPerPage = 10;
-        var $table = $('#tblEquipmentRoom');
-        var $rows = $table.find('tbody tr');
-        var totalRows = $rows.length;
-        var totalPages = Math.ceil(totalRows / rowsPerPage);
+        var totalRows = erRows.length;
+        var totalPages = Math.max(1, Math.ceil(totalRows / rowsPerPage));
         var currentPage = 1;
+        var tbody = document.getElementById('erTbody');
 
-        if (totalRows === 1 && $rows.first().find('td[colspan]').length > 0) {
-            $('#paginationInfo').parent().hide();
-        } else if (totalRows > 0) {
+        if (totalRows === 0) {
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No history data found for the selected criteria.</td></tr>';
+            $('#erPagerWrap').hide();
+        } else {
             showPage(1);
         }
 
@@ -350,20 +269,35 @@
             if (page > totalPages) page = totalPages;
             currentPage = page;
             var start = (page - 1) * rowsPerPage;
-            var end = start + rowsPerPage;
-            $rows.hide();
-            $rows.slice(start, end).show();
-            var showEnd = Math.min(end, totalRows);
+            var end = Math.min(start + rowsPerPage, totalRows);
+
+            var html = '';
+            for (var i = start; i < end; i++) {
+                var r = erRows[i];
+                html += '<tr>' +
+                    '<td>' + (i + 1) + '</td>' +
+                    '<td>' + erEsc(r[0]) + '</td>' +
+                    '<td>' + erEsc(r[1]) + '</td>' +
+                    '<td>' + erEsc(r[2]) + '</td>' +
+                    '<td>' + erEsc(r[3]) + '</td>' +
+                    '<td>' + erEsc(r[4]) + '</td>' +
+                    '<td class="text-center">' + erEsc(r[5]) + ' °C</td>' +
+                    '<td class="text-center">' + erEsc(r[6]) + ' %</td>' +
+                    '<td class="text-center">' + erDoorBadge(r[7]) + '</td>' +
+                    '</tr>';
+            }
+            tbody.innerHTML = html;          // one DOM write per page
+
             $('#showingFrom').text(totalRows > 0 ? start + 1 : 0);
-            $('#showingTo').text(showEnd);
+            $('#showingTo').text(end);
             renderPagination();
         }
 
         function renderPagination() {
             var $pager = $('#pager');
             $pager.find('.page-number').remove();
-            if (currentPage <= 1) { $('#prevBtn').addClass('disabled'); } else { $('#prevBtn').removeClass('disabled'); }
-            if (currentPage >= totalPages) { $('#nextBtn').addClass('disabled'); } else { $('#nextBtn').removeClass('disabled'); }
+            $('#prevBtn').toggleClass('disabled', currentPage <= 1);
+            $('#nextBtn').toggleClass('disabled', currentPage >= totalPages);
 
             var $nextBtn = $('#nextBtn');
             var pagesToShow = [];
@@ -373,22 +307,22 @@
                 pagesToShow.push(1);
                 if (currentPage > 3) pagesToShow.push('...');
                 for (var i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) {
-                    if (pagesToShow.indexOf(i) === -1 && i !== '...') pagesToShow.push(i);
+                    if (pagesToShow.indexOf(i) === -1) pagesToShow.push(i);
                 }
                 if (currentPage < totalPages - 2) pagesToShow.push('...');
                 if (pagesToShow.indexOf(totalPages) === -1) pagesToShow.push(totalPages);
             }
+            var html = '';
             for (var j = 0; j < pagesToShow.length; j++) {
                 var p = pagesToShow[j];
-                var $li;
                 if (p === '...') {
-                    $li = $('<li class="page-item page-number disabled"><span class="page-link">...</span></li>');
+                    html += '<li class="page-item page-number disabled"><span class="page-link">...</span></li>';
                 } else {
-                    var activeClass = (p === currentPage) ? 'active' : '';
-                    $li = $('<li class="page-item page-number ' + activeClass + '"><a class="page-link" href="javascript:void(0);" onclick="goToPage(' + p + ')">' + p + '</a></li>');
+                    html += '<li class="page-item page-number ' + (p === currentPage ? 'active' : '') + '">' +
+                        '<a class="page-link" href="javascript:void(0);" onclick="goToPage(' + p + ')">' + p + '</a></li>';
                 }
-                $li.insertBefore($nextBtn);
             }
+            $(html).insertBefore($nextBtn);
         }
 
         window.changePage = function (direction) {
@@ -397,6 +331,27 @@
         };
         window.goToPage = function (page) { showPage(page); };
     })();
+
+    // Math.min.apply / Math.max.apply crash ("Maximum call stack size exceeded")
+    // when an array has ~1 lakh+ values, so use a simple loop instead.
+    function erArrMin(a) { var m = Infinity; for (var i = 0; i < a.length; i++) if (a[i] < m) m = a[i]; return m; }
+    function erArrMax(a) { var m = -Infinity; for (var i = 0; i < a.length; i++) if (a[i] > m) m = a[i]; return m; }
+
+    // Rows for Excel / CSV / PDF — built from the in-memory array, not the DOM
+    function erGetExportRows() {
+        var out = new Array(erRows.length);
+        for (var i = 0; i < erRows.length; i++) {
+            var r = erRows[i];
+            out[i] = [
+                String(i + 1), r[0] || '', r[1] || '', r[2] || '', r[3] || '', r[4] || '',
+                ((r[5] || '') + ' °C').trim(), ((r[6] || '') + ' %').trim(), r[7] || ''
+            ];
+        }
+        return out;
+    }
+
+    var erExportHeaders = ['Sr.No', 'Zone', 'Division', 'Station', 'Date & Time',
+        'Equipment Room Type', 'Temperature(°C)', 'Humidity(%)', '(Open/Close)'];
 
     // ==========================================================================
     // CHART COLORS & GLOBALS
@@ -408,7 +363,7 @@
         '#e11d48', '#7c3aed', '#059669', '#dc2626', '#2563eb'
     ];
     var erChart = null;
-    var erSelectedView = 'Table';
+    if (typeof erSelectedView === 'undefined') erSelectedView = 'Table';
 
 
 
@@ -442,26 +397,21 @@
             openCount: 0, closeCount: 0
         };
 
-        $('#tblEquipmentRoom tbody tr').each(function () {
-            var $tds = $(this).find('td');
-            if ($tds.length < 9) return;
+        for (var i = 0; i < erRows.length; i++) {
+            var src = erRows[i];
+            var station = src[2] || '';
+            var dateTime = src[3] || '';
+            var room = src[4] || '';
 
-            var station = $.trim($tds.eq(3).text());
-            var dateTime = $.trim($tds.eq(4).text());
-            var room = $.trim($tds.eq(5).text());
-
-            // Temperature: strip "°C" and whitespace
-            var tempRaw = $.trim($tds.eq(6).text()).replace(/°C/gi, '').replace(/,/g, '').trim();
+            var tempRaw = String(src[5] || '').replace(/,/g, '').trim();
             var temp = parseFloat(tempRaw);
             var hasTemp = !isNaN(temp) && tempRaw !== '' && tempRaw !== '-';
 
-            // Humidity: strip "%" and whitespace
-            var humRaw = $.trim($tds.eq(7).text()).replace(/%/g, '').replace(/,/g, '').trim();
+            var humRaw = String(src[6] || '').replace(/,/g, '').trim();
             var hum = parseFloat(humRaw);
             var hasHum = !isNaN(hum) && humRaw !== '' && humRaw !== '-';
 
-            // Relay: read badge text (Open / Close)
-            var relayText = $.trim($tds.eq(8).text()).toLowerCase();
+            var relayText = String(src[7] || '').toLowerCase();
 
             data.rows.push({
                 station: station,
@@ -495,7 +445,7 @@
             // --- Relay counts ---
             if (relayText.indexOf('open') > -1) data.openCount++;
             else if (relayText.indexOf('close') > -1) data.closeCount++;
-        });
+        }
 
         return data;
     }
@@ -560,76 +510,342 @@
     }
 
     // ==========================================================================
-    // BAR CHART — Avg Temperature & Humidity per Station
+    // BAR CHART — Station-wise: separate bar chart per station with pagination
     // ==========================================================================
+    var erBarPageSize = 6;
+    var erBarStationState = {};   // { stationName: { page, rows, chartInstance } }
+    var erBarStationCharts = [];  // all chart instances for cleanup
+
     function renderErBarChart(data) {
-        var _t = erTheme();
+        // Destroy previous charts
+        erBarStationCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+        erBarStationCharts = [];
+        erBarStationState = {};
         if (erChart) { erChart.destroy(); erChart = null; }
 
-        var stations = Object.keys(data.stationGroups);
-        if (stations.length === 0) { renderErNoData(); return; }
+        if (data.rows.length === 0) { renderErNoData(); return; }
 
-        var tempAvgs = [], humAvgs = [];
-        stations.forEach(function (st) {
-            var g = data.stationGroups[st];
-
-            var tSum = 0, tCnt = 0;
-            g.tempValues.forEach(function (v) { tSum += v; tCnt++; });
-            tempAvgs.push(tCnt > 0 ? parseFloat((tSum / tCnt).toFixed(2)) : null);
-
-            var hSum = 0, hCnt = 0;
-            g.humValues.forEach(function (v) { hSum += v; hCnt++; });
-            humAvgs.push(hCnt > 0 ? parseFloat((hSum / hCnt).toFixed(2)) : null);
+        // Group rows by station
+        var stationOrder = [];
+        var stationRows = {};
+        data.rows.forEach(function (r) {
+            if (!stationRows[r.station]) { stationRows[r.station] = []; stationOrder.push(r.station); }
+            stationRows[r.station].push(r);
         });
 
-        var datasets = [];
-        if (data.tempCount > 0) {
-            datasets.push({
-                label: 'Avg Temperature (°C)',
-                data: tempAvgs,
-                backgroundColor: '#f43f5e',
-                borderRadius: 5,
-                barThickness: stations.length > 12 ? 'flex' : 28
-            });
-        }
-        if (data.humCount > 0) {
-            datasets.push({
-                label: 'Avg Humidity (%)',
-                data: humAvgs,
-                backgroundColor: '#3b82f6',
-                borderRadius: 5,
-                barThickness: stations.length > 12 ? 'flex' : 28
-            });
-        }
+        var $container = $('#erChartContainer').empty();
 
-        if (datasets.length === 0) { renderErNoData(); return; }
+        // Build a section for each station
+        stationOrder.forEach(function (station, sIdx) {
+            var rows = stationRows[station];
+            var stKey = 'barSt_' + sIdx;
+            erBarStationState[stKey] = { page: 1, rows: rows, chart: null };
 
-        var ctx = erCreateCanvas(
-            'Average Temperature & Humidity by Station',
-            'fas fa-chart-bar',
-            Math.max(350, stations.length * 50)
+            var stColor = erChartColors[sIdx % erChartColors.length];
+
+            var $box = $('<div></div>').attr('id', 'barBox_' + stKey).css({
+                padding: '20px', background: 'var(--e7-surface, #fff)', border: '1px solid var(--e7-border, transparent)',
+                borderRadius: '12px', boxShadow: 'var(--e7-shadow-card, 0 2px 12px rgba(0,0,0,0.07))',
+                margin: '10px 0', borderLeft: '4px solid ' + stColor
+            });
+
+            $box.append(
+                '<h5 style="margin:0 0 4px;font-size:15px;font-weight:600;color:var(--e7-heading, #1e293b);">' +
+                '<i class="fas fa-chart-bar mr-2" style="color:' + stColor + ';"></i>' +
+                '<span style="color:' + stColor + ';">' + station + '</span>' +
+                ' <span style="font-size:12px;font-weight:400;color:var(--e7-text-3, #64748b);">(' + rows.length + ' records)</span></h5>'
+            );
+
+            // Legend
+            var $legendRow = $('<div></div>').css({
+                display: 'flex', justifyContent: 'center',
+                alignItems: 'center', margin: '10px 0 14px'
+            });
+            var $legend = $('<div></div>').css({ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' });
+            $legend.append(legendDot('#f9a8b8', 'Temperature'));
+            $legend.append(legendDot('#a7e8c1', 'Humidity'));
+            $legend.append(legendDot('#fcd9a8', 'Open/Close'));
+            $legendRow.append($legend);
+            $box.append($legendRow);
+
+            // Canvas
+            var canvasId = 'erCanvas_' + stKey;
+            var $wrapper = $('<div></div>').css({ position: 'relative', height: '380px', width: '100%' });
+            var $canvas = $('<canvas id="' + canvasId + '"></canvas>');
+            $wrapper.append($canvas);
+            $box.append($wrapper);
+
+            // Pager
+            var totalPages = Math.ceil(rows.length / erBarPageSize);
+            if (totalPages > 1) {
+                var $pagerRow = $('<div></div>').css({
+                    display: 'flex', justifyContent: 'flex-end',
+                    alignItems: 'center', marginTop: '16px',
+                    paddingTop: '12px', borderTop: '1px solid var(--e7-border, #e2e8f0)'
+                });
+                $pagerRow.append(buildBarPagerForStation(stKey, totalPages));
+                $box.append($pagerRow);
+            }
+
+            $container.append($box);
+
+            // Draw first page
+            drawBarPageForStation(stKey);
+        });
+
+        $('#dataInfo').html(
+            '<i class="fas fa-chart-bar text-primary"></i> ' +
+            stationOrder.length + ' station(s) · ' + data.rows.length + ' total record(s)'
+        );
+    }
+
+    function legendDot(color, label) {
+        return '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<span style="display:inline-block;width:14px;height:14px;border-radius:3px;background:' + color + ';"></span>' +
+            '<span style="font-size:13px;color:var(--e7-text-2, #334155);">' + label + '</span></div>';
+    }
+
+    function buildBarPagerForStation(stKey, totalPages) {
+        var state = erBarStationState[stKey];
+        var $pager = $('<div></div>').attr('id', 'erBarPager_' + stKey).css({
+            display: 'flex', alignItems: 'center', gap: '0', flexWrap: 'wrap'
+        });
+
+        $pager.append(
+            '<div class="er-pg-btn er-pg-prev" onclick="erBarStPrev(\'' + stKey + '\')">' +
+            '<i class="fas fa-chevron-left" style="font-size:10px;margin-right:4px;"></i> Prev</div>'
         );
 
-        erChart = new Chart(ctx, {
+        var pages = buildPageNumbers(state.page, totalPages);
+        pages.forEach(function (p) {
+            if (p === '...') {
+                $pager.append('<div class="er-pg-btn disabled" style="cursor:default;min-width:36px;">…</div>');
+            } else {
+                $pager.append(
+                    '<div class="er-pg-btn er-pg-num' + (p === state.page ? ' active' : '') + '" ' +
+                    'onclick="erBarStGoTo(\'' + stKey + '\',' + p + ')">' + p + '</div>'
+                );
+            }
+        });
+
+        $pager.append(
+            '<div class="er-pg-btn er-pg-next" onclick="erBarStNext(\'' + stKey + '\')">' +
+            'Next <i class="fas fa-chevron-right" style="font-size:10px;margin-left:4px;"></i></div>'
+        );
+
+        return $pager;
+    }
+
+    function buildPageNumbers(currentPage, totalPages) {
+        var pages = [];
+        if (totalPages <= 7) {
+            for (var i = 1; i <= totalPages; i++) pages.push(i);
+            return pages;
+        }
+        pages.push(1);
+        if (totalPages > 1) pages.push(2);
+        if (currentPage > 4) pages.push('...');
+        var start = Math.max(3, currentPage - 1);
+        var end = Math.min(totalPages - 2, currentPage + 1);
+        for (var i = start; i <= end; i++) {
+            if (pages.indexOf(i) === -1) pages.push(i);
+        }
+        if (currentPage < totalPages - 3) pages.push('...');
+        if (totalPages - 1 > 2 && pages.indexOf(totalPages - 1) === -1) pages.push(totalPages - 1);
+        if (pages.indexOf(totalPages) === -1) pages.push(totalPages);
+        return pages;
+    }
+
+    function erBarStPrev(stKey) {
+        var st = erBarStationState[stKey];
+        if (st.page > 1) { st.page--; drawBarPageForStation(stKey); }
+    }
+    function erBarStNext(stKey) {
+        var st = erBarStationState[stKey];
+        var totalPages = Math.ceil(st.rows.length / erBarPageSize);
+        if (st.page < totalPages) { st.page++; drawBarPageForStation(stKey); }
+    }
+    function erBarStGoTo(stKey, page) {
+        erBarStationState[stKey].page = page;
+        drawBarPageForStation(stKey);
+    }
+
+    function drawBarPageForStation(stKey) {
+        var _t = erTheme();
+        var state = erBarStationState[stKey];
+        if (state.chart) { state.chart.destroy(); state.chart = null; }
+
+        var rows = state.rows;
+        var totalPages = Math.ceil(rows.length / erBarPageSize);
+        var startIdx = (state.page - 1) * erBarPageSize;
+        var pageRows = rows.slice(startIdx, startIdx + erBarPageSize);
+
+        // Rebuild pager UI
+        var $pagerContainer = $('#erBarPager_' + stKey);
+        if ($pagerContainer.length) {
+            $pagerContainer.replaceWith(buildBarPagerForStation(stKey, totalPages));
+        }
+
+        var labels = [];
+        var tempValues = [], humValues = [], relayValues = [];
+        var relayLabels = [];
+
+        pageRows.forEach(function (row) {
+            labels.push([row.dateTime, row.room]);
+
+            tempValues.push(row.temperature !== null ? row.temperature : 0);
+            humValues.push(row.humidity !== null ? row.humidity : 0);
+
+            var relayText = (row.relay || '').toLowerCase();
+            if (relayText.indexOf('open') > -1) {
+                relayValues.push(5);
+                relayLabels.push('Open');
+            } else if (relayText.indexOf('close') > -1) {
+                relayValues.push(5);
+                relayLabels.push('Close');
+            } else {
+                relayValues.push(0);
+                relayLabels.push('');
+            }
+        });
+
+        // Per-bar colors for Open/Close
+        var relayBgColors = [];
+        var relayBorderColors = [];
+        relayLabels.forEach(function (lbl) {
+            if (lbl === 'Open') {
+                relayBgColors.push('rgba(134,239,172,0.75)');
+                relayBorderColors.push('#22c55e');
+            } else if (lbl === 'Close') {
+                relayBgColors.push('rgba(252,217,168,0.75)');
+                relayBorderColors.push('#fbbf24');
+            } else {
+                relayBgColors.push('rgba(226,232,240,0.5)');
+                relayBorderColors.push('#cbd5e1');
+            }
+        });
+
+        var canvasId = 'erCanvas_' + stKey;
+        var ctx = document.getElementById(canvasId).getContext('2d');
+
+        // ── Custom plugin: data labels on top of bars ──
+        var dataLabelPlugin = {
+            id: 'erBarDataLabels',
+            afterDatasetsDraw: function (chart) {
+                var ctx2 = chart.ctx;
+                ctx2.save();
+                ctx2.font = '600 10px "Segoe UI", sans-serif';
+                ctx2.textAlign = 'center';
+                ctx2.textBaseline = 'bottom';
+
+                chart.data.datasets.forEach(function (dataset, dsIndex) {
+                    var meta = chart.getDatasetMeta(dsIndex);
+                    meta.data.forEach(function (bar, index) {
+                        var value = dataset.data[index];
+                        if (value === 0 || value === null) return;
+
+                        var label = '';
+                        if (dsIndex === 0) {
+                            // Temperature
+                            label = value.toFixed(1) + '°C';
+                            ctx2.fillStyle = '#dc2626';
+                        } else if (dsIndex === 1) {
+                            // Humidity
+                            label = value.toFixed(1) + '%';
+                            ctx2.fillStyle = '#047857';
+                        } else if (dsIndex === 2) {
+                            // Relay — show Open/Close text
+                            label = relayLabels[index] || '';
+                            ctx2.fillStyle = relayLabels[index] === 'Open' ? '#15803d' : '#92400e';
+                        }
+
+                        if (label) {
+                            ctx2.fillText(label, bar.x, bar.y - 4);
+                        }
+                    });
+                });
+                ctx2.restore();
+            }
+        };
+
+        state.chart = new Chart(ctx, {
             type: 'bar',
-            data: { labels: stations, datasets: datasets },
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Temperature (°C)',
+                        data: tempValues,
+                        backgroundColor: 'rgba(249,168,184,0.7)',
+                        borderColor: '#f472b6',
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        barPercentage: 0.8,
+                        categoryPercentage: 0.65
+                    },
+                    {
+                        label: 'Humidity (%)',
+                        data: humValues,
+                        backgroundColor: 'rgba(167,232,193,0.7)',
+                        borderColor: '#4ade80',
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        barPercentage: 0.8,
+                        categoryPercentage: 0.65
+                    },
+                    {
+                        label: 'Open/Close',
+                        data: relayValues,
+                        backgroundColor: relayBgColors,
+                        borderColor: relayBorderColors,
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        barPercentage: 0.8,
+                        categoryPercentage: 0.65
+                    }
+                ]
+            },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: { top: 24 } },
                 plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: { color: _t.text2, padding: 16, usePointStyle: true, pointStyle: 'rectRounded', font: { size: 12 } }
-                    },
+                    legend: { display: false },    // we use custom legend above
                     tooltip: {
-                        backgroundColor: _t.surface, borderColor: _t.border, borderWidth: 1, titleColor: _t.heading, bodyColor: _t.text,
-                        padding: 12,
+                        backgroundColor: _t.surface,
+                        titleColor: _t.heading,
+                        bodyColor: _t.text,
+                        borderColor: _t.border,
+                        borderWidth: 1,
+                        padding: 14,
                         cornerRadius: 8,
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                        titleFont: { size: 13, weight: '700' },
+                        bodyFont: { size: 12 },
+                        displayColors: false,
                         callbacks: {
-                            label: function (c) {
-                                if (c.parsed.y === null) return c.dataset.label + ': N/A';
-                                var unit = c.datasetIndex === 0 ? ' °C' : ' %';
-                                return c.dataset.label + ': ' + c.parsed.y.toFixed(2) + unit;
+                            title: function (items) {
+                                if (!items.length) return '';
+                                var idx = items[0].dataIndex;
+                                var row = pageRows[idx];
+                                return row.dateTime + '\n' + row.station + '\n' + row.room;
+                            },
+                            label: function () { return ''; },   // suppress default
+                            afterBody: function (items) {
+                                if (!items.length) return [];
+                                var idx = items[0].dataIndex;
+                                var row = pageRows[idx];
+                                var lines = [];
+                                lines.push('───────────────────');
+                                lines.push('Temp     : ' + (row.temperature !== null ? row.temperature.toFixed(2) + ' °C' : '—'));
+                                lines.push('Humidity : ' + (row.humidity !== null ? row.humidity.toFixed(2) + ' %' : '—'));
+
+                                var doorVal = '—';
+                                if (row.relay.indexOf('open') > -1) doorVal = 'Open';
+                                else if (row.relay.indexOf('close') > -1) doorVal = 'Close';
+                                lines.push('Door     : ' + doorVal);
+                                lines.push('Room     : ' + row.room);
+                                return lines;
                             }
                         }
                     }
@@ -637,290 +853,1215 @@
                 scales: {
                     x: {
                         grid: { display: false },
-                        ticks: { color: _t.text3, font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false }
+                        ticks: {
+                            font: { size: 10, weight: '500' },
+                            color: _t.text2,
+                            maxRotation: 0,
+                            minRotation: 0,
+                            autoSkip: false
+                        }
                     },
                     y: {
                         beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Value',
+                            font: { size: 12, weight: '600' },
+                            color: _t.text3
+                        },
                         grid: { color: _t.grid },
-                        ticks: { color: _t.text3, font: { size: 11 } }
+                        ticks: { font: { size: 11 }, color: _t.text3 }
                     }
                 }
-            }
+            },
+            plugins: [dataLabelPlugin]
         });
 
-        $('#dataInfo').html(
-            '<i class="fas fa-chart-bar text-primary"></i> ' +
-            stations.length + ' station(s) · ' + data.rows.length + ' record(s) · ' +
-            'Avg Temp: ' + (data.tempCount > 0 ? (data.totalTemp / data.tempCount).toFixed(2) + ' °C' : 'N/A') +
-            ' · Avg Humidity: ' + (data.humCount > 0 ? (data.totalHum / data.humCount).toFixed(2) + ' %' : 'N/A')
-        );
+        erBarStationCharts.push(state.chart);
     }
 
     // ==========================================================================
-    // PIE CHART — Doughnut: Avg Temp per Room + Relay Open/Close
+    // PIE CHART — Multi-day bucketed pies with rich popup detail
     // ==========================================================================
-    function renderErPieChart(data) {
+    var erPieCharts = [];   // hold chart instances so we can destroy on re-render
+    var erPieTipEl = null;  // floating popup element
+
+    function ensureErPieTip() {
+        if (erPieTipEl) return;
+        erPieTipEl = document.createElement('div');
+        erPieTipEl.id = 'erPieTip';
+        erPieTipEl.style.cssText =
+            'position:fixed;display:none;z-index:99999;background:var(--e7-surface, #fff);' +
+            'border:0.5px solid var(--e7-border-2, #cbd5e1);border-radius:10px;padding:0;' +
+            'min-width:265px;max-width:310px;box-shadow:var(--e7-shadow-pop, 0 4px 20px rgba(0,0,0,0.14));' +
+            'pointer-events:none;font-family:inherit;';
+        erPieTipEl.innerHTML =
+            '<div id="erPieTipHead" style="padding:10px 14px 8px;border-bottom:0.5px solid var(--e7-border, #e2e8f0);">' +
+            '<p id="erPieTipTitle" style="font-size:13px;font-weight:500;color:var(--e7-heading, #0f172a);margin:0 0 2px;">—</p>' +
+            '<p id="erPieTipSub" style="font-size:10.5px;color:var(--e7-text-3, #64748b);margin:0;">—</p>' +
+            '</div>' +
+            '<div id="erPieTipBody" style="padding:8px 14px;"></div>' +
+            '<div id="erPieTipFoot" style="padding:5px 14px 9px;border-top:0.5px solid var(--e7-border, #e2e8f0);font-size:10px;color:var(--e7-text-3, #64748b);line-height:1.4;"></div>';
+        document.body.appendChild(erPieTipEl);
+
+        document.addEventListener('mousemove', function (e) {
+            if (erPieTipEl.style.display !== 'block') return;
+            var left = e.clientX + 16, top = e.clientY - 160;
+            if (left + 310 > window.innerWidth - 10) left = e.clientX - 320;
+            if (top < 10) top = 10;
+            erPieTipEl.style.left = left + 'px';
+            erPieTipEl.style.top = top + 'px';
+        });
+    }
+
+    function showErPieTip(slice, type, x, y) {
+        ensureErPieTip();
+        document.getElementById('erPieTipTitle').textContent = slice.label;
+        document.getElementById('erPieTipSub').textContent = slice.count + ' readings · ' + slice.pct + ' of total';
+        var rowFn = function (k, v) {
+            return '<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:0.5px solid var(--e7-border, #e2e8f0);">' +
+                '<span style="color:var(--e7-text-3, #64748b);font-size:10.5px;">' + k + '</span>' +
+                '<span style="font-weight:500;color:var(--e7-heading, #0f172a);font-size:11px;text-align:right;max-width:60%;word-break:break-word;">' + v + '</span></div>';
+        };
+        var html = rowFn('Count', slice.count) + rowFn('Share', slice.pct);
+        if (type === 'temp') {
+            html += rowFn('Avg value', slice.avg || '—');
+            html += rowFn('Range', slice.range || '—');
+            html += rowFn('Time window', slice.time || '—');
+            html += rowFn('Humidity', slice.hum || '—');
+            html += rowFn('Door status', slice.door || '—');
+        } else if (type === 'hum') {
+            html += rowFn('Avg value', slice.avg || '—');
+            html += rowFn('Time window', slice.time || '—');
+            html += rowFn('Temperature', slice.temp || '—');
+            html += rowFn('Door status', slice.door || '—');
+        } else {
+            html += rowFn('Time window', slice.time || '—');
+            html += rowFn('Temperature', slice.temp || '—');
+            html += rowFn('Humidity', slice.hum || '—');
+        }
+        document.getElementById('erPieTipBody').innerHTML = html;
+        document.getElementById('erPieTipFoot').textContent = slice.ts || '';
+
+        var left = x + 16, top = y - 160;
+        if (left + 310 > window.innerWidth - 10) left = x - 320;
+        if (top < 10) top = 10;
+        erPieTipEl.style.left = left + 'px';
+        erPieTipEl.style.top = top + 'px';
+        erPieTipEl.style.display = 'block';
+    }
+
+    function hideErPieTip() {
+        if (erPieTipEl) erPieTipEl.style.display = 'none';
+    }
+
+    // ---- Bucket helpers ---------------------------------------------------
+    function bucketTemp(t) {
+        if (t === 0) return { key: '0', label: '0°C (Sensor / Init)', color: '#888780', order: 0 };
+        if (t < 10) return { key: '4-5', label: '< 10°C (Very low)', color: '#7f77dd', order: 1 };
+        if (t < 30) return { key: '20', label: '10–30°C (Low)', color: '#378add', order: 2 };
+        if (t < 44) return { key: '43', label: '30–44°C (Moderate)', color: '#fac775', order: 3 };
+        if (t < 50) return { key: '45', label: '44–50°C (Warm)', color: '#f09565', order: 4 };
+        return { key: '52', label: '50°C+ (Hot)', color: '#e24b4a', order: 5 };
+    }
+    function bucketHum(h) {
+        // Accept 0.25 / 25 / 0.5237 etc. Normalize to 0–100 %.
+        var v = h > 1.5 ? h : h * 100;
+        if (v < 30) return { key: 'low', label: '< 30% (Low)', color: '#fac775', order: 0 };
+        if (v < 60) return { key: 'mid', label: '30–60% (Medium)', color: '#1d9e75', order: 1 };
+        return { key: 'high', label: '60%+ (High)', color: '#378add', order: 2 };
+    }
+    function fmtTime(dt) {
+        // dt is a string like '09/06/2026 15:18:16'
+        var parts = String(dt).split(' ');
+        return parts.length > 1 ? parts[1] : dt;
+    }
+    function dateOf(dt) {
+        var parts = String(dt).split(' ');
+        return parts[0] || dt;
+    }
+    function fmtNum(n, d) { return (n === null || isNaN(n)) ? '—' : (+n).toFixed(d == null ? 2 : d); }
+
+    // ---- Build slices from a list of rows for one room type --------------
+    function buildSlicesForRoom(rows) {
+        // TEMPERATURE
+        var tempMap = {};
+        rows.forEach(function (r) {
+            if (r.temperature === null) return;
+            var b = bucketTemp(r.temperature);
+            if (!tempMap[b.key]) tempMap[b.key] = { label: b.label, color: b.color, order: b.order, count: 0, values: [], hums: {}, doors: {}, times: [] };
+            var s = tempMap[b.key];
+            s.count++;
+            s.values.push(r.temperature);
+            s.times.push(fmtTime(r.dateTime));
+            if (r.humidity !== null) {
+                var hb = bucketHum(r.humidity);
+                s.hums[hb.label] = (s.hums[hb.label] || 0) + 1;
+            }
+            var dk = r.relay && r.relay.indexOf('open') > -1 ? 'Open' : (r.relay && r.relay.indexOf('close') > -1 ? 'Close' : 'Unknown');
+            s.doors[dk] = (s.doors[dk] || 0) + 1;
+        });
+        var tempSlices = Object.keys(tempMap).map(function (k) {
+            var s = tempMap[k];
+            var minV = erArrMin(s.values);
+            var maxV = erArrMax(s.values);
+            var avgV = s.values.reduce(function (a, b) { return a + b; }, 0) / s.values.length;
+            return {
+                _order: s.order, label: s.label, count: s.count, color: s.color,
+                avg: fmtNum(avgV) + '°C',
+                range: fmtNum(minV) + ' – ' + fmtNum(maxV) + '°C',
+                time: s.times[s.times.length - 1] + ' – ' + s.times[0],
+                hum: Object.keys(s.hums).map(function (k) { return k + ' (' + s.hums[k] + ')'; }).join(', ') || '—',
+                door: Object.keys(s.doors).map(function (k) { return k + ' (' + s.doors[k] + ')'; }).join(', ') || '—',
+                ts: s.times.slice(0, 12).join(', ') + (s.times.length > 12 ? ' …+' + (s.times.length - 12) + ' more' : '')
+            };
+        });
+        tempSlices.sort(function (a, b) { return b._order - a._order; });
+
+        // HUMIDITY
+        var humMap = {};
+        rows.forEach(function (r) {
+            if (r.humidity === null) return;
+            var b = bucketHum(r.humidity);
+            if (!humMap[b.key]) humMap[b.key] = { label: b.label, color: b.color, order: b.order, count: 0, values: [], temps: [], doors: {}, times: [] };
+            var s = humMap[b.key];
+            s.count++;
+            s.values.push(r.humidity);
+            s.times.push(fmtTime(r.dateTime));
+            if (r.temperature !== null) s.temps.push(r.temperature);
+            var dk = r.relay && r.relay.indexOf('open') > -1 ? 'Open' : (r.relay && r.relay.indexOf('close') > -1 ? 'Close' : 'Unknown');
+            s.doors[dk] = (s.doors[dk] || 0) + 1;
+        });
+        var humSlices = Object.keys(humMap).map(function (k) {
+            var s = humMap[k];
+            var avgV = s.values.reduce(function (a, b) { return a + b; }, 0) / s.values.length;
+            var displayAvg = avgV > 1.5 ? fmtNum(avgV) + '%' : fmtNum(avgV * 100) + '%';
+            var tempRange = '—';
+            if (s.temps.length) {
+                tempRange = fmtNum(erArrMin(s.temps)) + ' – ' + fmtNum(erArrMax(s.temps)) + '°C';
+            }
+            return {
+                _order: s.order, label: s.label, count: s.count, color: s.color,
+                avg: displayAvg,
+                time: s.times[s.times.length - 1] + ' – ' + s.times[0],
+                temp: tempRange,
+                door: Object.keys(s.doors).map(function (k) { return k + ' (' + s.doors[k] + ')'; }).join(', ') || '—',
+                ts: s.times.slice(0, 12).join(', ') + (s.times.length > 12 ? ' …+' + (s.times.length - 12) + ' more' : '')
+            };
+        });
+        humSlices.sort(function (a, b) { return a._order - b._order; });
+
+        // DOOR (Open / Close)
+        var doorMap = { Open: { count: 0, temps: [], hums: [], times: [] }, Close: { count: 0, temps: [], hums: [], times: [] } };
+        rows.forEach(function (r) {
+            var dk = r.relay && r.relay.indexOf('open') > -1 ? 'Open' : (r.relay && r.relay.indexOf('close') > -1 ? 'Close' : null);
+            if (!dk) return;
+            doorMap[dk].count++;
+            doorMap[dk].times.push(fmtTime(r.dateTime));
+            if (r.temperature !== null) doorMap[dk].temps.push(r.temperature);
+            if (r.humidity !== null) doorMap[dk].hums.push(r.humidity);
+        });
+        var doorSlices = [];
+        ['Close', 'Open'].forEach(function (k) {
+            var d = doorMap[k];
+            if (d.count === 0) return;
+            var color = k === 'Close' ? '#1d9e75' : '#e24b4a';
+            var tempRange = d.temps.length ? fmtNum(erArrMin(d.temps)) + '–' + fmtNum(erArrMax(d.temps)) + '°C' : '—';
+            var humRange = '—';
+            if (d.hums.length) {
+                var mn = erArrMin(d.hums), mx = erArrMax(d.hums);
+                var fmtH = function (v) { return v > 1.5 ? fmtNum(v) + '%' : fmtNum(v * 100) + '%'; };
+                humRange = fmtH(mn) + ' – ' + fmtH(mx);
+            }
+            doorSlices.push({
+                label: k, count: d.count, color: color,
+                time: d.times[d.times.length - 1] + ' – ' + d.times[0],
+                temp: tempRange, hum: humRange,
+                ts: d.times.slice(0, 12).join(', ') + (d.times.length > 12 ? ' …+' + (d.times.length - 12) + ' more' : '')
+            });
+        });
+
+        // Calculate percentages
+        var totalT = tempSlices.reduce(function (a, s) { return a + s.count; }, 0);
+        var totalH = humSlices.reduce(function (a, s) { return a + s.count; }, 0);
+        var totalD = doorSlices.reduce(function (a, s) { return a + s.count; }, 0);
+        tempSlices.forEach(function (s) { s.pct = totalT > 0 ? (s.count / totalT * 100).toFixed(1) + '%' : '0%'; });
+        humSlices.forEach(function (s) { s.pct = totalH > 0 ? (s.count / totalH * 100).toFixed(1) + '%' : '0%'; });
+        doorSlices.forEach(function (s) { s.pct = totalD > 0 ? (s.count / totalD * 100).toFixed(1) + '%' : '0%'; });
+
+        return { temp: tempSlices, hum: humSlices, oc: doorSlices };
+    }
+
+    // ---- Render a single day's content (all room types) ------------------
+    function renderErPieDay(dayKey, dayData, $container) {
         var _t = erTheme();
+        $container.empty();
+
+        // ── Temperature → heatmap color (matches relay_room_temperature_pie.html) ──
+        function tempToColor(t) {
+            var stops = [
+                { v: 0, r: 136, g: 135, b: 128 },  // grey for 0 / sensor init
+                { v: 10, r: 127, g: 119, b: 221 },
+                { v: 18, r: 13, g: 71, b: 161 },
+                { v: 22, r: 0, g: 131, b: 143 },
+                { v: 25, r: 46, g: 125, b: 50 },
+                { v: 28, r: 156, g: 204, b: 101 },
+                { v: 30, r: 255, g: 235, b: 59 },
+                { v: 32, r: 255, g: 152, b: 0 },
+                { v: 35, r: 244, g: 67, b: 54 },
+                { v: 40, r: 211, g: 47, b: 47 },
+                { v: 45, r: 183, g: 28, b: 28 }
+            ];
+            if (t <= stops[0].v) return 'rgb(' + stops[0].r + ',' + stops[0].g + ',' + stops[0].b + ')';
+            if (t >= stops[stops.length - 1].v) return 'rgb(' + stops[stops.length - 1].r + ',' + stops[stops.length - 1].g + ',' + stops[stops.length - 1].b + ')';
+            for (var i = 0; i < stops.length - 1; i++) {
+                if (t >= stops[i].v && t <= stops[i + 1].v) {
+                    var f = (t - stops[i].v) / (stops[i + 1].v - stops[i].v);
+                    return 'rgb(' +
+                        Math.round(stops[i].r + f * (stops[i + 1].r - stops[i].r)) + ',' +
+                        Math.round(stops[i].g + f * (stops[i + 1].g - stops[i].g)) + ',' +
+                        Math.round(stops[i].b + f * (stops[i + 1].b - stops[i].b)) + ')';
+                }
+            }
+            return '#888';
+        }
+
+        // ── Humidity → blue gradient ──
+        function humToColor(h) {
+            var v = h > 1.5 ? h : h * 100;
+            if (v < 20) return 'rgb(255,245,157)';
+            if (v < 40) return 'rgb(129,212,250)';
+            if (v < 60) return 'rgb(30,136,229)';
+            if (v < 80) return 'rgb(13,71,161)';
+            return 'rgb(1,35,100)';
+        }
+
+        Object.keys(dayData.rooms).forEach(function (roomType, rtIdx) {
+            var rows = dayData.rooms[roomType];
+
+            // Stats
+            var tempVals = rows.map(function (r) { return r.temperature; }).filter(function (v) { return v !== null && v > 0; });
+            var humVals = rows.map(function (r) { return r.humidity; }).filter(function (v) { return v !== null; });
+            var openCount = rows.filter(function (r) { return r.relay && r.relay.indexOf('open') > -1; }).length;
+            var closeCount = rows.filter(function (r) { return r.relay && r.relay.indexOf('close') > -1; }).length;
+            // Door section (stat cards + pie) is shown ONLY when door data exists
+            var hasDoorData = (openCount + closeCount) > 0;
+            var avgT = tempVals.length ? (tempVals.reduce(function (a, b) { return a + b; }, 0) / tempVals.length).toFixed(2) + '°C' : '—';
+            var avgH = humVals.length
+                ? ((humVals.reduce(function (a, b) { return a + b; }, 0) / humVals.length) > 1.5
+                    ? (humVals.reduce(function (a, b) { return a + b; }, 0) / humVals.length).toFixed(2) + '%'
+                    : ((humVals.reduce(function (a, b) { return a + b; }, 0) / humVals.length) * 100).toFixed(2) + '%')
+                : '—';
+
+            var $box = $('<div></div>').css({
+                padding: '20px', background: 'var(--e7-surface, #fff)', border: '1px solid var(--e7-border, transparent)', borderRadius: '12px',
+                boxShadow: 'var(--e7-shadow-card, 0 2px 12px rgba(0,0,0,0.08))', marginBottom: '20px'
+            });
+
+            // Section title
+            $box.append(
+                '<div style="font-size:15px;font-weight:600;color:var(--e7-heading, #1e293b);border-bottom:2px solid var(--e7-border, #e5e7eb);' +
+                'padding-bottom:10px;margin-bottom:16px;">' +
+                '<i class="fas fa-door-open mr-2" style="color:var(--e7-accent, #6366f1);font-size:13px;"></i>' +
+                roomType + '</div>'
+            );
+
+            // Stat cards
+            var $stats = $('<div></div>').css({
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(110px,1fr))',
+                gap: '8px', marginBottom: '18px'
+            });
+            var statCards = [
+                { label: 'Total records', val: rows.length, color: '#185fa5', bg: '#e6f1fb' },
+                { label: 'Avg temp (valid)', val: avgT, color: '#a32d2d', bg: '#fcebeb' },
+                { label: 'Avg humidity', val: avgH, color: '#185fa5', bg: '#e6f1fb' }
+            ];
+            if (hasDoorData) {
+                statCards.push({ label: 'Close', val: closeCount, color: '#3b6d11', bg: '#eaf3de' });
+                statCards.push({ label: 'Open', val: openCount, color: '#854f0b', bg: '#faeeda' });
+            }
+            statCards.forEach(function (c) {
+                $stats.append(
+                    '<div style="background:' + erHexToRgba(c.color, 0.12) + ';border-radius:8px;padding:8px 12px;text-align:center;">' +
+                    '<div style="font-size:17px;font-weight:500;color:' + c.color + ';">' + c.val + '</div>' +
+                    '<div style="font-size:10px;color:var(--e7-text-3, #64748b);margin-top:1px;">' + c.label + '</div>' +
+                    '</div>'
+                );
+            });
+            $box.append($stats);
+
+            // ── 3 pie charts side by side ──
+            var $row = $('<div></div>').css({
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(250px,1fr))', gap: '16px'
+            });
+
+            var idTemp = 'erPieT_' + dayKey + '_' + rtIdx;
+            var idHum = 'erPieH_' + dayKey + '_' + rtIdx;
+            var idOC = 'erPieD_' + dayKey + '_' + rtIdx;
+
+            // ── Temperature pie: one slice per reading, colored by heat gradient ──
+            function makePieCard(title, icon, iconColor, canvasId, subtitle) {
+                var $c = $('<div></div>').css({
+                    background: 'var(--e7-surface-2, #f8fafc)', borderRadius: '10px', padding: '16px',
+                    border: '1px solid var(--e7-border, #e5e7eb)'
+                });
+                $c.append(
+                    '<div style="font-size:13px;font-weight:600;color:var(--e7-heading, #1e293b);margin-bottom:4px;text-align:center;">' +
+                    '<i class="' + icon + ' mr-1" style="color:' + iconColor + ';"></i>' + title + '</div>'
+                );
+                if (subtitle) {
+                    $c.append('<div style="font-size:11px;color:var(--e7-text-3, #94a3b8);text-align:center;margin-bottom:10px;">' + subtitle + '</div>');
+                }
+                $c.append('<div style="position:relative;width:100%;height:220px;"><canvas id="' + canvasId + '"></canvas></div>');
+                return $c;
+            }
+
+            // Temperature card — gradient bar
+            var minTemp = tempVals.length ? erArrMin(tempVals).toFixed(1) : '—';
+            var maxTemp = tempVals.length ? erArrMax(tempVals).toFixed(1) : '—';
+            var $tempCard = makePieCard('Temperature', 'fas fa-thermometer-half', '#f43f5e', idTemp, rows.length + ' readings · ' + minTemp + '°C – ' + maxTemp + '°C');
+
+            // Add gradient scale bar below title
+            var $gradBar = $('<div></div>').css({
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                gap: '6px', marginBottom: '10px', marginTop: '-4px'
+            });
+            $gradBar.append('<span style="font-size:10px;color:var(--e7-text-3, #888);">' + (minTemp !== '—' ? minTemp + '°C' : '—') + '</span>');
+            $gradBar.append('<div style="margin-top:10px;width:120px;height:10px;border-radius:5px;background:linear-gradient(to right,#0d47a1,#00838f,#2e7d32,#9ccc65,#ffeb3b,#ff9800,#f44336,#b71c1c);"></div>');
+            $gradBar.append('<span style="font-size:10px;color:var(--e7-text-3, #888);">' + (maxTemp !== '—' ? maxTemp + '°C' : '—') + '</span>');
+            $tempCard.append($gradBar);
+
+            $row.append($tempCard);
+
+            // Humidity card
+            var $humCard = makePieCard('Humidity', 'fas fa-tint', '#3b82f6', idHum,
+                rows.length + ' readings · avg ' + avgH);
+            $row.append($humCard);
+
+            // Door status card — append ONLY when door data exists
+            // (grid is auto-fit, so Temperature & Humidity expand to fill the row)
+            if (hasDoorData) {
+                var $ocCard = makePieCard('Door Status', 'fas fa-door-open', '#22c55e', idOC,
+                    'Open: ' + openCount + ' · Close: ' + closeCount);
+                $row.append($ocCard);
+            }
+
+            $box.append($row);
+            $container.append($box);
+
+            // ── Draw Temperature pie: one slice per row, color = heatmap(temp) ──
+            if (tempVals.length > 0) {
+                var tempReadings = rows.filter(function (r) { return r.temperature !== null; });
+                var ch1 = new Chart(document.getElementById(idTemp), {
+                    type: 'pie',
+                    data: {
+                        labels: tempReadings.map(function (r) { return r.dateTime; }),
+                        datasets: [{
+                            data: tempReadings.map(function () { return 1; }),
+                            backgroundColor: tempReadings.map(function (r) { return tempToColor(r.temperature); }),
+                            borderWidth: 0,
+                            hoverOffset: 10
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(0,0,0,0.85)',
+                                padding: 10, cornerRadius: 8,
+                                titleFont: { size: 13, weight: '500' },
+                                bodyFont: { size: 12 },
+                                callbacks: {
+                                    title: function (items) { return tempReadings[items[0].dataIndex].dateTime; },
+                                    label: function (c) {
+                                        var r = tempReadings[c.dataIndex];
+                                        return [
+                                            'Temperature: ' + r.temperature + '°C',
+                                            'Door: ' + (r.relay && r.relay.indexOf('open') > -1 ? 'Open' : r.relay && r.relay.indexOf('close') > -1 ? 'Close' : '—')
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                erPieCharts.push(ch1);
+            } else {
+                $('#' + idTemp).parent().html('<div style="text-align:center;color:var(--e7-text-3, #94a3b8);padding-top:70px;font-size:13px;">No temperature data</div>');
+            }
+
+            // ── Draw Humidity pie: one slice per row, color = blue gradient ──
+            var humReadings = rows.filter(function (r) { return r.humidity !== null; });
+            if (humReadings.length > 0) {
+                var ch2 = new Chart(document.getElementById(idHum), {
+                    type: 'pie',
+                    data: {
+                        labels: humReadings.map(function (r) { return r.dateTime; }),
+                        datasets: [{
+                            data: humReadings.map(function () { return 1; }),
+                            backgroundColor: humReadings.map(function (r) { return humToColor(r.humidity); }),
+                            borderWidth: 0,
+                            hoverOffset: 10
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: 'rgba(0,0,0,0.85)',
+                                padding: 10, cornerRadius: 8,
+                                callbacks: {
+                                    title: function (items) { return humReadings[items[0].dataIndex].dateTime; },
+                                    label: function (c) {
+                                        var r = humReadings[c.dataIndex];
+                                        var hv = r.humidity > 1.5 ? r.humidity.toFixed(2) + '%' : (r.humidity * 100).toFixed(2) + '%';
+                                        return [
+                                            'Humidity: ' + hv,
+                                            'Door: ' + (r.relay && r.relay.indexOf('open') > -1 ? 'Open' : r.relay && r.relay.indexOf('close') > -1 ? 'Close' : '—')
+                                        ];
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                erPieCharts.push(ch2);
+            } else {
+                $('#' + idHum).parent().html('<div style="text-align:center;color:var(--e7-text-3, #94a3b8);padding-top:70px;font-size:13px;">No humidity data</div>');
+            }
+
+            // ── Draw Door pie: Open/Close with green/orange ──
+            var doorData = [
+                { label: 'Open', count: openCount, color: 'rgba(34,197,94,0.8)' },
+                { label: 'Close', count: closeCount, color: 'rgba(245,158,11,0.8)' }
+            ].filter(function (d) { return d.count > 0; });
+
+            if (hasDoorData && doorData.length > 0) {
+                var ch3 = new Chart(document.getElementById(idOC), {
+                    type: 'pie',
+                    data: {
+                        labels: doorData.map(function (d) { return d.label; }),
+                        datasets: [{
+                            data: doorData.map(function (d) { return d.count; }),
+                            backgroundColor: doorData.map(function (d) { return d.color; }),
+                            borderWidth: 0,
+                            hoverOffset: 10
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true, position: 'bottom',
+                                labels: { color: _t.text2, padding: 12, usePointStyle: true, font: { size: 11 } }
+                            },
+                            tooltip: {
+                                backgroundColor: 'rgba(0,0,0,0.85)',
+                                padding: 10, cornerRadius: 8,
+                                callbacks: {
+                                    label: function (c) {
+                                        var total = doorData.reduce(function (a, d) { return a + d.count; }, 0);
+                                        var pct = total > 0 ? ((c.parsed / total) * 100).toFixed(1) : '0';
+                                        return ' ' + c.label + ': ' + c.parsed + ' (' + pct + '%)';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                erPieCharts.push(ch3);
+            }
+            // No door data → card was never added, so nothing to render (no "No door data" message)
+        });
+    }
+
+    // ---- Main entry point -------------------------------------------------
+    function renderErPieChart(data) {
         if (erChart) { erChart.destroy(); erChart = null; }
-
-        var roomKeys = Object.keys(data.roomGroups);
-        var hasTemp = data.tempCount > 0;
-        var hasRelay = (data.openCount + data.closeCount) > 0;
-
-        if (!hasTemp && !hasRelay) { renderErNoData(); return; }
+        erPieCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+        erPieCharts = [];
+        hideErPieTip();
 
         var $container = $('#erChartContainer').empty();
 
-        // ---- Chart 1: Average Temperature per Equipment Room ----
-        if (hasTemp) {
-            var labels1 = [], values1 = [], colors1 = [];
-            roomKeys.forEach(function (k, i) {
-                var g = data.roomGroups[k];
-                if (g.tempValues.length === 0) return;
-                labels1.push(k);
-                var sum = g.tempValues.reduce(function (a, b) { return a + b; }, 0);
-                values1.push(parseFloat((sum / g.tempValues.length).toFixed(2)));
-                colors1.push(erChartColors[i % erChartColors.length]);
-            });
+        if (!data.rows || data.rows.length === 0) { renderErNoData(); return; }
 
-            var $box1 = $('<div></div>').css({
+        // ── Group rows by Station first ──
+        var stationOrder = [];
+        var stationRows = {};
+        data.rows.forEach(function (r) {
+            if (!stationRows[r.station]) { stationRows[r.station] = []; stationOrder.push(r.station); }
+            stationRows[r.station].push(r);
+        });
+
+        // ── Build a section per station ──
+        stationOrder.forEach(function (station, sIdx) {
+            var rows = stationRows[station];
+            var stColor = erChartColors[sIdx % erChartColors.length];
+
+            var $stationBox = $('<div></div>').css({
                 padding: '20px', background: 'var(--e7-surface, #fff)', border: '1px solid var(--e7-border, transparent)', borderRadius: '12px',
-                boxShadow: 'var(--e7-shadow-card, 0 2px 12px rgba(0,0,0,0.07))', marginBottom: '16px'
+                boxShadow: 'var(--e7-shadow-card, 0 2px 12px rgba(0,0,0,0.07))', margin: '10px 0',
+                borderLeft: '4px solid ' + stColor
             });
-            $box1.append(
-                '<h5 style="margin:0 0 14px;font-size:15px;font-weight:600;color:var(--e7-heading, #1e293b);">' +
-                '<i class="fas fa-thermometer-half mr-2" style="color:var(--e7-red, #f43f5e);"></i>' +
-                'Average Temperature by Equipment Room</h5>'
+
+            $stationBox.append(
+                '<h5 style="margin:0 0 12px;font-size:15px;font-weight:600;color:var(--e7-heading, #1e293b);">' +
+                '<i class="fas fa-chart-pie mr-2" style="color:' + stColor + ';"></i>' +
+                '<span style="color:' + stColor + ';">' + station + '</span>' +
+                ' <span style="font-size:12px;font-weight:400;color:var(--e7-text-3, #64748b);">(' + rows.length + ' records)</span></h5>'
             );
-            var $w1 = $('<div></div>').css({ position: 'relative', height: '350px', width: '100%' });
-            var $c1 = $('<canvas id="erPieTemp"></canvas>');
-            $w1.append($c1);
-            $box1.append($w1);
-            $container.append($box1);
 
-            var total1 = values1.reduce(function (a, b) { return a + b; }, 0);
-            new Chart($c1[0].getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: labels1,
-                    datasets: [{ data: values1, backgroundColor: colors1, borderColor: _t.surface, borderWidth: 3, hoverOffset: 10 }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false, cutout: '52%',
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: { color: _t.text2, padding: 14, usePointStyle: true, pointStyle: 'circle', font: { size: 12 }, boxWidth: 12 }
-                        },
-                        tooltip: {
-                            backgroundColor: _t.surface, borderColor: _t.border, borderWidth: 1, titleColor: _t.heading, bodyColor: _t.text, padding: 12, cornerRadius: 8,
-                            callbacks: {
-                                label: function (c) {
-                                    var pct = total1 > 0 ? ((c.parsed / total1) * 100).toFixed(1) : '0.0';
-                                    return ' ' + c.label + ': ' + c.parsed.toFixed(2) + ' °C (' + pct + '%)';
-                                }
-                            }
-                        }
-                    }
-                }
+            // Group this station's rows by date → room type
+            var byDay = {};
+            var dayOrder = [];
+            rows.forEach(function (r) {
+                var d = dateOf(r.dateTime);
+                if (!byDay[d]) { byDay[d] = { rooms: {} }; dayOrder.push(d); }
+                if (!byDay[d].rooms[r.room]) byDay[d].rooms[r.room] = [];
+                byDay[d].rooms[r.room].push(r);
             });
-        }
 
-        // ---- Chart 2: Relay Room Open vs Close ----
-        if (hasRelay) {
-            var $box2 = $('<div></div>').css({
-                padding: '20px', background: 'var(--e7-surface, #fff)', border: '1px solid var(--e7-border, transparent)', borderRadius: '12px',
-                boxShadow: 'var(--e7-shadow-card, 0 2px 12px rgba(0,0,0,0.07))'
+            dayOrder.sort(function (a, b) {
+                var pa = a.split('/'), pb = b.split('/');
+                var da = pa.length === 3 ? new Date(pa[2], +pa[1] - 1, +pa[0]) : new Date(a);
+                var db = pb.length === 3 ? new Date(pb[2], +pb[1] - 1, +pb[0]) : new Date(b);
+                return db - da;
             });
-            $box2.append(
-                '<h5 style="margin:0 0 14px;font-size:15px;font-weight:600;color:var(--e7-heading, #1e293b);">' +
-                '<i class="fas fa-door-open mr-2" style="color:var(--e7-green, #22c55e);"></i>' +
-                'Relay Room Status — Open vs Close</h5>'
-            );
-            var $w2 = $('<div></div>').css({ position: 'relative', height: '320px', width: '100%' });
-            var $c2 = $('<canvas id="erPieRelay"></canvas>');
-            $w2.append($c2);
-            $box2.append($w2);
-            $container.append($box2);
 
-            var totalRelay = data.openCount + data.closeCount;
-            new Chart($c2[0].getContext('2d'), {
-                type: 'doughnut',
-                data: {
-                    labels: ['Open', 'Close'],
-                    datasets: [{
-                        data: [data.openCount, data.closeCount],
-                        backgroundColor: ['#22c55e', '#f59e0b'],
-                        borderColor: _t.surface, borderWidth: 3, hoverOffset: 10
-                    }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false, cutout: '52%',
-                    plugins: {
-                        legend: {
-                            position: 'right',
-                            labels: { color: _t.text2, padding: 14, usePointStyle: true, pointStyle: 'circle', font: { size: 13 } }
-                        },
-                        tooltip: {
-                            backgroundColor: _t.surface, borderColor: _t.border, borderWidth: 1, titleColor: _t.heading, bodyColor: _t.text, padding: 12, cornerRadius: 8,
-                            callbacks: {
-                                label: function (c) {
-                                    var pct = totalRelay > 0 ? ((c.parsed / totalRelay) * 100).toFixed(1) : '0.0';
-                                    return ' ' + c.label + ': ' + c.parsed + ' (' + pct + '%)';
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
+            var isMultiDay = dayOrder.length > 1;
+            var stKeyBase = 'pieSt_' + sIdx;
+
+            if (isMultiDay) {
+                byDay['__all__'] = { rooms: {} };
+                rows.forEach(function (r) {
+                    if (!byDay['__all__'].rooms[r.room]) byDay['__all__'].rooms[r.room] = [];
+                    byDay['__all__'].rooms[r.room].push(r);
+                });
+
+                var $tabs = $('<div></div>').css({
+                    display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap', alignItems: 'center'
+                });
+                var tabColors = ['#3266ad', '#1d7a5f', '#854f0b', '#6f42c1', '#c2410c'];
+
+                dayOrder.forEach(function (d, idx) {
+                    var rc = Object.keys(byDay[d].rooms).reduce(function (a, k) { return a + byDay[d].rooms[k].length; }, 0);
+                    var $btn = $('<button type="button">📅 ' + d + ' (' + rc + ')</button>').addClass('erPieTab_' + stKeyBase).css({
+                        fontSize: '12px', fontWeight: '500', border: '0.5px solid var(--e7-border-2, #cbd5e1)',
+                        background: idx === 0 ? tabColors[idx % tabColors.length] : 'var(--e7-surface-2, #fff)',
+                        color: idx === 0 ? '#fff' : 'var(--e7-text-3, #64748b)',
+                        borderColor: idx === 0 ? 'transparent' : 'var(--e7-border-2, #cbd5e1)',
+                        borderRadius: '20px', padding: '5px 16px', cursor: 'pointer'
+                    }).data('day', d).data('color', tabColors[idx % tabColors.length]);
+                    $tabs.append($btn);
+                });
+
+                var $btnAll = $('<button type="button">📅 All days (' + rows.length + ')</button>').addClass('erPieTab_' + stKeyBase).css({
+                    fontSize: '12px', fontWeight: '500', border: '0.5px solid var(--e7-border-2, #cbd5e1)',
+                    background: 'var(--e7-surface-2, #fff)', color: 'var(--e7-text-3, #64748b)', borderRadius: '20px',
+                    padding: '5px 16px', cursor: 'pointer'
+                }).data('day', '__all__').data('color', '#0f172a');
+                $tabs.append($btnAll);
+
+                $stationBox.append($tabs);
+
+                var $tabContent = $('<div></div>');
+                $stationBox.append($tabContent);
+
+                // ── MUST append to DOM before drawing charts (getElementById needs it) ──
+                $container.append($stationBox);
+
+                // Track this station's chart instances
+                var stationPieCharts = [];
+
+                $tabs.find('.erPieTab_' + stKeyBase).on('click', function () {
+                    var $b = $(this);
+                    $tabs.find('.erPieTab_' + stKeyBase).css({ background: 'var(--e7-surface-2, #fff)', color: 'var(--e7-text-3, #64748b)', borderColor: 'var(--e7-border-2, #cbd5e1)' });
+                    $b.css({ background: $b.data('color'), color: '#fff', borderColor: 'transparent' });
+                    // Destroy only THIS station's pie charts
+                    stationPieCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+                    stationPieCharts = [];
+                    hideErPieTip();
+                    renderErPieDay(stKeyBase + '_' + $b.data('day').replace(/[^a-zA-Z0-9]/g, '_'), byDay[$b.data('day')], $tabContent);
+                });
+
+                renderErPieDay(stKeyBase + '_' + dayOrder[0].replace(/[^a-zA-Z0-9]/g, '_'), byDay[dayOrder[0]], $tabContent);
+            } else {
+                var $tabContent = $('<div></div>');
+                $stationBox.append($tabContent);
+
+                // ── MUST append to DOM before drawing charts ──
+                $container.append($stationBox);
+
+                renderErPieDay(stKeyBase + '_' + dayOrder[0].replace(/[^a-zA-Z0-9]/g, '_'), byDay[dayOrder[0]], $tabContent);
+            }
+        });
 
         $('#dataInfo').html(
             '<i class="fas fa-chart-pie text-primary"></i> ' +
-            roomKeys.length + ' room(s) · ' + data.rows.length + ' record(s)' +
-            (hasRelay ? ' · Open: ' + data.openCount + ' · Close: ' + data.closeCount : '')
+            stationOrder.length + ' station(s) · ' + data.rows.length + ' record(s)'
         );
     }
 
+
     // ==========================================================================
-    // LINE CHART — Temperature & Humidity over Time per Station
+    // LINE CHART — Separate line chart per Station
     // ==========================================================================
+    // ==========================================================================
+    // LINE CHART — Separate line chart per Station + Equipment Room Type
+    // ==========================================================================
+    // ==========================================================================
+    // LINE CHART — Separate line chart per Station + Equipment Room Type
+    // ==========================================================================
+    var erLineStationCharts = [];
+
+    // ==========================================================================
+    // HORIZONTAL SCROLLBAR for line charts (no zoom)
+    // The chart shows a fixed window of points (erGetWindowSize); the scrollbar
+    // moves that window left / right. Y-axes stay fixed while scrolling.
+    // Thumb width  = visible points / total points
+    // Thumb left   = first visible point / total points
+    // ==========================================================================
+    var erHScrollPlugin = {
+        id: 'erHScroll',
+        afterDraw: function (chart) {
+            var o = chart.config.options.plugins && chart.config.options.plugins.erHScroll;
+            if (o) erSyncHScroll(chart, o.track, o.thumb);
+        }
+    };
+
+    function erGetXWindow(chart) {
+        var total = (chart.data.labels || []).length;
+        var xs = chart.scales.x;
+        var min = Math.max(0, Math.round(xs.min));
+        var max = Math.min(total - 1, Math.round(xs.max));
+        return { total: total, min: min, max: max, visible: Math.max(1, max - min + 1) };
+    }
+
+    function erSyncHScroll(chart, track, thumb) {
+        if (!track || !thumb || !chart.scales || !chart.scales.x) return;
+        var w = erGetXWindow(chart);
+        if (w.total <= 1 || w.visible >= w.total) {           // full view → no scrollbar
+            if (track.style.display !== 'none') track.style.display = 'none';
+            return;
+        }
+        if (track.style.display !== 'block') track.style.display = 'block';
+        var widthPct = Math.max(4, (w.visible / w.total) * 100);
+        var leftPct = Math.min(100 - widthPct, (w.min / w.total) * 100);
+        thumb.style.width = widthPct + '%';
+        thumb.style.left = leftPct + '%';
+    }
+
+    // How many time points fit in the visible window (~22px per point, min 15)
+    function erGetWindowSize(wrapperEl, total) {
+        var width = (wrapperEl && wrapperEl.clientWidth) || 900;
+        return Math.min(total, Math.max(15, Math.floor(width / 22)));
+    }
+
+    // Moves the visible window so it starts at index newMin (window size unchanged)
+    function erScrollTo(chart, newMin) {
+        var w = erGetXWindow(chart);
+        newMin = Math.max(0, Math.min(w.total - w.visible, Math.round(newMin)));
+        if (newMin === w.min) return;
+        chart.options.scales.x.min = newMin;
+        chart.options.scales.x.max = newMin + w.visible - 1;
+        chart.update('none');
+    }
+
+    function erBindHScroll(chart, track, thumb) {
+        if (!track || !thumb) return;
+        var dragging = false, startX = 0, startMin = 0;
+
+        // Drag thumb → scroll left / right
+        thumb.addEventListener('pointerdown', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            dragging = true;
+            startX = e.clientX;
+            startMin = erGetXWindow(chart).min;
+            thumb.style.cursor = 'grabbing';
+            if (thumb.setPointerCapture) thumb.setPointerCapture(e.pointerId);
+        });
+        thumb.addEventListener('pointermove', function (e) {
+            if (!dragging) return;
+            var w = erGetXWindow(chart);
+            var trackW = track.getBoundingClientRect().width || 1;
+            var dIdx = ((e.clientX - startX) / trackW) * w.total;
+            erScrollTo(chart, startMin + dIdx);
+        });
+        function endDrag(e) {
+            if (!dragging) return;
+            dragging = false;
+            thumb.style.cursor = 'grab';
+            if (thumb.releasePointerCapture && e && e.pointerId !== undefined) {
+                try { thumb.releasePointerCapture(e.pointerId); } catch (x) { }
+            }
+        }
+        thumb.addEventListener('pointerup', endDrag);
+        thumb.addEventListener('pointercancel', endDrag);
+
+        // Click on empty track → centre the window at the clicked position
+        track.addEventListener('pointerdown', function (e) {
+            if (e.target === thumb) return;
+            var w = erGetXWindow(chart);
+            var rect = track.getBoundingClientRect();
+            var clickIdx = ((e.clientX - rect.left) / (rect.width || 1)) * w.total;
+            erScrollTo(chart, clickIdx - w.visible / 2);
+        });
+    }
+
     function renderErLineChart(data) {
         var _t = erTheme();
         if (erChart) { erChart.destroy(); erChart = null; }
+        erLineStationCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+        erLineStationCharts = [];
 
-        var stations = Object.keys(data.stationGroups);
-        if (stations.length === 0 || data.rows.length === 0) { renderErNoData(); return; }
+        if (data.rows.length === 0) { renderErNoData(); return; }
 
-        // Build ordered unique datetime labels (preserve row order)
-        var allDates = [], dateSet = {};
+        var $container = $('#erChartContainer').empty();
+
+        // ── Group rows by Station → then by Room Type ──
+        var stationOrder = [];
+        var stationRoomMap = {};  // { station: { roomType: [rows] } }
+
         data.rows.forEach(function (r) {
-            if (!dateSet[r.dateTime]) { dateSet[r.dateTime] = true; allDates.push(r.dateTime); }
-        });
-
-        var datasets = [];
-        var colorIdx = 0;
-
-        stations.forEach(function (st) {
-            var tempByDate = {}, humByDate = {};
-            var hasTemp = false, hasHum = false;
-
-            data.rows.forEach(function (r) {
-                if (r.station !== st) return;
-                if (r.temperature !== null) { tempByDate[r.dateTime] = r.temperature; hasTemp = true; }
-                if (r.humidity !== null) { humByDate[r.dateTime] = r.humidity; hasHum = true; }
-            });
-
-            var thinPoints = allDates.length > 80;
-
-            if (hasTemp) {
-                var color = erChartColors[colorIdx % erChartColors.length];
-                datasets.push({
-                    label: st + ' — Temp (°C)',
-                    data: allDates.map(function (d) { return tempByDate[d] !== undefined ? tempByDate[d] : null; }),
-                    borderColor: color,
-                    backgroundColor: erHexToRgba(color, 0.07),
-                    borderWidth: 2.5,
-                    fill: false,
-                    tension: 0.3,
-                    pointBackgroundColor: _t.surface,
-                    pointBorderColor: color,
-                    pointBorderWidth: 2,
-                    pointRadius: thinPoints ? 0 : 3,
-                    pointHoverRadius: 5,
-                    spanGaps: true
-                });
-                colorIdx++;
+            if (!stationRoomMap[r.station]) {
+                stationRoomMap[r.station] = {};
+                stationOrder.push(r.station);
             }
-
-            if (hasHum) {
-                var color2 = erChartColors[colorIdx % erChartColors.length];
-                datasets.push({
-                    label: st + ' — Humidity (%)',
-                    data: allDates.map(function (d) { return humByDate[d] !== undefined ? humByDate[d] : null; }),
-                    borderColor: color2,
-                    backgroundColor: erHexToRgba(color2, 0.07),
-                    borderWidth: 2,
-                    borderDash: [5, 4],
-                    fill: false,
-                    tension: 0.3,
-                    pointBackgroundColor: _t.surface,
-                    pointBorderColor: color2,
-                    pointBorderWidth: 2,
-                    pointRadius: thinPoints ? 0 : 3,
-                    pointHoverRadius: 5,
-                    spanGaps: true
-                });
-                colorIdx++;
+            if (!stationRoomMap[r.station][r.room]) {
+                stationRoomMap[r.station][r.room] = [];
             }
+            stationRoomMap[r.station][r.room].push(r);
         });
 
-        if (datasets.length === 0) { renderErNoData(); return; }
+        var chartIndex = 0;
+        var totalCharts = 0;
 
-        // Shorten x-axis labels to DD/MM HH:MM
-        var shortLabels = allDates.map(function (d) {
-            return d.length > 16 ? d.substring(0, 16) : d;
-        });
+        // ── Build a separate chart card for each Station + Room Type ──
+        stationOrder.forEach(function (station, sIdx) {
+            var stColor = erChartColors[sIdx % erChartColors.length];
+            var roomTypes = stationRoomMap[station];
+            var roomNames = Object.keys(roomTypes);
 
-        var ctx = erCreateCanvas(
-            'Temperature & Humidity over Time',
-            'fas fa-chart-line',
-            420
-        );
+            roomNames.forEach(function (room, rIdx) {
+                var roomRows = roomTypes[room];
 
-        erChart = new Chart(ctx, {
-            type: 'line',
-            data: { labels: shortLabels, datasets: datasets },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: {
-                        position: 'top',
-                        labels: { color: _t.text2, padding: 15, usePointStyle: true, pointStyle: 'circle', font: { size: 12 } }
-                    },
-                    tooltip: {
-                        backgroundColor: _t.surface, borderColor: _t.border, borderWidth: 1, titleColor: _t.heading, bodyColor: _t.text,
-                        padding: 12,
-                        cornerRadius: 8,
-                        callbacks: {
-                            label: function (c) {
-                                var val = c.parsed.y !== null ? c.parsed.y.toFixed(2) : '-';
-                                var unit = c.dataset.label.indexOf('Temp') > -1 ? ' °C' : ' %';
-                                return ' ' + c.dataset.label + ': ' + val + unit;
+                // Build ordered unique datetime labels for this room
+                var dateTimes = [], dateSet = {};
+                roomRows.forEach(function (r) {
+                    if (!dateSet[r.dateTime]) {
+                        dateSet[r.dateTime] = true;
+                        dateTimes.push(r.dateTime);
+                    }
+                });
+
+                // ── Sort chronologically (oldest → newest) for proper X-axis scaling ──
+                // DateTime format from table: "dd/MM/yyyy HH:mm:ss"
+                dateTimes.sort(function (a, b) {
+                    return parseDT(a) - parseDT(b);
+                });
+
+                var shortLabels = dateTimes.map(function (d) {
+                    return d.length > 16 ? d.substring(0, 16) : d;
+                });
+
+                // Points are ALWAYS shown. The chart shows a fixed scroll window
+                // (~22px per point), so circles never overlap even with many records.
+                var erPointR = 4;
+
+                // ── Temperature dataset ──
+                var tempByDate = {}, hasTemp = false;
+                roomRows.forEach(function (r) {
+                    if (r.temperature !== null) {
+                        tempByDate[r.dateTime] = r.temperature;
+                        hasTemp = true;
+                    }
+                });
+
+                // ── Humidity dataset ──
+                var humByDate = {}, hasHum = false;
+                roomRows.forEach(function (r) {
+                    if (r.humidity !== null) {
+                        humByDate[r.dateTime] = r.humidity;
+                        hasHum = true;
+                    }
+                });
+
+                // ── Door relay dataset ──
+                var relayByDate = {};
+                roomRows.forEach(function (r) {
+                    var relay = (r.relay || '').toLowerCase();
+                    if (relay.indexOf('open') > -1) relayByDate[r.dateTime] = 1;
+                    else if (relay.indexOf('close') > -1) relayByDate[r.dateTime] = 0;
+                });
+                var hasRelay = Object.keys(relayByDate).length > 0;
+
+                var datasets = [];
+
+                if (hasTemp) {
+                    datasets.push({
+                        label: 'Temperature (°C)',
+                        data: dateTimes.map(function (d) { return tempByDate[d] !== undefined ? tempByDate[d] : null; }),
+                        borderColor: '#f43f5e',
+                        backgroundColor: 'rgba(244,63,94,0.07)',
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: _t.surface,
+                        pointBorderColor: '#f43f5e',
+                        pointBorderWidth: 2,
+                        pointRadius: erPointR,
+                        pointHoverRadius: 6,
+                        spanGaps: true,
+                        yAxisID: 'yLeft'
+                    });
+                }
+
+                if (hasHum) {
+                    datasets.push({
+                        label: 'Humidity (%)',
+                        data: dateTimes.map(function (d) { return humByDate[d] !== undefined ? humByDate[d] : null; }),
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59,130,246,0.07)',
+                        borderWidth: 2,
+                        borderDash: [5, 4],
+                        fill: true,
+                        tension: 0.3,
+                        pointBackgroundColor: _t.surface,
+                        pointBorderColor: '#3b82f6',
+                        pointBorderWidth: 2,
+                        pointRadius: erPointR,
+                        pointHoverRadius: 6,
+                        spanGaps: true,
+                        yAxisID: 'yLeft'
+                    });
+                }
+
+                if (hasRelay) {
+                    // ── Door Status = ONE continuous square-wave line, ONE colour ──
+                    // Open  → line goes UP (1), Close → line goes DOWN (0).
+                    // A timestamp without a door reading keeps the last known state,
+                    // so the line never breaks into separate pieces.
+                    var lastDoor = null;
+                    var doorSeries = dateTimes.map(function (d) {
+                        if (relayByDate[d] !== undefined) lastDoor = relayByDate[d];
+                        return lastDoor;
+                    });
+                    // Circle on every ACTUAL door reading (carried-forward points stay plain line)
+                    var doorPointR = dateTimes.map(function (d) {
+                        return relayByDate[d] !== undefined ? erPointR : 0;
+                    });
+
+                    datasets.push({
+                        label: 'Door Status',
+                        data: doorSeries,
+                        borderColor: '#a855f7',
+                        backgroundColor: '#a855f7',
+                        borderWidth: 2.5,
+                        fill: false,
+                        tension: 0,
+                        stepped: 'after',          // hold state until the next reading, then jump up/down
+                        pointBackgroundColor: _t.surface,
+                        pointBorderColor: '#a855f7',
+                        pointBorderWidth: 2,
+                        pointRadius: doorPointR,
+                        pointHoverRadius: 6,
+                        spanGaps: true,
+                        order: -1,                 // draw on top of Temperature / Humidity
+                        yAxisID: 'yRight'
+                    });
+                }
+
+                if (datasets.length === 0) return;
+
+                // ── Compute stats for the summary strip ──
+                var tempVals = roomRows.map(function (r) { return r.temperature; }).filter(function (v) { return v !== null; });
+                var humVals = roomRows.map(function (r) { return r.humidity; }).filter(function (v) { return v !== null; });
+                var openCnt = roomRows.filter(function (r) { return r.relay && r.relay.indexOf('open') > -1; }).length;
+                var closeCnt = roomRows.filter(function (r) { return r.relay && r.relay.indexOf('close') > -1; }).length;
+
+                var avgTemp = tempVals.length
+                    ? (tempVals.reduce(function (a, b) { return a + b; }, 0) / tempVals.length).toFixed(1) + '°C'
+                    : '—';
+                var minTemp = tempVals.length ? erArrMin(tempVals).toFixed(1) + '°C' : '—';
+                var maxTemp = tempVals.length ? erArrMax(tempVals).toFixed(1) + '°C' : '—';
+                var avgHum = humVals.length
+                    ? (humVals.reduce(function (a, b) { return a + b; }, 0) / humVals.length).toFixed(1) + '%'
+                    : '—';
+
+                // ── Build card ──
+                var canvasId = 'erLineCanvas_' + chartIndex;
+                var roomColor = erChartColors[(sIdx + rIdx) % erChartColors.length];
+
+                var $box = $('<div></div>').css({
+                    padding: '20px', background: 'var(--e7-surface, #fff)', border: '1px solid var(--e7-border, transparent)',
+                    borderRadius: '12px', boxShadow: 'var(--e7-shadow-card, 0 2px 12px rgba(0,0,0,0.07))',
+                    margin: '10px 0', borderLeft: '4px solid ' + stColor
+                });
+
+                // Title: Station — Room Type
+                $box.append(
+                    '<h5 style="margin:0 0 4px; font-size:15px; font-weight:600; color:var(--e7-heading, #1e293b);">' +
+                    '<i class="fas fa-chart-line mr-2" style="color:' + stColor + ';"></i>' +
+                    '<span style="color:' + stColor + ';">' + station + '</span>' +
+                    ' <span style="color:var(--e7-text-3, #64748b);font-weight:400;font-size:13px;">—</span> ' +
+                    '<span style="color:' + roomColor + ';">' + room + '</span>' +
+                    ' <span style="font-size:12px;font-weight:400;color:var(--e7-text-3, #64748b);">(' + roomRows.length + ' records · ' + dateTimes.length + ' time points)</span>' +
+                    '</h5>'
+                );
+
+                // ── Stats strip ──
+                var $stats = $('<div></div>').css({
+                    display: 'flex', gap: '12px', flexWrap: 'wrap',
+                    margin: '10px 0 16px', alignItems: 'center'
+                });
+
+                function statPill(icon, label, value, color) {
+                    return '<div style="display:flex;align-items:center;gap:6px;background:var(--e7-surface-2, #f8fafc);' +
+                        'border:1px solid var(--e7-border, #e5e7eb);border-radius:8px;padding:6px 14px;">' +
+                        '<i class="' + icon + '" style="font-size:12px;color:' + color + ';"></i>' +
+                        '<span style="font-size:11px;color:var(--e7-text-3, #64748b);">' + label + ':</span>' +
+                        '<span style="font-size:12px;font-weight:600;color:' + color + ';">' + value + '</span></div>';
+                }
+
+                $stats.append(statPill('fas fa-thermometer-half', 'Avg Temp', avgTemp, '#f43f5e'));
+                $stats.append(statPill('fas fa-arrow-down', 'Min', minTemp, '#3b82f6'));
+                $stats.append(statPill('fas fa-arrow-up', 'Max', maxTemp, '#dc2626'));
+                $stats.append(statPill('fas fa-tint', 'Avg Humidity', avgHum, '#3b82f6'));
+                if (hasRelay) {
+                    $stats.append(statPill('fas fa-door-open', 'Open', openCnt, '#22c55e'));
+                    $stats.append(statPill('fas fa-door-closed', 'Close', closeCnt, '#f97316'));
+                }
+                $box.append($stats);
+
+                // ── Custom legend ──
+                var $legendRow = $('<div></div>').css({
+                    display: 'flex', justifyContent: 'center',
+                    alignItems: 'center', margin: '0 0 12px'
+                });
+                var $legend = $('<div></div>').css({ display: 'flex', gap: '18px', alignItems: 'center', flexWrap: 'wrap' });
+                if (hasTemp) $legend.append(legendDotLine('#f43f5e', 'solid', 'Temperature (°C)'));
+                if (hasHum) $legend.append(legendDotLine('#3b82f6', 'dashed', 'Humidity (%)'));
+                if (hasRelay) $legend.append(legendDotLine('#a855f7', 'solid', 'Door Status (Open/Close)'));
+                $legendRow.append($legend);
+                $box.append($legendRow);
+
+                // ── Scroll hint ──
+                $box.append(
+                    '<div style="text-align:right;font-size:11px;color:var(--e7-text-3, #94a3b8);margin:0 0 6px;">' +
+                    'Scrollbar / Horizontal scroll / Shift + Scroll = Move left – right' +
+                    '</div>'
+                );
+
+                // Canvas
+                var $wrapper = $('<div></div>').css({ position: 'relative', height: '400px', width: '100%' });
+                var $canvas = $('<canvas id="' + canvasId + '"></canvas>');
+                $wrapper.append($canvas);
+                $box.append($wrapper);
+
+                // ── Horizontal scrollbar (shown when points exceed the visible window) ──
+                var $hTrack = $('<div class="er-hscroll-track"></div>').css({
+                    position: 'relative', height: '12px', margin: '10px 0 2px',
+                    background: 'var(--e7-surface-3, #f1f5f9)', border: '1px solid var(--e7-border, #e2e8f0)', borderRadius: '6px',
+                    cursor: 'pointer', display: 'none', userSelect: 'none', touchAction: 'none'
+                });
+                var $hThumb = $('<div class="er-hscroll-thumb"></div>').css({
+                    position: 'absolute', top: '1px', bottom: '1px', left: '0', width: '100%',
+                    background: 'rgba(168,85,247,0.55)', borderRadius: '5px', cursor: 'grab'
+                });
+                $hTrack.append($hThumb);
+                $box.append($hTrack);
+                $container.append($box);
+
+                // ── Draw chart ──
+                var ctx = document.getElementById(canvasId).getContext('2d');
+
+                // Initial visible window: latest points, scroll left for older data
+                var erWin = erGetWindowSize($wrapper[0], shortLabels.length);
+                var erXMax = shortLabels.length - 1;
+                var erXMin = Math.max(0, shortLabels.length - erWin);
+
+                var lineChart = new Chart(ctx, {
+                    type: 'line',
+                    plugins: [erHScrollPlugin],
+                    data: { labels: shortLabels, datasets: datasets },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            // keeps the scrollbar thumb in sync with the visible window
+                            erHScroll: { track: $hTrack[0], thumb: $hThumb[0] },
+                            tooltip: {
+                                backgroundColor: _t.surface,
+                                titleColor: _t.heading,
+                                bodyColor: _t.text,
+                                borderColor: _t.border,
+                                borderWidth: 1,
+                                padding: 14,
+                                cornerRadius: 8,
+                                titleFont: { size: 13, weight: '700' },
+                                bodyFont: { size: 12 },
+                                displayColors: true,
+                                callbacks: {
+                                    title: function (items) {
+                                        if (!items.length) return '';
+                                        var idx = items[0].dataIndex;
+                                        return dateTimes[idx] + '\n' + station + ' — ' + room;
+                                    },
+                                    label: function (c) {
+                                        if (c.parsed.y === null) return null;
+                                        if (c.dataset.yAxisID === 'yRight') {
+                                            var status = c.parsed.y === 1 ? 'Open' : 'Close';
+                                            var actual = relayByDate[dateTimes[c.dataIndex]] !== undefined;
+                                            return ' Door: ' + status + (actual ? '' : ' (last known)');
+                                        }
+                                        var unit = c.dataset.label.indexOf('Temp') > -1 ? ' °C' : ' %';
+                                        return ' ' + c.dataset.label + ': ' + c.parsed.y.toFixed(2) + unit;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                min: erXMin,
+                                max: erXMax,
+                                grid: { color: _t.grid },
+                                ticks: {
+                                    font: { size: 10 }, color: _t.text3,
+                                    maxRotation: 40, minRotation: 20,
+                                    maxTicksLimit: 25
+                                }
+                            },
+                            yLeft: {
+                                type: 'linear',
+                                position: 'left',
+                                beginAtZero: false,
+                                grid: { color: _t.grid },
+                                title: {
+                                    display: true,
+                                    text: 'Temp (°C) / Humidity (%)',
+                                    font: { size: 11, weight: '600' },
+                                    color: _t.text3
+                                },
+                                ticks: { font: { size: 11 }, color: _t.text3 }
+                            },
+                            yRight: {
+                                type: 'linear',
+                                position: 'right',
+                                display: hasRelay,
+                                min: -0.2,
+                                max: 1.2,
+                                grid: { drawOnChartArea: false },
+                                title: {
+                                    display: true,
+                                    text: 'Door Status',
+                                    font: { size: 11, weight: '600' },
+                                    color: '#a855f7'
+                                },
+                                ticks: {
+                                    font: { size: 11 }, color: '#a855f7',
+                                    stepSize: 1,
+                                    callback: function (v) {
+                                        if (v === 1) return 'Open';
+                                        if (v === 0) return 'Close';
+                                        return '';
+                                    }
+                                }
                             }
                         }
                     }
-                },
-                scales: {
-                    x: {
-                        grid: { color: _t.grid },
-                        ticks: { color: _t.text3, font: { size: 10 }, maxRotation: 40, minRotation: 20, maxTicksLimit: 25 }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        grid: { color: _t.grid },
-                        ticks: { color: _t.text3, font: { size: 11 } }
-                    }
-                }
-            }
+                });
+
+                // ── Trackpad horizontal swipe / Shift + mouse wheel → scroll left / right ──
+                // (plain vertical wheel is NOT captured, so the page scrolls normally)
+                (function (chart, canvas) {
+                    canvas.addEventListener('wheel', function (e) {
+                        var dx = e.deltaX, dy = e.deltaY;
+                        if (e.shiftKey && Math.abs(dx) < Math.abs(dy)) { dx = dy; dy = 0; }
+                        if (Math.abs(dx) <= Math.abs(dy)) return;   // vertical → let page scroll
+
+                        var w = erGetXWindow(chart);
+                        if (w.visible >= w.total) return;           // nothing to scroll
+                        e.preventDefault();
+
+                        var pxPerPoint = (chart.chartArea.right - chart.chartArea.left) / w.visible || 20;
+                        chart._erScrollAcc = (chart._erScrollAcc || 0) + dx / pxPerPoint;
+                        var step = chart._erScrollAcc > 0 ? Math.floor(chart._erScrollAcc) : Math.ceil(chart._erScrollAcc);
+                        if (step !== 0) {
+                            chart._erScrollAcc -= step;
+                            erScrollTo(chart, w.min + step);
+                        }
+                    }, { passive: false });
+                })(lineChart, document.getElementById(canvasId));
+
+                erBindHScroll(lineChart, $hTrack[0], $hThumb[0]);
+
+                erLineStationCharts.push(lineChart);
+                chartIndex++;
+                totalCharts++;
+            });
         });
 
         $('#dataInfo').html(
             '<i class="fas fa-chart-line text-primary"></i> ' +
-            stations.length + ' station(s) · ' +
-            datasets.length + ' series · ' +
-            allDates.length + ' time points'
+            stationOrder.length + ' station(s) · ' + totalCharts + ' chart(s) · ' + data.rows.length + ' total record(s)'
         );
     }
+
+    // Helper: parse "dd/MM/yyyy HH:mm:ss" into a Date for chronological sorting
+    function parseDT(dtStr) {
+        // Supports: "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "dd-MM-yyyy HH:mm:ss"
+        var parts = String(dtStr).split(/[\s]+/);
+        var datePart = parts[0] || '';
+        var timePart = parts[1] || '00:00:00';
+
+        var dp = datePart.split(/[\/\-]/);
+        var tp = timePart.split(':');
+
+        var day = parseInt(dp[0], 10) || 1;
+        var month = parseInt(dp[1], 10) || 1;
+        var year = parseInt(dp[2], 10) || 2000;
+        var hh = parseInt(tp[0], 10) || 0;
+        var mm = parseInt(tp[1], 10) || 0;
+        var ss = parseInt(tp[2], 10) || 0;
+
+        return new Date(year, month - 1, day, hh, mm, ss).getTime();
+    }
+
+    // Helper: legend dot with line style indicator
+    function legendDotLine(color, style, label) {
+        var lineStyle = style === 'dashed'
+            ? 'border-top:2px dashed ' + color
+            : 'border-top:2px solid ' + color;
+        return '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<span style="display:inline-block;width:20px;height:0;' + lineStyle + ';"></span>' +
+            '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + color + ';"></span>' +
+            '<span style="font-size:12px;color:var(--e7-text-2, #334155);">' + label + '</span></div>';
+    }
+
 
     // ==========================================================================
     // RENDER DISPATCHER — called by selectErView()
     // ==========================================================================
     function renderErView() {
-        debugger;
         if (erChart) { erChart.destroy(); erChart = null; }
+        // Clean up station-wise charts
+        if (typeof erBarStationCharts !== 'undefined') {
+            erBarStationCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+            erBarStationCharts = [];
+        }
+        if (typeof erLineStationCharts !== 'undefined') {
+            erLineStationCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+            erLineStationCharts = [];
+        }
+        if (typeof erPieCharts !== 'undefined') {
+            erPieCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+            erPieCharts = [];
+        }
 
         if (erSelectedView === 'Table') {
             $('#listView').show();
@@ -956,7 +2097,7 @@
         var table = document.querySelector('#tblEquipmentRoom');
 
         if (!table) {
-            alert('No data available to download');
+            showError('No data available to download', 'Download Error');
             return;
         }
 
@@ -969,28 +2110,15 @@
 
             var worksheet = workbook.addWorksheet('Alert Detail Report');
 
-            // Extract table data
-            var rows = table.querySelectorAll('tr');
-            var tableData = [];
-            var columnCount = 0;
-
-            rows.forEach(function (row) {
-                var rowData = [];
-                var cols = row.querySelectorAll('th, td');
-                columnCount = Math.max(columnCount, cols.length);
-                cols.forEach(function (col) {
-                    var text = col.innerText.replace(/(\r\n|\n|\r)/gm, ' ').trim();
-                    rowData.push(text);
-                });
-                if (rowData.length > 0) {
-                    tableData.push(rowData);
-                }
-            });
+            // Table data from the in-memory array (header + rows)
+            var tableData = [erExportHeaders].concat(erGetExportRows());
+            var columnCount = erExportHeaders.length;
 
             // Title Row
-            var fromDate = $('#txtFromDate').val() || '';
-            var toDate = $('#txtToDate').val() || '';
-            var titleRow = worksheet.addRow(['Equipment Room Report']);
+            var fromDate = formatDateTimeForExport($('#txtFromDate').val(), $('#txtFromTime').val());
+            var toDate = formatDateTimeForExport($('#txtToDate').val(), $('#txtToTime').val());
+
+            var titleRow = worksheet.addRow(['Equipment Room History Report']);
             titleRow.height = 30;
             worksheet.mergeCells(1, 1, 1, columnCount);
             titleRow.getCell(1).fill = {
@@ -1007,7 +2135,7 @@
             titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
             // Date Row
-            var dateRow = worksheet.addRow(['Period: ' + fromDate + ' to ' + toDate + ' | Generated: ' + new Date().toLocaleString()]);
+            var dateRow = worksheet.addRow(['Period: ' + fromDate + ' to ' + toDate + ' | Generated: ' + formatNowForExport()]);
             dateRow.height = 20;
             worksheet.mergeCells(2, 1, 2, columnCount);
             dateRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
@@ -1064,15 +2192,15 @@
                 }
             });
 
-            // Auto-fit columns
-            worksheet.columns.forEach(function (column) {
-                var maxLength = 12;
-                column.eachCell({ includeEmpty: true }, function (cell) {
-                    var cellLength = cell.value ? cell.value.toString().length : 10;
-                    if (cellLength > maxLength) maxLength = cellLength;
-                });
-                column.width = Math.min(maxLength + 2, 40);
-            });
+            // Auto-fit columns (one pass over the array, not over ExcelJS cells)
+            var colW = erExportHeaders.map(function (h) { return Math.max(12, h.length); });
+            for (var ri = 1; ri < tableData.length; ri++) {
+                for (var ci = 0; ci < columnCount; ci++) {
+                    var len = (tableData[ri][ci] || '').length;
+                    if (len > colW[ci]) colW[ci] = len;
+                }
+            }
+            colW.forEach(function (w, ci) { worksheet.getColumn(ci + 1).width = Math.min(w + 2, 40); });
 
             // Footer
             worksheet.addRow([]);
@@ -1087,23 +2215,22 @@
                 });
                 saveAs(blob, fileName);
                 $("#loader").hide();
-                CommonNotification("SUCCESS", "Excel downloaded successfully!", "Success");
+                showSuccess('Excel downloaded successfully!', 'Success');
             });
 
         } catch (error) {
             $("#loader").hide();
             console.error('Excel Error:', error);
-            CommonNotification("ERROR", "Error downloading Excel", "Error");
+            showError('Error generating Excel', 'Download Error');
         }
     }
 
     // ===== CSV DOWNLOAD =====
     function fnDownloadCSV() {
-        debugger;
         var table = document.querySelector('#tblEquipmentRoom');
 
         if (!table) {
-            alert('No data available to download');
+            showError('No data available to download', 'Download Error');
             return;
         }
 
@@ -1111,19 +2238,23 @@
             $("#loader").show();
 
             var csv = [];
-            var rows = table.querySelectorAll('tr');
 
-            rows.forEach(function (row) {
-                var rowData = [];
-                var cols = row.querySelectorAll('th, td');
-                cols.forEach(function (col) {
-                    var text = col.innerText.replace(/(\r\n|\n|\r)/gm, ' ').trim();
-                    // Escape double quotes and wrap in quotes
-                    text = text.replace(/"/g, '""');
-                    rowData.push('"' + text + '"');
-                });
-                csv.push(rowData.join(','));
-            });
+            // ===== Add From/To Date Header =====
+            var fromDisplay = formatDateTimeForExport($('#txtFromDate').val(), $('#txtFromTime').val());
+            var toDisplay = formatDateTimeForExport($('#txtToDate').val(), $('#txtToTime').val());
+
+            csv.push('"Equipment Room History Report"');
+            csv.push('"From: ' + fromDisplay + '","To: ' + toDisplay + '"');
+            csv.push('"Generated: ' + formatNowForExport() + '"');
+            csv.push(''); // blank separator row
+
+            // ===== Table Data (from the in-memory array) =====
+            function csvCell(t) { return '"' + String(t).replace(/"/g, '""') + '"'; }
+            csv.push(erExportHeaders.map(csvCell).join(','));
+            var exportRows = erGetExportRows();
+            for (var ri = 0; ri < exportRows.length; ri++) {
+                csv.push(exportRows[ri].map(csvCell).join(','));
+            }
 
             // Add BOM for Excel UTF-8 compatibility
             var BOM = '\uFEFF';
@@ -1134,13 +2265,196 @@
             saveAs(blob, fileName);
 
             $("#loader").hide();
-            CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
+            showSuccess('CSV downloaded successfully!', 'Success');
 
         } catch (error) {
             $("#loader").hide();
             console.error('CSV Error:', error);
-            CommonNotification("ERROR", "Error downloading CSV", "Error");
+            showError('Error generating CSV', 'Download Error');
         }
+    }
+
+    // ===== PDF DOWNLOAD (chunked, safe for large data) =====
+    var _erPdfBusy = false;
+
+    function fnDownloadPDF() {
+        var table = document.querySelector('#tblEquipmentRoom');
+        if (!table) { showError('No data available to download', 'Download Error'); return; }
+        if (_erPdfBusy) return;               // double-click protection
+        _erPdfBusy = true;
+
+        $("#loader").show();
+
+        // Let the loader paint first, then start the work
+        setTimeout(function () {
+            try {
+                erBuildPdf(table);
+            } catch (err) {
+                erPdfFail(err);
+            }
+        }, 50);
+    }
+
+    function erPdfFail(err) {
+        _erPdfBusy = false;
+        $("#loader").hide();
+        if (window.console) { window.console.error("PDF Error:", err); }
+        showError('Error generating PDF', 'Download Error');
+    }
+
+    function erBuildPdf(table) {
+        // ---- TABLE DATA from the in-memory array ----
+        var tableBody = erGetExportRows();
+
+        if (tableBody.length === 0) {
+            _erPdfBusy = false;
+            $("#loader").hide();
+            showError('No data available to download', 'Download Error');
+            return;
+        }
+
+        var jsPDF = window.jspdf.jsPDF;
+        var doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4', compress: true });
+        var pageW = doc.internal.pageSize.getWidth();
+        var pageH = doc.internal.pageSize.getHeight();
+
+        var fromDisplay = formatDateTimeForExport($('#txtFromDate').val(), $('#txtFromTime').val());
+        var toDisplay = formatDateTimeForExport($('#txtToDate').val(), $('#txtToTime').val());
+        var metaText = 'Period: ' + fromDisplay + '   to   ' + toDisplay +
+            '   |   Records: ' + tableBody.length +
+            '   |   Generated: ' + formatNowForExport();
+
+        var headers = [
+            'Sr.No', 'Zone', 'Division', 'Station',
+            'Date & Time', 'Equipment Room Type',
+            'Temperature\n(\u00B0C)', 'Humidity\n(%)', 'Open/Close'
+        ];
+
+        // ---- FIXED LAYOUT (same column width / row height in every chunk) ----
+        var TOP = 58, BOTTOM = 22, SIDE = 14;
+        var ROW_H = 18, HEAD_H = 30;
+        var rowsPerPage = Math.floor((pageH - TOP - BOTTOM - HEAD_H) / ROW_H);   // ~27
+        var PAGES_PER_CHUNK = 20;                                                 // ~540 rows/chunk
+        var chunkSize = rowsPerPage * PAGES_PER_CHUNK;
+
+        var usableW = pageW - SIDE * 2;                                           // ~814pt
+        var widths = [45, 70, 90, 90, 115, 150, 80, 80, 94];
+        var sumW = widths.reduce(function (a, b) { return a + b; }, 0);
+        var colStyles = {};
+        widths.forEach(function (w, idx) { colStyles[idx] = { cellWidth: w * usableW / sumW }; });
+
+        var OPEN_CLR = [4, 120, 87], CLOSE_CLR = [180, 83, 9];
+
+        function drawBanner() {
+            doc.setFillColor(79, 70, 229);
+            doc.rect(0, 0, pageW, 36, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.setTextColor(255, 255, 255);
+            doc.text('Equipment Room History Report', pageW / 2, 23, { align: 'center' });
+
+            doc.setFillColor(240, 244, 255);
+            doc.rect(0, 36, pageW, 18, 'F');
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(8);
+            doc.setTextColor(71, 85, 105);
+            doc.text(metaText, pageW / 2, 47, { align: 'center' });
+        }
+
+        var offset = 0;
+
+        function renderChunk() {
+            try {
+                var chunk = tableBody.slice(offset, offset + chunkSize);
+                if (offset > 0) doc.addPage();
+
+                doc.autoTable({
+                    startY: TOP,
+                    head: [headers],
+                    body: chunk,
+                    theme: 'grid',
+                    showHead: 'everyPage',
+                    rowPageBreak: 'avoid',
+                    margin: { top: TOP, bottom: BOTTOM, left: SIDE, right: SIDE },
+                    styles: {
+                        fontSize: 8,
+                        cellPadding: 4,
+                        valign: 'middle',
+                        halign: 'center',
+                        lineColor: [226, 232, 240],
+                        lineWidth: 0.4,
+                        overflow: 'ellipsize',     // no wrap = fixed row height, fast
+                        minCellHeight: ROW_H
+                    },
+                    headStyles: {
+                        fillColor: [30, 58, 95],
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        overflow: 'linebreak',
+                        minCellHeight: HEAD_H,
+                        cellPadding: { top: 5, bottom: 5, left: 3, right: 3 }
+                    },
+                    bodyStyles: { textColor: [0, 0, 0] },          // Temperature & Humidity black
+                    alternateRowStyles: { fillColor: [241, 245, 249] },
+                    columnStyles: colStyles,
+                    didParseCell: function (data) {
+                        // Only Open/Close is colored; Temperature/Humidity stay black
+                        if (data.section === 'body' && data.column.index === 8) {
+                            var val = String(data.cell.raw || '').toLowerCase();
+                            if (val === 'open') {
+                                data.cell.styles.textColor = OPEN_CLR;
+                                data.cell.styles.fontStyle = 'bold';
+                            } else if (val === 'close') {
+                                data.cell.styles.textColor = CLOSE_CLR;
+                                data.cell.styles.fontStyle = 'bold';
+                            }
+                        }
+                    },
+                    didDrawPage: drawBanner
+                });
+
+                offset += chunkSize;
+
+                if (offset < tableBody.length) {
+                    setTimeout(renderChunk, 0);     // yield to the browser between chunks
+                } else {
+                    finishPdf();
+                }
+            } catch (err) {
+                erPdfFail(err);
+            }
+        }
+
+        function finishPdf() {
+            // Correct Page X of Y, drawn after all pages exist
+            var total = doc.internal.getNumberOfPages();
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(148, 163, 184);
+            for (var p = 1; p <= total; p++) {
+                doc.setPage(p);
+                doc.text('Page ' + p + ' of ' + total, pageW - SIDE, pageH - 8, { align: 'right' });
+            }
+
+            doc.save(getDownloadFileName('pdf'));
+            _erPdfBusy = false;
+            $("#loader").hide();
+            showSuccess('PDF downloaded successfully!', 'Success');
+        }
+
+        renderChunk();
+    }
+
+    // Format current date as DD/MM/YYYY HH:MM:SS (same as From Date)
+    function formatNowForExport() {
+        var now = new Date();
+        var dd = ('0' + now.getDate()).slice(-2);
+        var mm = ('0' + (now.getMonth() + 1)).slice(-2);
+        var yyyy = now.getFullYear();
+        var hh = ('0' + now.getHours()).slice(-2);
+        var mi = ('0' + now.getMinutes()).slice(-2);
+        var ss = ('0' + now.getSeconds()).slice(-2);
+        return dd + '/' + mm + '/' + yyyy + ' ' + hh + ':' + mi + ':' + ss;
     }
 
     // ===== GET FILENAME =====
@@ -1160,9 +2474,9 @@
         var td = $('#txtToDate').val();
         var tt = $('#txtToTime').val();
 
-        $('#dispFromDate').text(fd ? formatDisplayDate(fd) : '—');
+        $('#dispFromDate').text(fd || '—');
         $('#dispFromTime').text(ft || '—');
-        $('#dispToDate').text(td ? formatDisplayDate(td) : '—');
+        $('#dispToDate').text(td || '—');
         $('#dispToTime').text(tt || '—');
     }
 
@@ -1171,5 +2485,13 @@
         var parts = val.split('-');
         if (parts.length === 3) return parts[2] + '/' + parts[1] + '/' + parts[0];
         return val;
+    }
+
+    function formatDateTimeForExport(dateVal, timeVal) {
+        if (!dateVal) return '—';
+        // dateVal is now DD/MM/YYYY
+        var timePart = timeVal || '00:00:00';
+        if (timePart.split(':').length === 2) timePart += ':00';
+        return dateVal + ' ' + timePart;
     }
 </script>

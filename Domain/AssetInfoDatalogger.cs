@@ -16,6 +16,10 @@ namespace Domain
         public string DataloggerAttribute { get; set; }
         public string DataloggerAssetName { get; set; }
         public string DLStatus { get; set; }
+        public string UpHour { get; set; }
+        public string DownHour { get; set; }
+        public int PickupCount { get; set; }
+        public int DropCount { get; set; }
         public List<Domain.Datalogger> mDataloggers { get; set; } = new List<Datalogger>();
     }
 }

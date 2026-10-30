@@ -53,6 +53,7 @@ namespace Domain
         public string Division { get; set; }
         public int NoOfOpration { get; set; }
         public int MQTTNoOfChannels { get; set; }
+        public double TotalHour { get; set; }
         public List<SiteAttributeData> siteAttributeDatas { get; set; }
         public List<AssetAttribute> assetAttributes { get; set; }
         public List<AssetInfo> mAssetInfos { get; set; }
@@ -74,6 +75,7 @@ namespace Domain
         public List<int> SiteIds { get; set; }
         public List<int> AssetIds { get; set; }
         public List<int> AssetTypeIds { get; set; }
+        public List<string> AssetTypes { get; set; }
         public List<int> ZoneIds { get; set; }
         public List<int> DivisionIds { get; set; }
         public List<FamilyTrack> mFamilyTracks { get; set; }
@@ -131,6 +133,7 @@ namespace Domain
         public int RoleId { get; set; }
         public int UserId { get; set; }
         public string MQTTBasePath { get; set; }
+        public string RowKey { get; set; }
         public Asset()
         {
             ColumnName = "Id";

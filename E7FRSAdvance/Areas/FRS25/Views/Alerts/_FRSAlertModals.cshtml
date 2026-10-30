@@ -1021,7 +1021,9 @@
 
 @* ══════════════════════════════════════
     MODAL 4 — Alert Message detail
-    fnShowAlertMessage(id) writes into #spnAlertMessage
+    fnShowAlertMessage(id) writes into #spnAlertMessage:
+    alert-card JSON (same fields / format as 616) via fnBuildAlertMessageHtml,
+    otherwise the plain set / description / reset message text
     ══════════════════════════════════════ *@
 <div class="modal fade frs-modal" id="modelShowAlertMessage" tabindex="-1" role="dialog" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width:520px;">
@@ -1036,7 +1038,7 @@
                 </button>
             </div>
 
-            <div class="modal-body">
+            <div class="modal-body" style="max-height:70vh;overflow-y:auto;">
                 <div id="spnAlertMessage"
                      style="font-size:13px;line-height:1.8;word-break:break-word;">
                 </div>
@@ -1051,6 +1053,232 @@
         </div>
     </div>
 </div>
+
+<style>
+    /* ── Alert message (card JSON) — 617 theme tokens ── */
+    .am-summary { background: var(--e7-surface-2, #f6f8fa); border: 1px solid var(--e7-border, #e7ebf1); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; line-height: 1.5; }
+    .am-summary-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .am-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--e7-text-3, #627186); }
+    .am-cause { font-size: 15px; font-weight: 700; color: var(--e7-heading, #1b3c55); margin-top: 2px; }
+    .am-meta { font-size: 12px; color: var(--e7-text-2, #55657a); margin-top: 4px; }
+    .am-meta i { color: var(--e7-text-3, #627186); margin-right: 4px; }
+    .am-badge { padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .am-badge.is-fail { background: var(--frs-f-bg); color: var(--frs-f-fg); border: 1px solid var(--frs-f-bd); }
+    .am-badge.is-pred { background: var(--e7-accent-soft, rgba(47,158,196,.12)); color: var(--e7-accent-ink, #1d6f8d); border: 1px solid var(--e7-accent-soft, rgba(47,158,196,.25)); }
+    .am-sec { border: 1px solid var(--e7-border, #e7ebf1); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; line-height: 1.5; }
+    .am-sec-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .am-sec-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--e7-text-2, #55657a); display: flex; align-items: center; gap: 7px; }
+    .am-sec-title .am-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .am-sec.is-alert .am-dot { background: var(--frs-f-dot); }
+    .am-sec.is-rect .am-dot { background: var(--frs-t-dot); }
+    .am-sec-time { font-size: 12px; color: var(--e7-text-3, #627186); white-space: nowrap; }
+    .am-desc { font-size: 12.5px; color: var(--e7-text-2, #55657a); margin-bottom: 12px; }
+    .am-cond-lbl { margin: 4px 0 8px; }
+    .am-line { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--e7-text, #22303f); padding: 3px 0; }
+    .am-ico { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; font-size: 8px; }
+    .am-line.is-pass .am-ico { background: var(--frs-t-bg); color: var(--frs-t-fg); }
+    .am-line.is-fail { color: var(--frs-f-fg); font-weight: 600; }
+    .am-line.is-fail .am-ico { background: var(--frs-f-bg); color: var(--frs-f-fg); }
+    .am-line.is-rect .am-ico { background: var(--frs-t-bg); color: var(--frs-t-fg); }
+    .am-line .am-tag { font-style: italic; font-weight: 500; font-size: 11.5px; margin-left: 4px; }
+    .am-line.is-rect .am-tag { color: var(--frs-t-fg); }
+    .am-line.is-neutral { color: var(--e7-text-3, #627186); }
+    .am-line.is-neutral .am-ico { background: var(--e7-surface-3, #eef2f6); color: var(--e7-text-3, #627186); }
+    .am-time { font-size: 11px; color: var(--e7-text-3, #627186); padding: 0 0 2px 24px; }
+    .am-time i { margin-right: 4px; font-size: 10px; }
+    .am-op { display: inline-block; margin: 3px 0 3px 24px; padding: 0 8px; border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: .05em; background: var(--e7-surface-3, #eef2f6); color: var(--e7-text-2, #55657a); }
+    .am-op.is-or { background: var(--frs-pt-bg); color: var(--frs-pt-fg); }
+    .am-group { position: relative; margin: 8px 0 6px 6px; padding: 10px 12px 6px; border: 1px dashed var(--e7-border-2, #dde3ec); border-radius: 8px; }
+    .am-group-tag { position: absolute; top: -8px; left: 10px; padding: 0 6px; font-size: 9px; font-weight: 700; letter-spacing: .08em; color: var(--e7-text-3, #627186); background: var(--e7-surface, #fff); }
+</style>
+
+<script>
+    /* ==========================================================
+       ALERT MESSAGE — same source fields and condition format as 616
+       renderCloudAlertCard, rendered in 617's own modal / theme.
+       alertJson = set alert card JSON (required)
+       rectJson  = reset / rectification card JSON (optional)
+       Returns '' when the JSON can't be read (caller falls back to plain text).
+       ========================================================== */
+    function fnBuildAlertMessageHtml(alertJson, rectJson) {
+        var a = _amParseJson(alertJson);
+        if (!a) return '';
+        var r = _amParseJson(rectJson);
+
+        var isPredictive = (a.alertType || '').toUpperCase() === 'PREDICTIVE';
+        var html = '';
+
+        // ── Summary: cause code, asset / station / time, alert type ──
+        html += '<div class="am-summary"><div class="am-summary-top"><div>';
+        html += '<div class="am-lbl">Cause Code</div>';
+        html += '<div class="am-cause">' + _amEsc(a.alertCode) + '</div>';
+        html += '<div class="am-meta"><i class="fas fa-map-marker-alt"></i>' + _amEsc(a.assetName || '') +
+                ', &quot;' + _amEsc(a.stationCode || a.station || '') + '&quot;, ' + _amEsc(a.time || '') + '</div>';
+        html += '</div>';
+        html += '<span class="am-badge ' + (isPredictive ? 'is-pred' : 'is-fail') + '">' + (isPredictive ? 'Predictive Alert' : 'Failure Alert') + '</span>';
+        html += '</div></div>';
+
+        // ── Alert ──
+        html += '<div class="am-sec is-alert">';
+        html += '<div class="am-sec-head"><div class="am-sec-title"><span class="am-dot"></span>Alert</div><div class="am-sec-time">' + _amEsc(a.time) + '</div></div>';
+        if (a.description) html += '<div class="am-desc">' + _amEsc(a.description) + '</div>';
+        html += '<div class="am-lbl am-cond-lbl">Alert Conditions &mdash; Status</div>';
+        html += _amBuildConditions(a);
+        html += '</div>';
+
+        // ── Rectification ──
+        if (r) {
+            html += '<div class="am-sec is-rect">';
+            html += '<div class="am-sec-head"><div class="am-sec-title"><span class="am-dot"></span>Rectification</div><div class="am-sec-time">' + _amEsc(r.resetTimestamp) + '</div></div>';
+            html += '<div class="am-lbl am-cond-lbl">Rectification Conditions &mdash; Status</div>';
+            html += _amBuildConditions(r);
+            html += '</div>';
+        }
+
+        return html;
+    }
+
+    // Threshold comparison operator → display symbol (616 _cacGetCompSymbols)
+    function _amCompSymbol(comparison) {
+        switch (comparison) {
+            case '>': return '&gt;';
+            case '>=': case '≥': return '&ge;';
+            case '<=': case '≤': return '&le;';
+            default: return '&lt;';
+        }
+    }
+
+    /* Condition lines for one section (616 _cacBuildConditions) */
+    function _amBuildConditions(data) {
+        var html = '';
+
+        // 1) Enabling Conditions — always AND
+        var ecs = data.enablingConditions || [];
+        var fallbackTime = data.time || data.resetTimestamp || '';
+
+        for (var i = 0; i < ecs.length; i++) {
+            if (i > 0) html += _amOp('&&');
+            var ec = ecs[i];
+            var t;
+            if (ec.paramLabel || ec.paramName || ec.type) {
+                t = _amEsc(ec.paramLabel || ec.paramName || '');
+                if (ec.measured) t += ': ' + _amEsc(ec.measured);
+            } else {
+                t = _amEsc(ec.label || '');
+                if (ec.value) t += ' ' + _amEsc(ec.value);
+            }
+            if (ec.unit && ec.unit !== 'relay') t += ' ' + _amEsc(ec.unit);
+
+            html += (ec.present === false) ? _amLine('is-fail', t) : _amLine('is-pass', t);
+            html += _amTime(ec.time || fallbackTime);
+        }
+
+        // 2) Triggered Conditions — JSON order; `logic` joins an item to the previous one
+        //    (missing = AND); items sharing a `group` id are bracketed together.
+        var tcs = data.triggeredConditions || [];
+        if (ecs.length > 0 && tcs.length > 0) html += _amOp('&&');
+
+        var currentGroup = null, groupOpen = false;
+        for (var k = 0; k < tcs.length; k++) {
+            var tc = tcs[k];
+            var group = tc.group || null;
+            var connector = ((tc.logic || 'AND').toUpperCase() === 'OR') ? '||' : '&&';
+
+            if (k === 0) {
+                if (group) { html += _amGroupOpen(); groupOpen = true; }
+            } else if (group !== currentGroup) {
+                if (groupOpen) { html += '</div>'; groupOpen = false; }
+                html += _amOp(connector);
+                if (group) { html += _amGroupOpen(); groupOpen = true; }
+            } else {
+                html += _amOp(connector);
+            }
+
+            html += _amTriggeredItem(tc);
+            currentGroup = group;
+        }
+        if (groupOpen) html += '</div>';
+
+        return html;
+    }
+
+    /* ONE triggeredConditions item — main / derived / relay / ips (616 _cacRenderTriggeredItem) */
+    function _amTriggeredItem(tc) {
+        var tcType = (tc.type || 'main').toLowerCase();
+        var html = '';
+
+        // IPS prerequisite gate
+        if (tcType === 'ips') {
+            var ips = _amEsc(tc.paramLabel || tc.paramName || '');
+            if (tc.measured && tc.measured !== 'N/A') ips += ' (' + _amEsc(tc.measured) + (tc.unit ? ' ' + _amEsc(tc.unit) : '') + ')';
+            ips += tc.rule ? ' ' + _amEsc(tc.rule) : ' &ge; Min fail value';
+            if (tc.threshold != null && tc.threshold !== '') {
+                ips += ' (' + _amEsc(tc.threshold) + (tc.thresholdUnit ? ' ' + _amEsc(tc.thresholdUnit) : '') + ')';
+            } else if (tc.thresholds && tc.thresholds.length > 0) {
+                ips += ' (' + _amEsc(tc.thresholds[0].value || '') + (tc.thresholds[0].unit ? ' ' + _amEsc(tc.thresholds[0].unit) : '') + ')';
+            }
+            var st = (tc.status || '').toUpperCase();
+            if (st === 'FAIL') html += _amLine('is-fail', ips);
+            else if (st === 'NOT_EVALUATED' || tc.evaluated === false) html += _amLine('is-neutral', ips, '(Not Evaluated)');
+            else html += _amLine('is-pass', ips);
+            return html + _amTime(tc.time);
+        }
+
+        // Relay / DataLogger digital state — no thresholds
+        if (tcType === 'relay') {
+            html += _amLine('is-pass', _amEsc(tc.paramLabel || tc.paramName || '') + ': ' + _amEsc(tc.measured || ''));
+            return html + _amTime(tc.time);
+        }
+
+        // main / derived — measured value(s) against threshold(s)
+        if (tc.thresholds && tc.thresholds.length > 0) {
+            for (var th = 0; th < tc.thresholds.length; th++) {
+                var thd = tc.thresholds[th];
+                var line = _amEsc(tc.paramLabel || tc.paramName || '') +
+                    ' (' + _amEsc(tc.measured || '') + (tc.unit ? ' ' + _amEsc(tc.unit) : '') + ') ' +
+                    _amCompSymbol(thd.comparison) + ' ' +
+                    _amEsc(thd.label || 'Threshold') + '(' + _amEsc(thd.value || '') + (thd.unit ? ' ' + _amEsc(thd.unit) : '') + ')';
+                var status = (thd.status || '').toUpperCase();
+                if (status === 'FAIL') html += _amLine('is-fail', line);
+                else if (status === 'RECTIFIED') html += _amLine('is-rect', line, '(Rectified)');
+                else html += _amLine('is-pass', line);
+                html += _amTime(tc.time);
+            }
+        } else {
+            var mn = _amEsc(tc.paramLabel || tc.paramName || '') + ': ' + _amEsc(tc.measured || '');
+            if (tc.unit) mn += ' ' + _amEsc(tc.unit);
+            html += _amLine('is-pass', mn) + _amTime(tc.time);
+        }
+        return html;
+    }
+
+    // ── Line builders ──
+    function _amLine(kind, text, tag) {
+        var ico = kind === 'is-fail' ? 'fa-times' : kind === 'is-neutral' ? 'fa-minus' : 'fa-check';
+        return '<div class="am-line ' + kind + '"><span class="am-ico"><i class="fas ' + ico + '"></i></span>' +
+            '<span>' + text + (tag ? '<span class="am-tag">' + tag + '</span>' : '') + '</span></div>';
+    }
+    function _amTime(time) {
+        return time ? '<div class="am-time"><i class="far fa-clock"></i>' + _amEsc(time) + '</div>' : '';
+    }
+    function _amOp(symbol) {
+        return '<div><span class="am-op' + (symbol === '||' ? ' is-or' : '') + '">' + symbol + '</span></div>';
+    }
+    function _amGroupOpen() {
+        return '<div class="am-group"><div class="am-group-tag">OR GROUP</div>';
+    }
+
+    function _amParseJson(input) {
+        if (!input) return null;
+        if (typeof input === 'object') return input;
+        try { return JSON.parse(input); } catch (e) { return null; }
+    }
+
+    function _amEsc(str) {
+        if (str === null || str === undefined || str === '') return '';
+        return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+</script>
 
 
 @* ══════════════════════════════════════

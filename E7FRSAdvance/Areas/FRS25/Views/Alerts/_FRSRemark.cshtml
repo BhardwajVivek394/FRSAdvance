@@ -163,6 +163,35 @@
         margin-top: 2px;
     }
 
+    /* ── remark row (616 layout: one row under each feedback) ── */
+    .frsr-table tbody tr.frsr-row-main {
+        border-bottom: 1px dashed var(--e7-border, #e7ebf1);
+    }
+
+    .frsr-table tbody tr.frsr-row-remark td {
+        padding-top: 8px;
+        padding-bottom: 12px;
+    }
+
+    .frsr-remark-lbl {
+        padding: 8px 12px 12px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--e7-text-3, #627186);
+        text-align: center;
+        vertical-align: top;
+        white-space: nowrap;
+    }
+
+    .frsr-remark-body {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
     /* ── empty state ── */
     .frsr-empty {
         text-align: center;
@@ -209,17 +238,20 @@ else
         <table class="frsr-table">
             <thead>
                 <tr>
-                    <th style="width:42px;text-align:center;">#</th>
-                    <th style="min-width:110px;">Ack. Type</th>
-                    <th style="min-width:200px;">Remark &amp; Cause Code</th>
-                    <th style="min-width:130px;">Rectification Date</th>
-                    <th style="min-width:120px;">Maintainer</th>
+                    <th style="width:56px;text-align:center;">Sr no.</th>
+                    <th style="min-width:110px;">Alert Feedback Type</th>
+                    <th style="min-width:130px;">Incidence Date &amp; Time</th>
+                    <th style="min-width:130px;">Rectification Date &amp; Time</th>
+                    <th style="min-width:120px;">Maintainer Name</th>
+                    <th style="min-width:120px;">Maintainer Designation</th>
                     <th style="min-width:100px;">Timestamp</th>
-                    <th style="width:60px;text-align:center;">Image</th>
                 </tr>
             </thead>
             <tbody>
-                @{ int srNo = 1; }
+                @{
+                    int srNo = 1;
+                    var mFRSAlert = ViewBag.FRSAlert as Domain.FRSAlert;
+                }
                 @foreach (var item in Model)
                 {
                     @* ── determine ack badge ── *@
@@ -235,7 +267,7 @@ else
                     else
                     { ackCss = "frsr-ack-maint"; ackLbl = "—"; }
 
-                    <tr>
+                    <tr class="frsr-row-main">
                         <td class="frsr-srno">@srNo</td>
 
                         <td>
@@ -244,13 +276,16 @@ else
                             </span>
                         </td>
 
-                        <td>
-                            @if (item.AcknowledgementStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT
-                                 && !string.IsNullOrEmpty(item.PTAlertInfo))
+                        <td class="frsr-dt">
+                            @if (mFRSAlert != null && mFRSAlert.Id > 0 && mFRSAlert.SetTimeStamp != DateTime.MinValue)
                             {
-                                <span class="frsr-cause">@item.PTAlertInfo</span><br />
+                                @mFRSAlert.SetTimeStamp.ToString("dd/MM/yyyy")<br />
+                                <span style="color:var(--e7-text-3, #627186);">@mFRSAlert.SetTimeStamp.ToString("HH:mm:ss")</span>
                             }
-                            <span class="frsr-remark">@(string.IsNullOrEmpty(item.Remark) ? "—" : item.Remark)</span>
+                            else
+                            {
+                                <span style="color:var(--e7-text-4, #b3bdc9);">—</span>
+                            }
                         </td>
 
                         <td class="frsr-dt">
@@ -267,7 +302,10 @@ else
 
                         <td>
                             <div class="frsr-maint-name">@(string.IsNullOrEmpty(item.MaintainerName) ? "—" : item.MaintainerName)</div>
-                            <div class="frsr-maint-desig">@item.MaintainerDesignation</div>
+                        </td>
+
+                        <td>
+                            <div class="frsr-maint-desig">@(string.IsNullOrEmpty(item.MaintainerDesignation) ? "—" : item.MaintainerDesignation)</div>
                         </td>
 
                         <td class="frsr-dt">
@@ -282,12 +320,27 @@ else
                             }
                         </td>
 
-                        <td style="text-align:center;vertical-align:middle;">
-                            <button onclick="fnShowRemarkImage(@item.Id)"
-                                    class="frsr-img-btn"
-                                    title="View Image">
-                                <i class="fas fa-image"></i>
-                            </button>
+                    </tr>
+
+                    @* 616 layout: the remark sits on its own row under each feedback *@
+                    <tr class="frsr-row-remark">
+                        <th class="frsr-remark-lbl">Remark</th>
+                        <td colspan="6">
+                            <div class="frsr-remark-body">
+                                <div>
+                                    @if (item.AcknowledgementStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT
+                                         && !string.IsNullOrEmpty(item.PTAlertInfo))
+                                    {
+                                        <span class="frsr-cause">Updated Cause Code: @item.PTAlertInfo</span><br />
+                                    }
+                                    <span class="frsr-remark">@(string.IsNullOrEmpty(item.Remark) ? "—" : item.Remark)</span>
+                                </div>
+                                <button onclick="fnShowRemarkImage(@item.Id)"
+                                        class="frsr-img-btn"
+                                        title="View Image">
+                                    <i class="fas fa-image"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
 

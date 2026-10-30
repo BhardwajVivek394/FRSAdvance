@@ -523,32 +523,42 @@
             margin: 0;
         }
 
-    .doughnut-center-text {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        text-align: center;
-        pointer-events: none;
-    }
-
-        .doughnut-center-text .center-value {
-            font-size: 28px;
-            font-weight: 700;
-            color: var(--e7-heading);
-            line-height: 1;
-        }
-
-        .doughnut-center-text .center-label {
-            font-size: 11px;
-            color: var(--e7-text-3);
-            margin-top: 4px;
-        }
-
     /* bronze rank badge — dark scheme tint (light keeps its orange pastel) */
     html:not([data-aurora="light"]) .chart-data-table .rank-badge.bronze {
         background: rgba(251, 146, 60, .16);
         color: #fdba74;
+    }
+
+    /* ===== ASSET DETAIL PAGER — RESPONSIVE ===== */
+    #pager.pagination {
+        flex-wrap: wrap;
+        row-gap: 6px;
+        justify-content: flex-end;
+    }
+
+    @@media (max-width: 767.98px) {
+        #tblAssetDetail ~ .px-md-4.px-2 .d-flex.justify-content-between.align-items-center.flex-wrap,
+        .showing-records {
+            text-align: center;
+            justify-content: center !important;
+        }
+
+        #pager.pagination {
+            justify-content: center;
+            width: 100%;
+        }
+
+        #pager .page-link {
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        #pager .page-link {
+            padding: 5px 8px;
+            font-size: 12px;
+        }
     }
 </style>
 
@@ -557,6 +567,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <section class="section">
     <div class="row">
@@ -632,18 +644,6 @@
                                     <span class="text" id="txtAssetMake">All</span>
                                     <i class="fas fa-chevron-down"></i>
                                 </div>
-                            </div>
-
-                            <div class="filter-item">
-                                <label>From Date</label>
-                                <input type="text" class="filter-input" id="txtFromDate"
-                                       placeholder="Select" readonly>
-                            </div>
-
-                            <div class="filter-item">
-                                <label>To Date</label>
-                                <input type="text" class="filter-input" id="txtToDate"
-                                       placeholder="Select" readonly>
                             </div>
 
                             <div class="filter-item">
@@ -824,54 +824,52 @@
                     <div class="table-border">
                         <div class="my-4 px-lg-4 px-2 w-100">
                             <div class="d-md-flex justify-content-between align-items-center">
-                                <div class="d-flex align-items-center badge-cl gap-10"></div>
-                                <div class="d-flex justify-content-between align-items-center btn-icon-size">
-                                    <div class="d-flex gap-10 my-lg-0 my-3" id="buttonGroupLeft">
-                                        <div class="dropdown">
-                                            <button class="btn btn-inactive" id="btn2"
-                                                    data-toggle="dropdown" aria-haspopup="true"
-                                                    aria-expanded="false" title="Download">
-                                                <svg fill="none" stroke="currentColor"
-                                                     stroke-width="1.5" viewBox="0 0 24 24"
-                                                     stroke-linecap="round" stroke-linejoin="round"
-                                                     xmlns="http://www.w3.org/2000/svg">
-                                                    <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3
+                                <div class="d-flex align-items-center badge-cl gap-10">
+                                    <label id="lblcurrentDate" style="font-weight:bold;"></label>
+                                </div>
+                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId != E7FRSAdvance.Utility.Utility.UserClass.Guest.GetHashCode())
+                                {
+                                    <div class="d-flex justify-content-between align-items-center btn-icon-size">
+                                        <div class="d-flex gap-10 my-lg-0 my-3" id="buttonGroupLeft">
+                                            <div class="dropdown">
+                                                <button class="btn btn-inactive" id="btn2"
+                                                        data-toggle="dropdown" aria-haspopup="true"
+                                                        aria-expanded="false" title="Download">
+                                                    <svg fill="none" stroke="currentColor"
+                                                         stroke-width="1.5" viewBox="0 0 24 24"
+                                                         stroke-linecap="round" stroke-linejoin="round"
+                                                         xmlns="http://www.w3.org/2000/svg">
+                                                        <path d='M4 16.004V17a3 3 0 0 0 3 3h10a3
                                                              3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5
                                                              L12 15.5 8.5 12' />
-                                                </svg>
-                                            </button>
-                                            <div class="dropdown-menu dropdown-menu-right"
-                                                 aria-labelledby="btn2">
-                                                <a class="dropdown-item" href="javascript:void(0);"
-                                                   onclick="fnDownloadExcel()">
-                                                    <i class="fa fa-file-excel mr-2"
-                                                       style="color:var(--e7-green,#22c55e);"></i> Excel
-                                                </a>
-                                                <a class="dropdown-item" href="javascript:void(0);"
-                                                   onclick="fnDownloadCSV()">
-                                                    <i class="fa fa-file-alt mr-2"
-                                                       style="color:var(--e7-accent,#3b82f6);"></i> CSV
-                                                </a>
+                                                    </svg>
+                                                </button>
+                                                <div class="dropdown-menu dropdown-menu-right"
+                                                     aria-labelledby="btn2">
+                                                    <a class="dropdown-item" href="javascript:void(0);"
+                                                       onclick="fnDownloadExcel()">
+                                                        <i class="fa fa-file-excel mr-2"
+                                                           style="color:var(--e7-green,#22c55e);"></i> Excel
+                                                    </a>
+                                                    <a class="dropdown-item" href="javascript:void(0);"
+                                                       onclick="fnDownloadCSV()">
+                                                        <i class="fa fa-file-alt mr-2"
+                                                           style="color:var(--e7-accent,#3b82f6);"></i> CSV
+                                                    </a>
+                                                    <a class="dropdown-item" href="javascript:void(0);"
+                                                       onclick="fnDownloadPDF()">
+                                                        <i class="fa fa-file-pdf mr-2" style="color:var(--e7-red,#ef4444);"></i> PDF
+                                                    </a>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                }
                             </div>
                         </div>
 
                         <div class="row">
                             <div id="divAlertDetailReport" class="col-12"></div>
-
-                            <div id="divPagination" class="col-12 px-4 pb-3" style="display:none;">
-                                <div class="d-flex justify-content-between align-items-center flex-wrap">
-                                    <div class="showing-records text-muted" id="showingRecords">
-                                        Showing 1 to 10 of 0 records
-                                    </div>
-                                    <nav aria-label="Page navigation">
-                                        <ul class="pagination mb-0" id="paginationUl"></ul>
-                                    </nav>
-                                </div>
-                            </div>
 
                             <!-- Chart Container -->
                             <div id="adChartContainer" class="col-12"
@@ -885,17 +883,17 @@
     </div>
 </section>
 
+<!-- Hidden div to hold full data for charts -->
+<div id="divChartDataHolder" style="display:none !important;"></div>
+
 <script>
-    // ==========================================================================
-    // GLOBALS
-    // ==========================================================================
     var openDropdown = null;
     var adChartList = [];
     var selectedViewType = 'Table';
-    var currentPage = 1;
-    var totalPages = 1;
-    var totalRecords = 0;
-    var pageSize = 10;
+    var _defaultAssetTypeHtml = null;
+    var _defaultAssetMakeHtml = null;
+    var _adChartData = null;       // Cached chart data (ALL records)
+    var _chartDataDirty = true;    // Flag: true = need fresh AJAX for charts
 
     var adChartColors = [
         '#6366f1', '#8b5cf6', '#a78bfa', '#818cf8', '#6d28d9',
@@ -903,6 +901,39 @@
         '#3b82f6', '#22c55e', '#f59e0b', '#ec4899', '#f43f5e',
         '#14b8a6', '#f97316', '#06b6d4', '#84cc16', '#e11d48'
     ];
+
+    // ======================================================================
+    // CENTER TEXT PLUGIN FOR DOUGHNUT CHARTS
+    // ======================================================================
+    var adCenterTextPlugin = {
+        id: 'adCenterText',
+        afterDraw: function (chart) {
+            if (chart.config.type !== 'doughnut') return;
+            var opts = (chart.options.plugins && chart.options.plugins.adCenterText)
+                ? chart.options.plugins.adCenterText : null;
+            if (!opts || !opts.text) return;
+
+            var ctx = chart.ctx;
+            var th = adTheme();
+            var cx = (chart.chartArea.left + chart.chartArea.right) / 2;
+            var cy = (chart.chartArea.top + chart.chartArea.bottom) / 2;
+
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            ctx.font = 'bold 26px sans-serif';
+            ctx.fillStyle = th.heading;
+            ctx.fillText(opts.text, cx, cy - 10);
+
+            ctx.font = '11px sans-serif';
+            ctx.fillStyle = th.text3;
+            ctx.fillText(opts.label || 'Total Assets', cx, cy + 14);
+
+            ctx.restore();
+        }
+    };
+    Chart.register(adCenterTextPlugin);
 
     // Energy7 theme palette — Chart.js draws on canvas and cannot read var(), so read the tokens at render time
     function adTheme() {
@@ -923,14 +954,11 @@
         }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-aurora'] });
     }
 
-    // ==========================================================================
-    // DOCUMENT READY
-    // ==========================================================================
     $(document).ready(function () {
-        setDefaultDates();
+        _defaultAssetTypeHtml = $('#listAssetType').html();
+        _defaultAssetMakeHtml = $('#listAssetMake').html();
 
-        $('#txtFromDate').datepicker({ dateFormat: 'dd/mm/yy', autoClose: true });
-        $('#txtToDate').datepicker({ dateFormat: 'dd/mm/yy', autoClose: true });
+        setDefaultDates();
 
         window._originalItems = {
             division: $('#listDivision').html(),
@@ -944,15 +972,13 @@
 
         $('#backdrop').on('click', closeDD);
 
-
-        // Handle dropdown item click — row background OR direct checkbox click
+        // Handle dropdown item click
         $(document).on('click', '#ddZone .dropdown-item, #ddDivision .dropdown-item, #ddSite .dropdown-item, #ddAssetType .dropdown-item, #ddAssetMake .dropdown-item', function (e) {
             e.stopPropagation();
 
             var $item = $(this);
             var $cb = $item.find('input[type="checkbox"]');
 
-            // If clicked directly on checkbox, browser already toggled it — don't reverse
             if (!$(e.target).is('input[type="checkbox"]')) {
                 $cb.prop('checked', !$cb.prop('checked'));
             }
@@ -969,20 +995,30 @@
             } else if (type === 'division') {
                 loadSitesByDivision();
             }
+            else if (type === 'site') {
+                loadAssetFilters();
+            }
+            else if (type === 'assetType') {
+                loadAssetMakesByType();
+            }
         });
 
-        // Handle Select All header — checkbox, label, or row background
+        // Handle Select All header
         $(document).on('click', '.dropdown-header', function (e) {
             e.stopPropagation();
             var $chk = $(this).find('input[type="checkbox"]');
             var type = $chk.attr('id').replace('chkAll', '').charAt(0).toLowerCase()
                 + $chk.attr('id').replace('chkAll', '').slice(1);
             if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) {
-                setTimeout(function () { selectAll(type, $chk.prop('checked')); }, 0);
+                setTimeout(function () {
+                    selectAll(type, $chk.prop('checked'));
+                    if (type === 'assetType') loadAssetMakesByType();
+                }, 0);
             } else {
                 var newState = !$chk.prop('checked');
                 $chk.prop('checked', newState);
                 selectAll(type, newState);
+                if (type === 'assetType') loadAssetMakesByType();
             }
         });
 
@@ -1030,7 +1066,7 @@
         var ss = String(date.getSeconds()).padStart(2, '0');
         var ampm = h >= 12 ? 'PM' : 'AM';
         h = h % 12; h = h ? h : 12;
-        return day + '/' + month + '/' + year + ', ' + String(h).padStart(2, '0') + ':' + mi + ':' + ss + ' ' + ampm;
+        return day + '/' + month + '/' + year + ' ';
     }
 
     function ensureddmmyyyy(dateStr) {
@@ -1138,6 +1174,7 @@
         selectAll(type, checked);
         if (type === 'zone') loadDivisionsByZone();
         else if (type === 'division') loadSitesByDivision();
+        else if (type === 'site') loadAssetFilters();
     }
 
     function selectAll(type, checked) {
@@ -1191,6 +1228,7 @@
     function loadDivisionsByZone() {
         var zoneIds = getValues('zone').map(Number);
         clearDropdown('division'); clearDropdown('site');
+        resetAssetFilters();
         if (zoneIds.length === 0) {
             reloadOriginal('division'); reloadOriginal('site'); return;
         }
@@ -1206,6 +1244,7 @@
     function loadSitesByDivision() {
         var divIds = getValues('division').map(Number);
         clearDropdown('site');
+        resetAssetFilters();
         if (divIds.length === 0) { reloadOriginal('site'); return; }
         $.ajax({
             url: '/FRS25/AssetDetail/GetSiteByDivisionId',
@@ -1213,6 +1252,141 @@
             data: JSON.stringify({ SearchCriteria: { DivisionIds: divIds } }),
             success: function (data) { rebuildDropdown('site', data); },
             error: function () { CommonNotification("ERROR", "Failed to load sites!", "Error"); }
+        });
+    }
+
+    // ==========================================================================
+    // ASSET FILTER LOADING (Asset Type + Asset Make from Asset/GetDetails API)
+    // ==========================================================================
+    function resetAssetFilters() {
+        $('#listAssetType').html(_defaultAssetTypeHtml);
+        $('#chkAllAssetType').prop('checked', false);
+        $('#txtAssetType').text('All');
+
+        $('#listAssetMake').html(_defaultAssetMakeHtml);
+        $('#chkAllAssetMake').prop('checked', false);
+        $('#txtAssetMake').text('All');
+    }
+
+    function loadAssetFilters() {
+        var siteIds = getValues('site').map(Number);
+
+        // Reset both dropdowns
+        resetAssetFilters();
+
+        if (siteIds.length === 0) return;
+
+        // Show loading state
+        $('#listAssetType').html('<div class="dropdown-empty">Loading...</div>');
+        $('#listAssetMake').html('<div class="dropdown-empty">Loading...</div>');
+
+        var mAssetLister = {
+            SearchCriteria: {
+                ZoneIds: getValues('zone'),
+                DivisionIds: getValues('division'),
+                SiteIds: siteIds,
+                AssetTypeIds: [],
+                siteAttributeDatasList: []
+            }
+        };
+
+        $.ajax({
+            url: '/FRS25/AssetDetail/GetAssetFilters',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            success: function (data) {
+                // ── Rebuild Asset Type dropdown ──
+                if (data.AssetTypes && data.AssetTypes.length > 0) {
+                    var atHtml = '';
+                    $.each(data.AssetTypes, function (i, item) {
+                        var name = item.Name || '';
+                        atHtml += '<div class="dropdown-item" data-value="' + name +
+                            '" data-text="' + name + '">' +
+                            '<input type="checkbox" class="cb-assetType" value="' + name + '">' +
+                            '<span>' + name + '</span></div>';
+                    });
+                    $('#listAssetType').html(atHtml);
+                } else {
+                    $('#listAssetType').html('<div class="dropdown-empty">No asset types found</div>');
+                }
+
+                // ── Rebuild Asset Make dropdown ──
+                if (data.AssetMakes && data.AssetMakes.length > 0) {
+                    var amHtml = '';
+                    $.each(data.AssetMakes, function (i, make) {
+                        amHtml += '<div class="dropdown-item" data-value="' + make +
+                            '" data-text="' + make + '">' +
+                            '<input type="checkbox" class="cb-assetMake" value="' + make + '">' +
+                            '<span>' + make + '</span></div>';
+                    });
+                    $('#listAssetMake').html(amHtml);
+                } else {
+                    $('#listAssetMake').html('<div class="dropdown-empty">No asset makes found</div>');
+                }
+            },
+            error: function () {
+                // Fallback to defaults
+                $('#listAssetType').html(_defaultAssetTypeHtml);
+                $('#listAssetMake').html(_defaultAssetMakeHtml);
+            }
+        });
+    }
+
+    // Asset Type select -> call GetAssetFilters with selected types -> rebuild Asset Make only
+    var _assetMakeXhr = null;
+    function loadAssetMakesByType() {
+        var siteIds = getValues('site').map(Number);
+        if (siteIds.length === 0) return;
+
+        var selectedTypes = getValues('assetType');
+        var prevChecked = getValues('assetMake');
+
+        // cancel previous pending request (fast clicking)
+        if (_assetMakeXhr) { _assetMakeXhr.abort(); }
+
+        $('#listAssetMake').html('<div class="dropdown-empty">Loading...</div>');
+        $('#chkAllAssetMake').prop('checked', false);
+        $('#txtAssetMake').text('All');
+
+        var mAssetLister = {
+            SearchCriteria: {
+                ZoneIds: getValues('zone'),
+                DivisionIds: getValues('division'),
+                SiteIds: siteIds,
+                AssetTypes: selectedTypes,
+                siteAttributeDatasList: []
+            }
+        };
+
+        _assetMakeXhr = $.ajax({
+            url: '/FRS25/AssetDetail/GetAssetFilters',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            success: function (data) {
+                if (data.AssetMakes && data.AssetMakes.length > 0) {
+                    var amHtml = '';
+                    $.each(data.AssetMakes, function (i, make) {
+                        var isChecked = prevChecked.indexOf(make) > -1;
+                        amHtml += '<div class="dropdown-item' + (isChecked ? ' checked' : '') +
+                            '" data-value="' + make + '" data-text="' + make + '">' +
+                            '<input type="checkbox" class="cb-assetMake" value="' + make + '"' +
+                            (isChecked ? ' checked' : '') + '>' +
+                            '<span>' + make + '</span></div>';
+                    });
+                    $('#listAssetMake').html(amHtml);
+                } else {
+                    $('#listAssetMake').html('<div class="dropdown-empty">No asset makes found</div>');
+                }
+                updateSelectAllState('assetMake');
+                updateText('assetMake');
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                $('#listAssetMake').html(_defaultAssetMakeHtml);
+            },
+            complete: function () { _assetMakeXhr = null; }
         });
     }
 
@@ -1250,9 +1424,14 @@
     }
 
     // ==========================================================================
-    // SEARCH
+    // SEARCH — marks chart cache as dirty
     // ==========================================================================
-    function fnSearch() { currentPage = 1; fnLoadData(); }
+    function fnSearch() {
+        _chartDataDirty = true;
+        _adChartData = null;
+        fnLoadData();
+    }
+
     function fnGetAssetDetailReport() { fnSearch(); }
 
     function fnLoadData() {
@@ -1260,16 +1439,13 @@
         mAssetLister.SearchCriteria.ZoneIds = getValues('zone');
         mAssetLister.SearchCriteria.DivisionIds = getValues('division');
         mAssetLister.SearchCriteria.SiteIds = getValues('site');
-        mAssetLister.SearchCriteria.AssetTypeIds = getValues('assetType');
+        mAssetLister.SearchCriteria.AssetTypes = getValues('assetType');
         mAssetLister.SearchCriteria.siteAttributeDatasList = getValues('assetMake');
-        mAssetLister.SearchCriteria.FromDate = $('#txtFromDate').val();
-        mAssetLister.SearchCriteria.ToDate = $('#txtToDate').val();
-        mAssetLister.SearchCriteria.PageNumber = currentPage;
-        mAssetLister.SearchCriteria.PageSize = pageSize;
+
+        if (!mAssetLister.SearchCriteria.SiteIds.length) { alert('Station is required'); return; }
 
         adDestroyAllCharts();
 
-        $("#loader").show();
         $('#divAlertDetailReport').html(
             '<div class="text-center p-5">' +
             '<i class="fas fa-spinner fa-spin fa-2x text-primary"></i>' +
@@ -1283,85 +1459,14 @@
             data: JSON.stringify(mAssetLister),
             dataType: 'html',
             success: function (data) {
-                $("#loader").hide();
                 $("#divAlertDetailReport").empty().append(data);
-                fnUpdatePagination();
+                $("#lblcurrentDate").text("As on " + " " + formatDateDDMMYYYY(new Date()));
                 adRenderView(selectedViewType);
             },
             error: function () {
-                $("#loader").hide();
                 CommonNotification("ERROR", "Something went wrong!", "Error");
             }
         });
-    }
-
-    // ==========================================================================
-    // PAGINATION
-    // ==========================================================================
-    function fnUpdatePagination() {
-        var $table = $('#divAlertDetailReport table');
-        if ($table.length === 0) { $('#divPagination').hide(); return; }
-
-        var fromServer = $('#hdnTotalRecords').val();
-        if (fromServer) {
-            totalRecords = parseInt(fromServer);
-            totalPages = Math.ceil(totalRecords / pageSize);
-        } else {
-            var rowCount = $table.find('tbody tr').filter(function () {
-                return !$(this).find('td[colspan]').length;
-            }).length;
-            totalRecords = rowCount;
-            totalPages = rowCount >= pageSize ? currentPage + 1 : currentPage;
-        }
-
-        var fromRec = totalRecords === 0 ? 0 : ((currentPage - 1) * pageSize) + 1;
-        var toRec = Math.min(currentPage * pageSize, totalRecords);
-        $('#showingRecords').text('Showing ' + fromRec + ' to ' + toRec + ' of ' + totalRecords + ' records');
-
-        fnRenderPagination();
-        $('#divPagination').show();
-    }
-
-    function fnRenderPagination() {
-        var html = '';
-
-        html += '<li class="page-item ' + (currentPage <= 1 ? 'disabled' : '') + '">' +
-            '<a class="page-link" href="javascript:void(0);" ' +
-            (currentPage > 1 ? 'onclick="fnGoToPage(' + (currentPage - 1) + ')"' : '') + '>' +
-            '<i class="fas fa-chevron-left"></i> Previous</a></li>';
-
-        var startP = 1, endP = totalPages, maxV = 5;
-        if (totalPages > maxV) {
-            if (currentPage <= 3) { startP = 1; endP = maxV - 1; }
-            else if (currentPage >= totalPages - 2) { startP = totalPages - maxV + 2; endP = totalPages; }
-            else { startP = currentPage - 1; endP = currentPage + 1; }
-        }
-
-        if (startP > 1) {
-            html += '<li class="page-item"><a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(1)">1</a></li>';
-            if (startP > 2) html += '<li class="page-item disabled"><a class="page-link">...</a></li>';
-        }
-        for (var i = startP; i <= endP; i++) {
-            html += '<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
-                '<a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(' + i + ')">' + i + '</a></li>';
-        }
-        if (endP < totalPages) {
-            if (endP < totalPages - 1) html += '<li class="page-item disabled"><a class="page-link">...</a></li>';
-            html += '<li class="page-item"><a class="page-link" href="javascript:void(0);" onclick="fnGoToPage(' + totalPages + ')">' + totalPages + '</a></li>';
-        }
-
-        html += '<li class="page-item ' + (currentPage >= totalPages ? 'disabled' : '') + '">' +
-            '<a class="page-link" href="javascript:void(0);" ' +
-            (currentPage < totalPages ? 'onclick="fnGoToPage(' + (currentPage + 1) + ')"' : '') + '>' +
-            'Next <i class="fas fa-chevron-right"></i></a></li>';
-
-        $('#paginationUl').html(html);
-    }
-
-    function fnGoToPage(page) {
-        if (page < 1 || page > totalPages || page === currentPage) return;
-        currentPage = page;
-        fnLoadData();
     }
 
     // ==========================================================================
@@ -1373,20 +1478,22 @@
     }
 
     // ==========================================================================
-    // EXTRACT DATA FROM TABLE
+    // EXTRACT DATA FROM A TABLE ELEMENT
+    // $container = jQuery element that contains the table
     // Columns: 0=Sr.No 1=Zone 2=Division 3=Station
     //          4=AssetType 5=AssetMake 6=CountOfAsset
     // ==========================================================================
-    function extractAdData() {
+    function extractAdDataFromElement($container) {
         var data = {
             rows: [],
-            makeGroups: {},   // assetMake → totalCount
-            assetTypeGroups: {},   // assetType → totalCount
-            stationGroups: {},   // station+type → totalCount
+            makeGroups: {},
+            assetTypeGroups: {},
+            stationGroups: {},
+            stationOnlyGroups: {},
             totalCount: 0
         };
 
-        $('#divAlertDetailReport table tbody tr').each(function () {
+        $container.find('table tbody tr').each(function () {
             var $tds = $(this).find('td');
             if ($tds.length < 7) return;
             if ($(this).find('td[colspan]').length > 0) return;
@@ -1416,10 +1523,19 @@
             if (!data.stationGroups[stKey]) data.stationGroups[stKey] = 0;
             data.stationGroups[stKey] += count;
 
+            // Group by Station only
+            if (!data.stationOnlyGroups[station]) data.stationOnlyGroups[station] = 0;
+            data.stationOnlyGroups[station] += count;
+
             data.totalCount += count;
         });
 
         return data;
+    }
+
+    // Shortcut: extract from the visible report div
+    function extractAdData() {
+        return extractAdDataFromElement($('#divAlertDetailReport'));
     }
 
     // ==========================================================================
@@ -1444,13 +1560,7 @@
     }
 
     // Creates a titled chart box, returns canvas 2D context
-    function adCreateBox(title, subtitle, typeBadge, height, canvasId, showCenter) {
-        var centerHtml = showCenter
-            ? '<div class="doughnut-center-text">' +
-            '<div class="center-value" id="' + canvasId + 'CenterVal"></div>' +
-            '<div class="center-label">Total Assets</div></div>'
-            : '';
-
+    function adCreateBox(title, subtitle, typeBadge, height, canvasId) {
         var $box = $('<div></div>').css({
             padding: '20px', background: 'var(--e7-surface, #fff)', borderRadius: '12px',
             boxShadow: 'var(--e7-shadow-card, 0 2px 14px rgba(0,0,0,0.07))', marginBottom: '16px'
@@ -1466,7 +1576,6 @@
         var $wrap = $('<div class="ad-chart-wrapper" style="position:relative;height:' + height + 'px;"></div>');
         var $canvas = $('<canvas id="' + canvasId + '"></canvas>');
         $wrap.append($canvas);
-        if (showCenter) $wrap.append(centerHtml);
         $box.append($wrap);
         $('#adChartContainer').append($box);
         return $canvas[0].getContext('2d');
@@ -1475,13 +1584,11 @@
     // Builds the summary cards row HTML
     function adSummaryHtml(data) {
         var makeKeys = Object.keys(data.makeGroups);
+        var stationKeys = Object.keys(data.stationOnlyGroups);
         var topMake = makeKeys.reduce(function (a, b) {
             return data.makeGroups[a] >= data.makeGroups[b] ? a : b;
         }, makeKeys[0] || '—');
         var topCount = topMake !== '—' ? data.makeGroups[topMake] : 0;
-        var avg = makeKeys.length > 0
-            ? (data.totalCount / makeKeys.length).toFixed(1)
-            : '0';
 
         return '<div class="chart-summary-row">' +
             '<div class="summary-card total-assets"><div class="card-icon"><i class="fa fa-cubes"></i></div>' +
@@ -1496,9 +1603,9 @@
             '<div class="card-value">' + topMake + '</div>' +
             '<div class="card-label">Top Make (' + topCount + ')</div></div>' +
 
-            '<div class="summary-card avg-count"><div class="card-icon"><i class="fa fa-chart-line"></i></div>' +
-            '<div class="card-value">' + avg + '</div>' +
-            '<div class="card-label">Avg per Make</div></div>' +
+            '<div class="summary-card avg-count"><div class="card-icon"><i class="fa fa-map-marker-alt"></i></div>' +
+            '<div class="card-value">' + stationKeys.length + '</div>' +
+            '<div class="card-label">Total Stations</div></div>' +
             '</div>';
     }
 
@@ -1529,24 +1636,100 @@
     }
 
     // ==========================================================================
+    // BUILD SEARCH CRITERIA (reusable)
+    // ==========================================================================
+    function buildSearchCriteria() {
+        return {
+            ZoneIds: getValues('zone'),
+            DivisionIds: getValues('division'),
+            SiteIds: getValues('site'),
+            AssetTypes: getValues('assetType'),
+            siteAttributeDatasList: getValues('assetMake')
+        };
+    }
+
+    // ==========================================================================
     // MAIN DISPATCHER
+    // For chart views: loads ALL records via AJAX (PageSize=100000),
+    // parses the returned HTML in a hidden div, then renders charts.
     // ==========================================================================
     function adRenderView(view) {
         adDestroyAllCharts();
 
+        // ── TABLE VIEW ─────────────────────────────────────────────────────
         if (!view || view === 'Table') {
             $('#divAlertDetailReport').show();
-            $('#divPagination').show();
             $('#adChartContainer').hide().empty();
             return;
         }
 
+        // ── CHART VIEW ─────────────────────────────────────────────────────
         $('#divAlertDetailReport').hide();
-        $('#divPagination').hide();
         $('#adChartContainer').show().empty();
 
-        var data = extractAdData();
-        if (data.rows.length === 0) { adNoData(); return; }
+        // If we already have cached chart data (same search), use it
+        if (!_chartDataDirty && _adChartData && _adChartData.rows.length > 0) {
+            adBuildCharts(view, _adChartData);
+            return;
+        }
+
+        // Show loading spinner in chart area
+        $('#adChartContainer').html(
+            '<div class="text-center p-5">' +
+            '<i class="fas fa-spinner fa-spin fa-2x text-primary"></i>' +
+            '<br/><small class="text-muted mt-2">Loading chart data...</small></div>'
+        );
+
+        // Load ALL data for charts
+        var mAssetLister = {
+            SearchCriteria: buildSearchCriteria()
+        };
+
+        if (!mAssetLister.SearchCriteria.SiteIds.length) { alert('Station is required'); return; }
+
+        $.ajax({
+            url: '/FRS25/AssetDetail/_Details',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(mAssetLister),
+            dataType: 'html',
+            success: function (html) {
+                // Parse the returned HTML in a hidden holder
+                var $holder = $('#divChartDataHolder');
+                $holder.html(html);
+
+                // Extract data from the full (unpaginated) table
+                var data = extractAdDataFromElement($holder);
+
+                console.log('Chart data loaded — rows:', data.rows.length,
+                    '| stations:', Object.keys(data.stationOnlyGroups).length,
+                    '| makes:', Object.keys(data.makeGroups).length,
+                    '| types:', Object.keys(data.assetTypeGroups).length);
+
+                // Cache it
+                _adChartData = data;
+                _chartDataDirty = false;
+
+                // Clear holder
+                $holder.empty();
+
+                // Render
+                $('#adChartContainer').empty();
+                adBuildCharts(view, data);
+            },
+            error: function () {
+                // Fallback: use whatever is in the visible table (paginated)
+                console.warn('Chart AJAX failed, falling back to paginated table data');
+                var data = extractAdData();
+                $('#adChartContainer').empty();
+                adBuildCharts(view, data);
+            }
+        });
+    }
+
+    // Central chart builder — called after data is ready
+    function adBuildCharts(view, data) {
+        if (!data || data.rows.length === 0) { adNoData(); return; }
 
         // Inject summary cards
         $('#adChartContainer').append(adSummaryHtml(data));
@@ -1560,156 +1743,161 @@
     // BAR CHART
     // Chart 1 — Count per Asset Make
     // Chart 2 — Count per Asset Type
+    // Chart 3 — Count per Station
     // ==========================================================================
     function adRenderBar(data) {
-        var makeKeys = Object.keys(data.makeGroups);
-        var typeKeys = Object.keys(data.assetTypeGroups);
-
-        if (makeKeys.length === 0) { adNoData(); return; }
-
-        var makeVals = makeKeys.map(function (k) { return data.makeGroups[k]; });
-        var typeVals = typeKeys.map(function (k) { return data.assetTypeGroups[k]; });
-        var colors1 = makeKeys.map(function (_, i) { return adChartColors[i % adChartColors.length]; });
-        var colors2 = typeKeys.map(function (_, i) { return adChartColors[(i + 5) % adChartColors.length]; });
-        var thick1 = makeKeys.length > 12 ? 'flex' : 36;
-        var thick2 = typeKeys.length > 12 ? 'flex' : 36;
+        var stationKeys = Object.keys(data.stationOnlyGroups);
+        if (stationKeys.length === 0) { adNoData(); return; }
         var th = adTheme();
 
-        // Chart 1: Per Asset Make
-        var ctx1 = adCreateBox(
-            'Asset Distribution by Make',
-            'Count of assets grouped by manufacturer',
-            'Bar Chart',
-            Math.max(340, makeKeys.length * 55),
-            'adBarMake', false
-        );
         Chart.register(ChartDataLabels);
-        var c1 = new Chart(ctx1, {
-            type: 'bar',
-            data: {
-                labels: makeKeys,
-                datasets: [{
-                    label: 'Asset Count',
-                    data: makeVals,
-                    backgroundColor: colors1.map(function (c) { return c + 'cc'; }),
-                    borderColor: colors1,
-                    borderWidth: 1,
-                    borderRadius: 5,
-                    barThickness: thick1
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    datalabels: { anchor: 'end', align: 'end', color: th.text2, font: { weight: '600', size: 11 } },
-                    tooltip: {
-                        backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8,
-                        callbacks: { label: function (c) { return ' Count: ' + c.parsed.y; } }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false, color: th.text2 } },
-                    y: { beginAtZero: true, grid: { color: th.grid }, ticks: { font: { size: 11 }, stepSize: 1, color: th.text3 } }
-                }
-            },
-            plugins: [ChartDataLabels]
-        });
-        adChartList.push(c1);
-        $('#adChartContainer').append(adDataTableHtml(makeKeys, makeVals, data.totalCount));
 
-        // Chart 2: Per Asset Type
-        if (typeKeys.length > 0) {
-            var ctx2 = adCreateBox(
-                'Asset Distribution by Type',
-                'Count of assets grouped by asset type',
-                'Bar Chart',
-                Math.max(300, typeKeys.length * 55),
-                'adBarType', false
-            );
-            var c2 = new Chart(ctx2, {
+        // Build station → make → count AND station → type → count
+        var stationMakeMap = {};
+        var stationTypeMap = {};
+        data.rows.forEach(function (r) {
+            if (!stationMakeMap[r.station]) stationMakeMap[r.station] = {};
+            if (!stationMakeMap[r.station][r.assetMake]) stationMakeMap[r.station][r.assetMake] = 0;
+            stationMakeMap[r.station][r.assetMake] += r.count;
+
+            if (!stationTypeMap[r.station]) stationTypeMap[r.station] = {};
+            if (!stationTypeMap[r.station][r.assetType]) stationTypeMap[r.station][r.assetType] = 0;
+            stationTypeMap[r.station][r.assetType] += r.count;
+        });
+
+        function buildStationBar(station, groupMap, groupLabel, canvasId) {
+            var labels = Object.keys(groupMap);
+            var values = labels.map(function (m) { return groupMap[m]; });
+            var total = values.reduce(function (a, b) { return a + b; }, 0);
+            if (total === 0) return;
+
+            var colors = labels.map(function (_, i) { return adChartColors[i % adChartColors.length]; });
+            var thick = labels.length > 12 ? 'flex' : 36;
+
+            var ctx = adCreateBox(station + ' — ' + groupLabel,
+                groupLabel + ' distribution — Total: ' + total,
+                'Bar Chart', Math.max(280, labels.length * 40), canvasId);
+
+            var c = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: typeKeys,
+                    labels: labels,
                     datasets: [{
                         label: 'Asset Count',
-                        data: typeVals,
-                        backgroundColor: colors2.map(function (c) { return c + 'cc'; }),
-                        borderColor: colors2,
+                        data: values,
+                        backgroundColor: colors.map(function (c) { return c + 'cc'; }),
+                        borderColor: colors,
                         borderWidth: 1,
                         borderRadius: 5,
-                        barThickness: thick2
+                        barThickness: thick
                     }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
-                        datalabels: { anchor: 'end', align: 'end', color: th.text2, font: { weight: '600', size: 11 } },
+                        datalabels: {
+                            anchor: 'end', align: 'end', color: th.text2,
+                            font: { weight: '600', size: 11 },
+                            display: function (ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }
+                        },
                         tooltip: {
                             backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8,
-                            callbacks: { label: function (c) { return ' Count: ' + c.parsed.y; } }
+                            callbacks: { label: function (c) { return ' ' + c.label + ': ' + c.parsed.y; } }
                         }
                     },
                     scales: {
-                        x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false, color: th.text2 } },
-                        y: { beginAtZero: true, grid: { color: th.grid }, ticks: { font: { size: 11 }, stepSize: 1, color: th.text3 } }
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false, color: th.text2 }
+                        },
+                        y: {
+                            beginAtZero: true, grid: { color: th.grid },
+                            ticks: { font: { size: 11 }, stepSize: 1, color: th.text3 }
+                        }
                     }
                 },
                 plugins: [ChartDataLabels]
             });
-            adChartList.push(c2);
-            $('#adChartContainer').append(adDataTableHtml(typeKeys, typeVals, data.totalCount));
+            adChartList.push(c);
+            $('#adChartContainer').append(adDataTableHtml(labels, values, total));
         }
+
+        stationKeys.forEach(function (station, sIdx) {
+            // Asset Make bar
+            if (stationMakeMap[station]) {
+                buildStationBar(station, stationMakeMap[station], 'Asset Make', 'adBarMake_' + sIdx);
+            }
+            // Asset Type bar
+            if (stationTypeMap[station]) {
+                buildStationBar(station, stationTypeMap[station], 'Asset Type', 'adBarType_' + sIdx);
+            }
+        });
     }
 
     // ==========================================================================
     // PIE / DOUGHNUT CHART
-    // Doughnut 1 — Count per Asset Make
-    // Doughnut 2 — Count per Asset Type
+    // Doughnut 1 — Count per Asset Make   (center = total)
+    // Doughnut 2 — Count per Asset Type   (center = total)
+    // Doughnut 3 — Count per Station      (center = total)
     // ==========================================================================
     function adRenderPie(data) {
-        var makeKeys = Object.keys(data.makeGroups);
-        var typeKeys = Object.keys(data.assetTypeGroups);
-
-        if (makeKeys.length === 0) { adNoData(); return; }
+        var stationKeys = Object.keys(data.stationOnlyGroups);
+        if (stationKeys.length === 0) { adNoData(); return; }
         var th = adTheme();
 
         Chart.register(ChartDataLabels);
 
-        // Pie 1: Per Asset Make
-        var makeVals = makeKeys.map(function (k) { return data.makeGroups[k]; });
-        var total1 = makeVals.reduce(function (a, b) { return a + b; }, 0);
-        var colors1 = makeKeys.map(function (_, i) { return adChartColors[i % adChartColors.length]; });
+        // Build station → make → count AND station → type → count
+        var stationMakeMap = {};
+        var stationTypeMap = {};
+        data.rows.forEach(function (r) {
+            if (!stationMakeMap[r.station]) stationMakeMap[r.station] = {};
+            if (!stationMakeMap[r.station][r.assetMake]) stationMakeMap[r.station][r.assetMake] = 0;
+            stationMakeMap[r.station][r.assetMake] += r.count;
 
-        if (total1 > 0) {
-            var ctx1 = adCreateBox(
-                'Asset Distribution by Make',
-                'Proportion of assets per manufacturer',
-                'Doughnut Chart', 380, 'adPieMake', true
-            );
+            if (!stationTypeMap[r.station]) stationTypeMap[r.station] = {};
+            if (!stationTypeMap[r.station][r.assetType]) stationTypeMap[r.station][r.assetType] = 0;
+            stationTypeMap[r.station][r.assetType] += r.count;
+        });
 
-            var c1 = new Chart(ctx1, {
+        function buildStationDoughnut(station, groupMap, groupLabel, canvasId) {
+            var labels = Object.keys(groupMap);
+            var values = labels.map(function (m) { return groupMap[m]; });
+            var total = values.reduce(function (a, b) { return a + b; }, 0);
+            if (total === 0) return;
+
+            var colors = labels.map(function (_, i) { return adChartColors[i % adChartColors.length]; });
+
+            var ctx = adCreateBox(station + ' — ' + groupLabel,
+                groupLabel + ' distribution — Total: ' + total,
+                'Doughnut', 360, canvasId);
+
+            var c = new Chart(ctx, {
                 type: 'doughnut',
                 data: {
-                    labels: makeKeys,
+                    labels: labels,
                     datasets: [{
-                        data: makeVals,
-                        backgroundColor: colors1,
+                        data: values,
+                        backgroundColor: colors,
                         borderColor: th.surface, borderWidth: 2, hoverOffset: 8
                     }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false, cutout: '68%',
                     plugins: {
+                        adCenterText: {
+                            text: total.toLocaleString(),
+                            label: 'Total Assets'
+                        },
                         legend: {
-                            position: makeKeys.length > 10 ? 'bottom' : 'right',
+                            position: labels.length > 10 ? 'bottom' : 'right',
                             labels: { padding: 14, usePointStyle: true, font: { size: 12 }, color: th.text2 }
                         },
                         datalabels: {
                             color: '#fff', font: { weight: '600', size: 11 },
                             formatter: function (value) {
-                                var pct = ((value / total1) * 100).toFixed(0);
+                                var pct = ((value / total) * 100).toFixed(0);
                                 return pct > 5 ? pct + '%' : '';
                             }
                         },
@@ -1717,7 +1905,7 @@
                             backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8,
                             callbacks: {
                                 label: function (c) {
-                                    var pct = total1 > 0 ? ((c.parsed / total1) * 100).toFixed(1) : '0.0';
+                                    var pct = total > 0 ? ((c.parsed / total) * 100).toFixed(1) : '0.0';
                                     return ' ' + c.label + ': ' + c.parsed + ' (' + pct + '%)';
                                 }
                             }
@@ -1726,161 +1914,76 @@
                 },
                 plugins: [ChartDataLabels]
             });
-            adChartList.push(c1);
-            $('#adPieMakeCenterVal').text(total1.toLocaleString());
-            $('#adChartContainer').append(adDataTableHtml(makeKeys, makeVals, total1));
+            adChartList.push(c);
+            $('#adChartContainer').append(adDataTableHtml(labels, values, total));
         }
 
-        // Pie 2: Per Asset Type
-        if (typeKeys.length > 0) {
-            var typeVals = typeKeys.map(function (k) { return data.assetTypeGroups[k]; });
-            var total2 = typeVals.reduce(function (a, b) { return a + b; }, 0);
-            var colors2 = typeKeys.map(function (_, i) { return adChartColors[(i + 5) % adChartColors.length]; });
-
-            if (total2 > 0) {
-                var ctx2 = adCreateBox(
-                    'Asset Distribution by Type',
-                    'Proportion of assets per asset type',
-                    'Doughnut Chart', 340, 'adPieType', true
-                );
-
-                var c2 = new Chart(ctx2, {
-                    type: 'doughnut',
-                    data: {
-                        labels: typeKeys,
-                        datasets: [{
-                            data: typeVals,
-                            backgroundColor: colors2,
-                            borderColor: th.surface, borderWidth: 2, hoverOffset: 8
-                        }]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false, cutout: '68%',
-                        plugins: {
-                            legend: {
-                                position: 'right',
-                                labels: { padding: 14, usePointStyle: true, font: { size: 12 }, color: th.text2 }
-                            },
-                            datalabels: {
-                                color: '#fff', font: { weight: '600', size: 11 },
-                                formatter: function (value) {
-                                    var pct = ((value / total2) * 100).toFixed(0);
-                                    return pct > 5 ? pct + '%' : '';
-                                }
-                            },
-                            tooltip: {
-                                backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8,
-                                callbacks: {
-                                    label: function (c) {
-                                        var pct = total2 > 0 ? ((c.parsed / total2) * 100).toFixed(1) : '0.0';
-                                        return ' ' + c.label + ': ' + c.parsed + ' (' + pct + '%)';
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    plugins: [ChartDataLabels]
-                });
-                adChartList.push(c2);
-                $('#adPieTypeCenterVal').text(total2.toLocaleString());
-                $('#adChartContainer').append(adDataTableHtml(typeKeys, typeVals, total2));
+        stationKeys.forEach(function (station, sIdx) {
+            // Asset Make doughnut
+            if (stationMakeMap[station]) {
+                buildStationDoughnut(station, stationMakeMap[station], 'Asset Make', 'adPieMake_' + sIdx);
             }
-        }
+            // Asset Type doughnut
+            if (stationTypeMap[station]) {
+                buildStationDoughnut(station, stationTypeMap[station], 'Asset Type', 'adPieType_' + sIdx);
+            }
+        });
     }
 
     // ==========================================================================
     // LINE GRAPH
     // Graph 1 — Count per Asset Make
     // Graph 2 — Count per Asset Type
+    // Graph 3 — Count per Station
     // ==========================================================================
     function adRenderGraph(data) {
-        var makeKeys = Object.keys(data.makeGroups);
-        if (makeKeys.length === 0) { adNoData(); return; }
+        var stationKeys = Object.keys(data.stationOnlyGroups);
+        if (stationKeys.length === 0) { adNoData(); return; }
         var th = adTheme();
 
         Chart.register(ChartDataLabels);
 
-        var makeVals = makeKeys.map(function (k) { return data.makeGroups[k]; });
-        var thinPoints = makeKeys.length > 40;
-        var color1 = '#6366f1';
-        var color2 = '#10b981';
+        // Build station → make → count AND station → type → count
+        var stationMakeMap = {};
+        var stationTypeMap = {};
+        data.rows.forEach(function (r) {
+            if (!stationMakeMap[r.station]) stationMakeMap[r.station] = {};
+            if (!stationMakeMap[r.station][r.assetMake]) stationMakeMap[r.station][r.assetMake] = 0;
+            stationMakeMap[r.station][r.assetMake] += r.count;
 
-        // Graph 1: Per Asset Make
-        var ctx1 = adCreateBox(
-            'Asset Trend by Make',
-            'Count of assets across manufacturers',
-            'Line Graph', 380, 'adLineMake', false
-        );
-
-        var c1 = new Chart(ctx1, {
-            type: 'line',
-            data: {
-                labels: makeKeys,
-                datasets: [{
-                    label: 'Asset Count',
-                    data: makeVals,
-                    borderColor: color1,
-                    backgroundColor: adHexToRgba(color1, 0.06),
-                    borderWidth: 2.5,
-                    fill: true,
-                    tension: 0.4,
-                    pointRadius: thinPoints ? 0 : 5,
-                    pointBackgroundColor: th.surface,
-                    pointBorderColor: color1,
-                    pointBorderWidth: 2,
-                    pointHoverRadius: 7
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: { display: false },
-                    datalabels: {
-                        anchor: 'end', align: 'top',
-                        color: color1, font: { weight: '600', size: thinPoints ? 0 : 11 }
-                    },
-                    tooltip: {
-                        backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8,
-                        callbacks: { label: function (c) { return ' Count: ' + c.parsed.y; } }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 11 }, color: th.text2, maxRotation: 40, minRotation: 20, maxTicksLimit: 30, autoSkip: false } },
-                    y: { beginAtZero: true, grid: { color: th.grid }, ticks: { font: { size: 11 }, stepSize: 1, color: th.text3 } }
-                }
-            },
-            plugins: [ChartDataLabels]
+            if (!stationTypeMap[r.station]) stationTypeMap[r.station] = {};
+            if (!stationTypeMap[r.station][r.assetType]) stationTypeMap[r.station][r.assetType] = 0;
+            stationTypeMap[r.station][r.assetType] += r.count;
         });
-        adChartList.push(c1);
-        $('#adChartContainer').append(adDataTableHtml(makeKeys, makeVals, data.totalCount));
 
-        // Graph 2: Per Asset Type
-        var typeKeys = Object.keys(data.assetTypeGroups);
-        if (typeKeys.length > 0) {
-            var typeVals = typeKeys.map(function (k) { return data.assetTypeGroups[k]; });
+        function buildStationLine(station, groupMap, groupLabel, canvasId, colorIdx) {
+            var labels = Object.keys(groupMap);
+            var values = labels.map(function (m) { return groupMap[m]; });
+            var total = values.reduce(function (a, b) { return a + b; }, 0);
+            if (total === 0) return;
 
-            var ctx2 = adCreateBox(
-                'Asset Trend by Type',
-                'Count of assets across asset types',
-                'Line Graph', 360, 'adLineType', false
-            );
+            var color = adChartColors[colorIdx % adChartColors.length];
+            var thinPoints = labels.length > 40;
 
-            var c2 = new Chart(ctx2, {
+            var ctx = adCreateBox(station + ' — ' + groupLabel,
+                groupLabel + ' distribution — Total: ' + total,
+                'Line Graph', 380, canvasId);
+
+            var c = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: typeKeys,
+                    labels: labels,
                     datasets: [{
                         label: 'Asset Count',
-                        data: typeVals,
-                        borderColor: color2,
-                        backgroundColor: adHexToRgba(color2, 0.06),
+                        data: values,
+                        borderColor: color,
+                        backgroundColor: adHexToRgba(color, 0.06),
                         borderWidth: 2.5,
                         fill: true,
                         tension: 0.4,
-                        pointRadius: 5,
+                        pointRadius: thinPoints ? 0 : 5,
                         pointBackgroundColor: th.surface,
-                        pointBorderColor: color2,
+                        pointBorderColor: color,
                         pointBorderWidth: 2,
                         pointHoverRadius: 7
                     }]
@@ -1891,24 +1994,42 @@
                     plugins: {
                         legend: { display: false },
                         datalabels: {
-                            anchor: 'end', align: 'top',
-                            color: color2, font: { weight: '600', size: 11 }
+                            anchor: 'end', align: 'top', color: color,
+                            font: { weight: '600', size: thinPoints ? 0 : 11 },
+                            display: function (ctx) { return ctx.dataset.data[ctx.dataIndex] > 0; }
                         },
                         tooltip: {
                             backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8,
-                            callbacks: { label: function (c) { return ' Count: ' + c.parsed.y; } }
+                            callbacks: { label: function (c) { return ' ' + c.label + ': ' + c.parsed.y; } }
                         }
                     },
                     scales: {
-                        x: { grid: { display: false }, ticks: { font: { size: 11 }, color: th.text2, maxRotation: 40, minRotation: 20, autoSkip: false } },
-                        y: { beginAtZero: true, grid: { color: th.grid }, ticks: { font: { size: 11 }, stepSize: 1, color: th.text3 } }
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 11 }, color: th.text2, maxRotation: 40, minRotation: 20, autoSkip: false }
+                        },
+                        y: {
+                            beginAtZero: true, grid: { color: th.grid },
+                            ticks: { font: { size: 11 }, stepSize: 1, color: th.text3 }
+                        }
                     }
                 },
                 plugins: [ChartDataLabels]
             });
-            adChartList.push(c2);
-            $('#adChartContainer').append(adDataTableHtml(typeKeys, typeVals, data.totalCount));
+            adChartList.push(c);
+            $('#adChartContainer').append(adDataTableHtml(labels, values, total));
         }
+
+        stationKeys.forEach(function (station, sIdx) {
+            // Asset Make line
+            if (stationMakeMap[station]) {
+                buildStationLine(station, stationMakeMap[station], 'Asset Make', 'adLineMake_' + sIdx, sIdx);
+            }
+            // Asset Type line
+            if (stationTypeMap[station]) {
+                buildStationLine(station, stationTypeMap[station], 'Asset Type', 'adLineType_' + sIdx, sIdx + 10);
+            }
+        });
     }
 
     // ==========================================================================
@@ -1924,11 +2045,9 @@
             var workbook = new ExcelJS.Workbook();
             workbook.creator = 'RDPMS'; workbook.created = new Date();
             var worksheet = workbook.addWorksheet('Asset Detail');
-            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name', 'Asset Type', 'Asset Make', 'Count of Asset'];
-            var colCount = headers.length;
 
-            var fromDate = ensureddmmyyyy($('#txtFromDate').val());
-            var toDate = ensureddmmyyyy($('#txtToDate').val());
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name', 'Asset Type', 'Make of Asset', 'Count'];
+            var colCount = headers.length;
 
             var titleRow = worksheet.addRow(['Asset Detail Report']);
             titleRow.height = 30;
@@ -1937,11 +2056,27 @@
             titleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 16, name: 'Calibri' };
             titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
-            var dateRow = worksheet.addRow(['Period: ' + fromDate + ' to ' + toDate + ' | Generated: ' + formatDateDDMMYYYY(new Date())]);
-            dateRow.height = 20;
+            var generatedText = 'Generated: ' + (function () {
+                var now = new Date();
+                return String(now.getDate()).padStart(2, '0') + '/' +
+                    String(now.getMonth() + 1).padStart(2, '0') + '/' +
+                    now.getFullYear() + '  ' +
+                    String(now.getHours()).padStart(2, '0') + ':' +
+                    String(now.getMinutes()).padStart(2, '0') + ':' +
+                    String(now.getSeconds()).padStart(2, '0');
+            })() + '   |   Total Records: ' + (function () {
+                var count = 0;
+                document.querySelector('#divAlertDetailReport table').querySelectorAll('tbody tr').forEach(function (tr) {
+                    if (!tr.querySelector('td[colspan]')) count++;
+                });
+                return count;
+            })();
+
+            var genRow = worksheet.addRow([generatedText]);
+            genRow.height = 18;
             worksheet.mergeCells(2, 1, 2, colCount);
-            dateRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
-            dateRow.getCell(1).alignment = { horizontal: 'center' };
+            genRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
+            genRow.getCell(1).alignment = { horizontal: 'center' };
 
             worksheet.addRow([]);
 
@@ -1955,12 +2090,13 @@
             });
 
             var rowIndex = 0;
+            $('#tblAssetDetail tbody tr').show();
             table.querySelectorAll('tbody tr').forEach(function (tr) {
                 if (tr.querySelector('td[colspan]')) return;
                 rowIndex++;
                 var rowData = [];
                 tr.querySelectorAll('td').forEach(function (td) { rowData.push(td.innerText.trim()); });
-                rowData.splice(4, 0, 'Energy7');
+                rowData.splice(4, 0, '');
 
                 var excelRow = worksheet.addRow(rowData);
                 excelRow.height = 22;
@@ -1971,8 +2107,9 @@
                     cell.border = { top: { style: 'thin', color: { argb: 'FFE2E8F0' } }, left: { style: 'thin', color: { argb: 'FFE2E8F0' } }, bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } }, right: { style: 'thin', color: { argb: 'FFE2E8F0' } } };
                 });
             });
+            if (typeof goToPage === 'function') goToPage(1);
 
-            [8, 12, 15, 18, 14, 15, 15, 15].forEach(function (w, i) {
+            [8, 12, 15, 18, 15, 15, 15, 15].forEach(function (w, i) {
                 worksheet.getColumn(i + 1).width = w;
             });
 
@@ -2003,9 +2140,25 @@
 
         try {
             $("#loader").show();
-            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name', 'Asset Type', 'Asset Make', 'Count of Asset'];
-            var csv = [headers.map(function (h) { return '"' + h + '"'; }).join(',')];
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name', 'Asset Type', 'Make of Asset', 'Count'];
 
+            var generatedNow = (function () {
+                var now = new Date();
+                return String(now.getDate()).padStart(2, '0') + '/' +
+                    String(now.getMonth() + 1).padStart(2, '0') + '/' +
+                    now.getFullYear() + '  ' +
+                    String(now.getHours()).padStart(2, '0') + ':' +
+                    String(now.getMinutes()).padStart(2, '0') + ':' +
+                    String(now.getSeconds()).padStart(2, '0');
+            })();
+
+            var csv = [];
+            csv.push('"Asset Detail Report"');
+            csv.push('"Generated: ' + generatedNow + '"');
+            csv.push('');
+            csv.push(headers.map(function (h) { return '"' + h + '"'; }).join(','));
+
+            $('#tblAssetDetail tbody tr').show();
             table.querySelectorAll('tbody tr').forEach(function (row) {
                 if (row.querySelector('td[colspan]')) return;
                 var rowData = [];
@@ -2013,9 +2166,11 @@
                     var text = col.innerText.replace(/(\r\n|\n|\r)/gm, ' ').trim().replace(/"/g, '""');
                     rowData.push('"' + text + '"');
                 });
-                rowData.splice(4, 0, '"Energy7"');
+                rowData.splice(4, 0, '""');
+
                 csv.push(rowData.join(','));
             });
+            if (typeof goToPage === 'function') goToPage(1);
 
             saveAs(new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' }), getDownloadFileName('csv'));
             $("#loader").hide();
@@ -2024,6 +2179,146 @@
             $("#loader").hide();
             console.error('CSV Error:', err);
             CommonNotification("ERROR", "Error downloading CSV", "Error");
+        }
+    }
+
+    // ==========================================================================
+    // PDF DOWNLOAD
+    // ==========================================================================
+    function fnDownloadPDF() {
+        if (selectedViewType !== 'Table') { alert('Please switch to Table view to download'); return; }
+        var table = document.querySelector('#divAlertDetailReport table');
+        if (!table) { alert('No data available to download'); return; }
+
+        try {
+            $("#loader").show();
+
+            var { jsPDF } = window.jspdf;
+            var doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+            var pageW = doc.internal.pageSize.getWidth();
+
+            var tableBody = [];
+            var rowIndex = 0;
+
+            $('#tblAssetDetail tbody tr').show();
+            table.querySelectorAll('tbody tr').forEach(function (tr) {
+                if (tr.querySelector('td[colspan]')) return;
+                rowIndex++;
+                var row = [];
+                tr.querySelectorAll('td').forEach(function (td) {
+                    row.push(td.innerText.replace(/(\r\n|\n|\r)/gm, ' ').trim());
+                });
+                row.splice(4, 0, '');
+                tableBody.push(row);
+            });
+            if (typeof goToPage === 'function') goToPage(1);
+
+            if (tableBody.length === 0) {
+                $("#loader").hide();
+                alert('No data available to download');
+                return;
+            }
+
+            var metaText = 'Generated: ' + (function () {
+                var now = new Date();
+                return String(now.getDate()).padStart(2, '0') + '/' +
+                    String(now.getMonth() + 1).padStart(2, '0') + '/' +
+                    now.getFullYear() + '  ' +
+                    String(now.getHours()).padStart(2, '0') + ':' +
+                    String(now.getMinutes()).padStart(2, '0') + ':' +
+                    String(now.getSeconds()).padStart(2, '0');
+            })() + '   |   Total Records: ' + rowIndex;
+
+            var headers = [
+                'Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name',
+                'Asset Type', 'Make of Asset', 'Count'
+            ];
+
+            doc.autoTable({
+                startY: 58,
+                head: [headers],
+                body: tableBody,
+                theme: 'grid',
+                tableWidth: 'auto',
+                styles: {
+                    fontSize: 8,
+                    cellPadding: 4,
+                    valign: 'middle',
+                    halign: 'center',
+                    lineColor: [226, 232, 240],
+                    lineWidth: 0.4,
+                    overflow: 'linebreak'
+                },
+                headStyles: {
+                    fillColor: [30, 58, 95],
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold',
+                    fontSize: 8,
+                    halign: 'center',
+                    valign: 'middle',
+                    minCellHeight: 28,
+                    cellPadding: { top: 5, bottom: 5, left: 3, right: 3 }
+                },
+                alternateRowStyles: {
+                    fillColor: [241, 245, 249]
+                },
+                bodyStyles: {
+                    textColor: [51, 51, 51]
+                },
+                columnStyles: {
+                    0: { cellWidth: 'auto' },
+                    1: { cellWidth: 'auto' },
+                    2: { cellWidth: 'auto' },
+                    3: { cellWidth: 'auto' },
+                    4: { cellWidth: 'auto' },
+                    5: { cellWidth: 'auto' },
+                    6: { cellWidth: 'auto' },
+                    7: { cellWidth: 'auto' }
+                },
+                margin: { top: 58, left: 14, right: 14 },
+                didParseCell: function (data) {
+                    if (data.section === 'body' && data.column.index === 7) {
+                        data.cell.styles.fontStyle = 'bold';
+                        data.cell.styles.textColor = [30, 58, 95];
+                    }
+                },
+                didDrawPage: function (data) {
+                    doc.setFillColor(79, 70, 229);
+                    doc.rect(0, 0, pageW, 36, 'F');
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(15);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text('Asset Detail Report', pageW / 2, 23, { align: 'center' });
+
+                    doc.setFillColor(240, 244, 255);
+                    doc.rect(0, 36, pageW, 18, 'F');
+                    doc.setFont('helvetica', 'italic');
+                    doc.setFontSize(8);
+                    doc.setTextColor(71, 85, 105);
+                    doc.text(metaText, pageW / 2, 47, { align: 'center' });
+
+                    var pageNum = doc.internal.getCurrentPageInfo().pageNumber;
+                    var totalPg = doc.internal.getNumberOfPages();
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor(148, 163, 184);
+                    doc.text(
+                        'Page ' + pageNum + ' of ' + totalPg,
+                        pageW - 14,
+                        doc.internal.pageSize.getHeight() - 8,
+                        { align: 'right' }
+                    );
+                }
+            });
+
+            doc.save(getDownloadFileName('pdf'));
+            $("#loader").hide();
+            CommonNotification("SUCCESS", "PDF downloaded successfully!", "Success");
+
+        } catch (err) {
+            $("#loader").hide();
+            console.error('PDF Error:', err);
+            CommonNotification("ERROR", "Error downloading PDF", "Error");
         }
     }
 

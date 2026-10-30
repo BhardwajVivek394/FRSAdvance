@@ -97,6 +97,7 @@
     var SIGNAL_TS_REL_WINDOW_MS = 15 * 1000; // IsFresh-missing: latest mA group margin
     var REPLAY_STALE_MS = 3 * 60 * 1000;    // replay w/o IsFresh: display-stale age
     var PM_BLINK_MS = 6000;
+    var PM_FAIL_MS = 60 * 1000;             // NWKR + RWKR both dropped this long = PM failed (red flash)
 
     var PM_NWKR_IDS = [25, 27, 576, 578];
     var PM_RWKR_IDS = [26, 28, 577, 579];
@@ -2079,6 +2080,7 @@
                 if (c.attrs.circle1.fill !== PM_OFF) { c.attrs.circle1.fill = PM_OFF; touched = true; }
                 if (c.attrs.body.stroke !== OFF_GREY) { c.attrs.body.stroke = OFF_GREY; touched = true; }
                 if (c.attrs.pmBlink) { delete c.attrs.pmBlink; touched = true; }
+                if (c.attrs.pmFail) { delete c.attrs.pmFail; touched = true; }
             } else if (SHUNT_TYPES[c.type]) {
                 if (c.attrs.shuntLive) { c.attrs.shuntLive = ''; touched = true; }
             }
@@ -3279,8 +3281,9 @@
         }
         if (nw && nw.isPickup && !(rw && rw.isPickup)) return { pos: 'NORMAL', stale: stale, src: 'datalogger' };
         if (rw && rw.isPickup && !(nw && nw.isPickup)) return { pos: 'REVERSE', stale: stale, src: 'datalogger' };
-        /* 4. nothing energised → neutral (no phantom direction on the schematic) */
-        return { pos: 'UNKNOWN', stale: stale, src: 'none' };
+        /* 4. nothing energised → neutral (no phantom direction on the schematic).
+           hasKr: KR indications exist, so NWKR and RWKR are both actually dropped. */
+        return { pos: 'UNKNOWN', stale: stale, src: 'none', hasKr: present > 0 || !!(nw || rw) };
     }
     /* Host delegation: pmEnergisedDirection (616 energised-KR rule) is always
        consulted for a host-owned asset; resolvePmDirectionLikeTable only when
@@ -3370,6 +3373,30 @@
     function clearPmBlinkTimers() {
         for (var k in _pmBlinkTimers) if (_pmBlinkTimers.hasOwnProperty(k)) clearTimeout(_pmBlinkTimers[k]);
         _pmBlinkTimers = {};
+        for (var f in _pmFailTimers) if (_pmFailTimers.hasOwnProperty(f)) clearTimeout(_pmFailTimers[f]);
+        _pmFailTimers = {};
+    }
+    /* NWKR + RWKR both dropped for PM_FAIL_MS → attrs.pmFail (red flash) until a KR picks up. */
+    var _pmFailTimers = {};
+    function updatePmFail(cell, name, dropped) {
+        if (!dropped) {
+            if (_pmFailTimers[cell.id]) { clearTimeout(_pmFailTimers[cell.id]); delete _pmFailTimers[cell.id]; }
+            if (cell.attrs.pmFail) {
+                delete cell.attrs.pmFail;
+                slog('Point machine ' + name + ' KR detection restored');
+                return true;
+            }
+            return false;
+        }
+        if (cell.attrs.pmFail || _pmFailTimers[cell.id]) return false;
+        _pmFailTimers[cell.id] = setTimeout(function () {
+            delete _pmFailTimers[cell.id];
+            cell.attrs = cell.attrs || {};
+            cell.attrs.pmFail = true;
+            markDirty(cell); requestRender();
+            slog('Point machine ' + name + ' FAILED: NWKR and RWKR both dropped > ' + (PM_FAIL_MS / 1000) + 's');
+        }, PM_FAIL_MS);
+        return false;
     }
     function markDirty(cell) { state.dirty[cell.id] = cell; }
     function hasDirty() { for (var k in state.dirty) if (state.dirty.hasOwnProperty(k)) return true; return false; }
@@ -3522,6 +3549,7 @@
                 slog('Point machine ' + name + ' OPERATED: ' + prevPos + ' → ' + pos);
             }
             if (pos === 'NORMAL' || pos === 'REVERSE') state.pmLast[cell.id] = pos;
+            if (updatePmFail(cell, name, pos === 'UNKNOWN' && !!pm.hasKr && !pm.stale && !_replayOn)) changed = true;
             if (cell.attrs.circle1.fill !== pf) {
                 cell.attrs.circle1.fill = pf; cell.attrs.circle1.stroke = pf; changed = true;
                 slog('Point machine ' + name + ' → ' + pos + ' (' + pm.src + ')');

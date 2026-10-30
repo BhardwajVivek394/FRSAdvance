@@ -671,15 +671,16 @@
 
             .alrt-table thead th {
                 text-align: left;
-                padding: 12px 16px;
-                font-size: 11px;
+                padding: 10px 6px;
+                font-size: 10.5px;
+                line-height: 1.3;
                 font-weight: 600;
                 text-transform: uppercase;
-                letter-spacing: .5px;
+                letter-spacing: .3px;
                 color: var(--text-muted);
                 background: var(--bg-page);
                 border-bottom: 1px solid var(--border);
-                white-space: nowrap;
+                white-space: normal;
                 cursor: pointer;
             }
 
@@ -688,9 +689,9 @@
                 }
 
             .alrt-table tbody td {
-                padding: 14px 16px;
+                padding: 10px 6px;
                 border-bottom: 1px solid var(--border-light);
-                font-size: 13px;
+                font-size: 12px;
                 vertical-align: middle;
             }
 
@@ -710,11 +711,12 @@
         .alrt-type-badge {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 5px 10px;
+            gap: 2px;
+            padding: 4px 6px;
             border-radius: var(--radius);
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
+            white-space: nowrap;
         }
 
             .alrt-type-badge.failure {
@@ -770,10 +772,28 @@
             gap: 2px;
         }
 
+        /* two or more values sharing one column */
+        .alrt-stack {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+        }
+
+        .alrt-time-lbl {
+            display: block;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: .3px;
+            color: var(--text-muted);
+        }
+
         .alrt-time-main {
             font-weight: 500;
             color: var(--text-primary);
-            font-size: 13px;
+            font-size: 12px;
+            white-space: normal; /* date over time, keeps the column narrow */
         }
 
         .alrt-time-rel {
@@ -783,10 +803,11 @@
 
         .alrt-dur {
             font-family: 'SF Mono','Monaco',monospace;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
-            padding: 4px 10px;
+            padding: 3px 5px;
             border-radius: var(--radius-sm);
+            white-space: nowrap;
         }
 
             .alrt-dur.critical {
@@ -807,11 +828,12 @@
         .alrt-status {
             display: inline-flex;
             align-items: center;
-            gap: 5px;
-            padding: 5px 12px;
+            gap: 2px;
+            padding: 4px 7px;
             border-radius: 20px;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
+            white-space: nowrap;
         }
 
             .alrt-status.pending {
@@ -864,26 +886,26 @@
         .alrt-maintainer-cell {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 5px;
         }
 
         .alrt-maint-avatar {
-            width: 32px;
-            height: 32px;
+            width: 24px;
+            height: 24px;
             border-radius: var(--radius);
             background: linear-gradient(135deg, var(--e7-rail-from), var(--e7-rail-to));
             color: #fff;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             flex-shrink: 0;
         }
 
         .alrt-maint-name {
             font-weight: 600;
-            font-size: 13px;
+            font-size: 12px;
             color: var(--text-primary);
         }
 
@@ -926,12 +948,13 @@
 
         .alrt-action-btns {
             display: flex;
-            gap: 6px;
+            flex-wrap: wrap;
+            gap: 3px;
         }
 
         .alrt-act-btn {
-            width: 32px;
-            height: 32px;
+            width: 28px;
+            height: 28px;
             border-radius: var(--radius);
             border: 1px solid var(--border);
             background: var(--bg-card);
@@ -3322,6 +3345,10 @@
                  color: var(--e7-green);
              }
 
+             .pdf-icon {
+                 color: var(--e7-red);
+             }
+
 
 
 
@@ -3851,6 +3878,13 @@
                                     <i class="fas fa-file-excel excel-icon"></i>
                                     Export as Excel
                                 </button>
+
+                                <div class="alrt-divider"></div>
+
+                                <button class="alrt-export-item" onclick="alrtExportAlerts('pdf')">
+                                    <i class="fas fa-file-pdf pdf-icon"></i>
+                                    Export as PDF
+                                </button>
                             </div>
                         </div>
                         <button class="alrt-btn btn-primary btn-sm" id="alrtRefreshBtn" onclick="alrtRefresh()">
@@ -4313,7 +4347,7 @@ window._alertWsState = window._alertWsState || {
     // ============================================================
     // fnGetAlertList — calls Alerts/_List, renders JSON into new UI
     // ============================================================
-    function fnGetAlertList(skip) {
+    function fnGetAlertList(skip, silent) {
         var m = { SearchCriteria: {}, Pager: {} };
         var fltStatusVal = $('#fltStatus').val();
         m.SearchCriteria.AlertStatus = (fltStatusVal !== '' && fltStatusVal != null)
@@ -4345,7 +4379,8 @@ window._alertWsState = window._alertWsState || {
 
         window._alertCurrentSkip = m.Pager.Skip;
 
-        if (window.E7Loader) { E7Loader.show('Loading alerts…'); } else { $("#e7-loader").show(); }
+        // silent = live websocket refresh: no full-page loader
+        if (!silent) { if (window.E7Loader) { E7Loader.show('Loading alerts…'); } else { $("#e7-loader").show(); } }
         $.ajax({
             url: '/FRS25/Alerts/GetAlertList',
             type: 'POST',
@@ -4410,9 +4445,10 @@ window._alertWsState = window._alertWsState || {
             var fltTo = document.getElementById('fltTo');
             if (fltFrom && !fltFrom.value) fltFrom.value = fmtDate(oneMonthAgo);
             if (fltTo && !fltTo.value) fltTo.value = fmtDate(today);
+            alrtSyncDateLimits();
         })();
 
-        alrtLoadMaintList();        // load maintenance sidebar
+        alrtLoadMaintList();       // load maintenance sidebar
         fnGetAlertList(0);          // load list (now with 1-month dates)
         fnGetAlertCounts();         // load tile + badge counts
         fnLoadPerformanceMetrics();
@@ -4547,7 +4583,35 @@ window._alertWsState = window._alertWsState || {
         fnGetAlertList(0);
     }
 
+    // Keep the pickers from offering an inverted range: To can't go before From, From can't go after To
+    function alrtSyncDateLimits() {
+        var fromEl = document.getElementById('fltFrom');
+        var toEl = document.getElementById('fltTo');
+        if (!fromEl || !toEl) return;
+        toEl.min = fromEl.value || '';
+        fromEl.max = toEl.value || '';
+    }
+
+    // yyyy-MM-dd strings compare correctly as text
+    function alrtIsDateRangeValid() {
+        var from = $('#fltFrom').val();
+        var to = $('#fltTo').val();
+        return !(from && to && from > to);
+    }
+
+    function alrtOnDateChange(e) {
+        if (!alrtIsDateRangeValid()) {
+            alrtToast('warning', 'Invalid Date Range', 'From Date cannot be greater than To Date.');
+            e.target.value = '';
+        }
+        alrtSyncDateLimits();
+    }
+
     function alrtApplyFilters() {
+        if (!alrtIsDateRangeValid()) {
+            alrtToast('warning', 'Invalid Date Range', 'From Date cannot be greater than To Date.');
+            return;
+        }
         alrtCurrentPage = 1;
         alrtCurrentFilter = 'all';
         document.querySelectorAll('.alrt-tab').forEach(function (t) { t.classList.remove('active'); });
@@ -5644,8 +5708,8 @@ window._alertWsState = window._alertWsState || {
     function alrtOpenAnalysis(alertId) {
         var r = (window._alrtAnalysisRows || {})[alertId];
         if (!r) {
-            alert('Debug data not found for alert #' + alertId +
-                '.\nPlease refresh the alert list and try again.');
+            showWarning('Debug data not found for alert #' + alertId +
+                '. Please refresh the alert list and try again.', 'Alert Analysis');
             return;
         }
 
@@ -6872,6 +6936,7 @@ window._alertWsState = window._alertWsState || {
         $('#fltStatus').val('');
         $('#fltFrom').val('');
         $('#fltTo').val('');
+        alrtSyncDateLimits();
         alrtCheckFilterActive();
         alrtCurrentPage = 1;
         alrtCurrentFilter = 'all';
@@ -6886,6 +6951,12 @@ window._alertWsState = window._alertWsState || {
         ['fltAssetType', 'fltStatus', 'fltFrom', 'fltTo'].forEach(function (id) {
             var el = document.getElementById(id);
             if (el) el.addEventListener('change', alrtCheckFilterActive);
+        });
+        ['fltFrom', 'fltTo'].forEach(function (id) {
+            var el = document.getElementById(id);
+            // blur, not change: change fires per keystroke, so a half-typed year (0002) was
+            // rejected and the min/max write dropped the segment being typed
+            if (el) el.addEventListener('blur', alrtOnDateChange);
         });
     });
 
@@ -6915,7 +6986,7 @@ window._alertWsState = window._alertWsState || {
     }
 
     // ════════════════════════════════════════════════════════════
-    //  EXPORT — CSV and Excel download
+    //  EXPORT — Alert History report (CSV / Excel / PDF), same format as 616 AlertDetailReport
     // ════════════════════════════════════════════════════════════
     function alrtToggleExportMenu(e) {
         e.stopPropagation();
@@ -6974,65 +7045,47 @@ window._alertWsState = window._alertWsState || {
         m.Pager.PageSize = 99999;
 
         $.ajax({
-            url: '/FRS25/Alerts/GetAlertList',
+            url: '/FRS25/Alerts/DownloadAlertHistory',
             type: 'POST',
             contentType: 'application/x-www-form-urlencoded',
             data: $.param(m),
-            dataType: 'html',
-            success: function (html) {
-                // Parse HTML and extract table rows
-                var $parsed = $('<div>').html(html);
-                var headers = [
-                    'Type', 'Asset', 'Station', 'Division', 'Zone',
-                    'Cause Code', 'Incidence Time', 'Duration',
-                    'Status', 'Feedback', 'Maintainer', 'Role', 'Mobile'
-                ];
-                var dataRows = [];
-
-                $parsed.find('.alrt-table tbody tr').each(function () {
-                    var $tds = $(this).find('td');
-                    var row = [];
-                    row.push($tds.eq(0).find('.alrt-type-badge').text().trim().replace(/\s+/g, ' '));
-
-                    var assetInfo = $tds.eq(1);
-                    row.push(assetInfo.find('.alrt-asset-name').text().trim());
-                    var locText = assetInfo.find('.alrt-asset-loc').text().trim().replace(/\s+/g, ' ');
-                    var locParts = locText.split('•').map(function (s) { return s.trim(); });
-                    row.push(locParts[0] || '');  // station
-                    row.push(locParts[1] || '');  // division
-                    row.push(locParts[2] || '');  // zone
-                    row.push(assetInfo.find('.alrt-cause-code').text().trim());
-
-                    row.push($tds.eq(2).find('.alrt-time-main').text().trim());
-                    row.push($tds.eq(3).text().trim().replace(/\s+/g, ' '));
-                    row.push($tds.eq(4).find('.alrt-status').text().trim().replace(/\s+/g, ' '));
-                    row.push($tds.eq(5).text().trim());
-                    row.push($tds.eq(6).find('.alrt-maint-name').text().trim());
-                    row.push($tds.eq(6).find('.alrt-maint-role').text().trim());
-                    row.push($tds.eq(6).find('.alrt-maint-mob').text().trim());
-                    dataRows.push(row);
-                });
-
-                if (dataRows.length === 0) {
+            dataType: 'json',
+            success: function (resp) {
+                var records = (resp && resp.Records) ? resp.Records : [];
+                if (records.length === 0) {
                     alrtToast('warning', 'No Data', 'No alerts to export for the current filters.');
                     alrtResetExportBtn(btn);
                     return;
                 }
 
-                var now = new Date();
-                var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
-                var ts = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) +
-                    '_' + pad(now.getHours()) + pad(now.getMinutes());
-
-                if (format === 'excel') {
-                    alrtExportToExcel(headers, dataRows, 'Alerts_' + ts);
-                } else {
-                    alrtExportToCsv(headers, dataRows, 'Alerts_' + ts + '.csv');
+                function onDone() {
+                    alrtToast('success', 'Export Complete',
+                        records.length + ' alerts exported as ' + format.toUpperCase() + '.');
+                    alrtResetExportBtn(btn);
+                }
+                function onFail(error) {
+                    console.error('Alert export error:', error);
+                    alrtToast('error', 'Export Failed', 'Could not generate the ' + format.toUpperCase() + ' file.');
+                    alrtResetExportBtn(btn);
                 }
 
-                alrtToast('success', 'Export Complete',
-                    dataRows.length + ' alerts exported as ' + format.toUpperCase() + '.');
-                alrtResetExportBtn(btn);
+                try {
+                    var period = 'Period: ' + alrtDisplayDate(m.SearchCriteria.FromDate) +
+                        ' to ' + alrtDisplayDate(m.SearchCriteria.ToDate);
+
+                    if (format === 'excel') {
+                        alrtExportToExcel(records, period).then(onDone, onFail);
+                        return;
+                    }
+                    if (format === 'pdf') {
+                        alrtExportToPdf(records, period);
+                    } else {
+                        alrtExportToCsv(records, period);
+                    }
+                    onDone();
+                } catch (error) {
+                    onFail(error);
+                }
             },
             error: function () {
                 alrtToast('error', 'Export Failed', 'Could not export alerts. Please try again.');
@@ -7041,98 +7094,284 @@ window._alertWsState = window._alertWsState || {
         });
     }
 
-    // ── CSV Export ────────────────────────────────────────────────
-    function alrtExportToCsv(headers, rows, fileName) {
-        var allRows = [headers].concat(rows);
-        var csv = allRows.map(function (row) {
-            return row.map(function (cell) {
-                var val = (cell || '').toString().replace(/"/g, '""');
-                return '"' + val + '"';
-            }).join(',');
-        }).join('\r\n');
+    // ── Report headers and row mapper (616 DOWNLOAD_HEADERS / recordToRow) ──
+    var ALERT_HISTORY_HEADERS = [
+        'Sr.No', 'Zone', 'Division', 'Station', 'Vendor Name', 'Alert Type', 'Asset Type', 'Asset Number',
+        'Alert Status', 'Cause of Asset Failure', 'Alert Feedback (T/PT/M/F)',
+        'Incidence Date & Time', 'Rectification Date & Time', 'Incidence Duration(hh:mm:ss)',
+        'Alert Feedback Date & Time', 'Maintainer Name', 'Maintainer Designation',
+        'Maintainer Mobile Number', 'Maintainer Remarks'
+    ];
 
-        var bom = '\uFEFF'; // UTF-8 BOM for Excel compatibility
-        var blob = new Blob([bom + csv], { type: 'text/csv;charset=utf-8;' });
-        alrtDownloadBlob(blob, fileName);
+    // Bind '-' for any null/undefined/empty value instead of a blank cell.
+    function alrtDlVal(v) {
+        return (v === null || v === undefined || v === '') ? '-' : v;
     }
 
-    // ── Excel Export (native .xlsx via SheetJS) ───────────────────
-    function alrtExportToExcel(headers, rows, fileName) {
-        function doExcel() {
-            var XLSX = window.XLSX;
-            var wsData = [headers].concat(rows);
+    function alrtRecordToRow(r) {
+        return [
+            alrtDlVal(r.SrNo), alrtDlVal(r.Zone), alrtDlVal(r.Division), alrtDlVal(r.Station), 'Energy7',
+            alrtDlVal(r.AlertType), alrtDlVal(r.AssetType), alrtDlVal(r.AssetNumber),
+            alrtDlVal(r.AlertStatus), alrtDlVal(r.CauseOfFailure), alrtDlVal(r.AlertFeedback),
+            alrtDlVal(r.IncidenceDateTime), alrtDlVal(r.RectificationDateTime), alrtDlVal(r.IncidenceDuration),
+            alrtDlVal(r.FeedbackDateTime), alrtDlVal(r.MaintainerName), alrtDlVal(r.MaintainerDesignation),
+            alrtDlVal(r.MaintainerMobile), alrtDlVal(r.Remarks)
+        ];
+    }
 
-            var wb = XLSX.utils.book_new();
-            var ws = XLSX.utils.aoa_to_sheet(wsData);
+    function alrtDisplayDate(iso) {           // yyyy-mm-dd → dd/mm/yyyy
+        var p = (iso || '').split('-');
+        return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : '-';
+    }
 
-            // ── Column widths ──────────────────────────────────────
-            var colWidths = headers.map(function (h, i) {
-                var max = h.length;
-                rows.forEach(function (r) {
-                    var len = (r[i] || '').toString().length;
-                    if (len > max) max = len;
-                });
-                return { wch: Math.min(max + 2, 40) };
-            });
-            ws['!cols'] = colWidths;
+    function alrtFormattedNow() {
+        var now = new Date();
+        var pad = function (n) { return String(n).padStart(2, '0'); };
+        return pad(now.getDate()) + '/' + pad(now.getMonth() + 1) + '/' + now.getFullYear() + ' ' +
+            pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+    }
 
-            // ── Style header row (bold + background) ───────────────
-            var range = XLSX.utils.decode_range(ws['!ref']);
-            for (var C = range.s.c; C <= range.e.c; C++) {
-                var cellAddr = XLSX.utils.encode_cell({ r: 0, c: C });
-                if (!ws[cellAddr]) continue;
-                ws[cellAddr].s = {
-                    font: { bold: true, color: { rgb: 'FFFFFF' } },
-                    fill: { fgColor: { rgb: '0077CC' } },
-                    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-                    border: {
-                        bottom: { style: 'thin', color: { rgb: 'CCCCCC' } },
-                        right: { style: 'thin', color: { rgb: 'CCCCCC' } }
-                    }
-                };
-            }
+    function alrtExportFileName(extension) {
+        var now = new Date();
+        var pad = function (n) { return String(n).padStart(2, '0'); };
+        return 'AlertDetailReport_' + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) +
+            '_' + pad(now.getHours()) + pad(now.getMinutes()) + '.' + extension;
+    }
 
-            // ── Alternate row colours ──────────────────────────────
-            for (var R = 1; R <= range.e.r; R++) {
-                var fillColor = R % 2 === 0 ? 'F0F7FF' : 'FFFFFF';
-                for (var CC = range.s.c; CC <= range.e.c; CC++) {
-                    var ca = XLSX.utils.encode_cell({ r: R, c: CC });
-                    if (!ws[ca]) ws[ca] = { t: 's', v: '' };
-                    ws[ca].s = {
-                        fill: { fgColor: { rgb: fillColor } },
-                        alignment: { vertical: 'center', wrapText: false },
-                        border: {
-                            bottom: { style: 'thin', color: { rgb: 'E2E8F0' } },
-                            right: { style: 'thin', color: { rgb: 'E2E8F0' } }
-                        }
-                    };
-                }
-            }
-
-            // ── Freeze top row ─────────────────────────────────────
-            ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-
-            XLSX.utils.book_append_sheet(wb, ws, 'Alerts');
-            XLSX.writeFile(wb, fileName + '.xlsx');
+    // ── CSV Export ────────────────────────────────────────────────
+    function alrtExportToCsv(records, period) {
+        function csvEscape(val) {
+            var s = (val == null) ? '' : String(val);
+            s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/"/g, '""');
+            return '"' + s + '"';
         }
 
-        // Load SheetJS if not already loaded
-        if (typeof window.XLSX !== 'undefined') {
-            doExcel();
-        } else {
-            var script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-            script.onload = function () { doExcel(); };
-            script.onerror = function () {
-                alrtToast('error', 'Library Error', 'Could not load Excel library. Falling back to CSV.');
-                alrtExportToCsv(
-                    headers.length ? headers : [],
-                    typeof rows !== 'undefined' ? rows : [],
-                    fileName + '.csv'
-                );
+        var csv = [];
+        csv.push('"Alert History Report"');
+        csv.push('"' + period + '"');
+        csv.push('"Generated: ' + alrtFormattedNow() + '"');
+        csv.push('');
+        csv.push(ALERT_HISTORY_HEADERS.map(csvEscape).join(','));
+        records.forEach(function (rec) {
+            csv.push(alrtRecordToRow(rec).map(csvEscape).join(','));
+        });
+
+        var bom = '﻿'; // UTF-8 BOM for Excel compatibility
+        var blob = new Blob([bom + csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        alrtDownloadBlob(blob, alrtExportFileName('csv'));
+    }
+
+    // ── Excel Export (ExcelJS) ────────────────────────────────────
+    function alrtExportToExcel(records, period) {
+        var workbook = new ExcelJS.Workbook();
+        workbook.creator = 'RDPMS';
+        workbook.created = new Date();
+        var columnCount = ALERT_HISTORY_HEADERS.length;
+
+        var worksheet = workbook.addWorksheet('Alert History Report', {
+            views: [{ state: 'frozen', ySplit: 4 }]
+        });
+
+        // Row 1: Title
+        var titleRow = worksheet.addRow(['Alert History Report']);
+        titleRow.height = 26;
+        worksheet.mergeCells(1, 1, 1, columnCount);
+        var titleCell = titleRow.getCell(1);
+        titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4338CA' } };
+        titleCell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 15, name: 'Segoe UI' };
+        titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        // Row 2: Period / meta info
+        var dateRow = worksheet.addRow([period + '   |   Generated: ' + alrtFormattedNow()]);
+        dateRow.height = 18;
+        worksheet.mergeCells(2, 1, 2, columnCount);
+        var dateCell = dateRow.getCell(1);
+        dateCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+        dateCell.font = { italic: true, size: 9, color: { argb: 'FF3730A3' }, name: 'Segoe UI' };
+        dateCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+        // Row 3: Spacer
+        worksheet.addRow([]).height = 4;
+
+        // Row 4: Header
+        var headerRow = worksheet.addRow(ALERT_HISTORY_HEADERS);
+        headerRow.height = 26;
+        headerRow.eachCell({ includeEmpty: true }, function (cell) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
+            cell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10, name: 'Segoe UI' };
+            cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+            cell.border = {
+                bottom: { style: 'thin', color: { argb: 'FF93C5FD' } },
+                right: { style: 'hair', color: { argb: 'FF3B5270' } }
             };
-            document.head.appendChild(script);
+        });
+
+        // Data rows
+        records.forEach(function (rec, idx) {
+            var row = worksheet.addRow(alrtRecordToRow(rec));
+            var isEven = idx % 2 === 0;
+            row.eachCell({ includeEmpty: true }, function (cell, colNumber) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isEven ? 'FFF8FAFC' : 'FFFFFFFF' } };
+                cell.font = { size: 10, name: 'Segoe UI', color: { argb: 'FF1E293B' } };
+                // wrapText on Remarks (column 19) so \n renders as a line break
+                cell.alignment = {
+                    vertical: 'middle',
+                    horizontal: colNumber === 1 ? 'center' : 'left',
+                    wrapText: colNumber === 19
+                };
+                cell.border = {
+                    bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } },
+                    right: { style: 'hair', color: { argb: 'FFE2E8F0' } }
+                };
+            });
+        });
+
+        // Column widths from header + data only (the merged title rows would widen every column)
+        var lastDataRow = 4 + records.length;
+        worksheet.columns.forEach(function (column, idx) {
+            var colNum = idx + 1;
+            var maxLength = 0;
+            column.eachCell({ includeEmpty: false }, function (cell, rowNumber) {
+                if (rowNumber < 4 || rowNumber > lastDataRow) return;
+                var len = cell.value ? cell.value.toString().length : 0;
+                if (len > maxLength) maxLength = len;
+            });
+            var minW = colNum === 1 ? 7 : colNum === 5 ? 12 : 10;
+            column.width = Math.min(Math.max(maxLength + 2, minW), 40);
+        });
+
+        // Footer
+        worksheet.addRow([]);
+        var footerRow = worksheet.addRow(['Total Records: ' + records.length]);
+        footerRow.getCell(1).font = { bold: true, size: 10, color: { argb: 'FF64748B' }, name: 'Segoe UI' };
+
+        return workbook.xlsx.writeBuffer().then(function (buffer) {
+            var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            alrtDownloadBlob(blob, alrtExportFileName('xlsx'));
+        });
+    }
+
+    // ── PDF Export (jsPDF + autoTable) ────────────────────────────
+    function alrtExportToPdf(records, period) {
+        var doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+        var pageW = doc.internal.pageSize.getWidth();
+        var pageH = doc.internal.pageSize.getHeight();
+
+        var metaText = period + '   |   Records: ' + records.length + '   |   Generated: ' + alrtFormattedNow();
+
+        var pdfHeaders = [
+            'Sr.No', 'Zone', 'Division', 'Station', 'Vendor\nName',
+            'Alert\nType', 'Asset\nType', 'Asset\nNumber',
+            'Alert\nStatus', 'Cause of Asset Failure',
+            'Alert\nFeedback (T/PT/M/F)', 'Incidence\nDate & Time',
+            'Rectification\nDate & Time', 'Incidence\nDuration (hh:mm:ss)',
+            'Alert Feedback\nDate & Time', 'Maintainer\nName',
+            'Maintainer\nDesignation', 'Maintainer\nMobile Number',
+            'Maintainer\nRemarks'
+        ];
+
+        // Full-width table: keep compact columns fixed; give the rest of the page to the two text columns
+        var marginX = 10;
+        var availW = pageW - marginX * 2;
+        var fixedColsW = 22 + 30 + 38 + 35 + 35 + 35 + 32 + 38 + 32 + 40 + 42 + 42 + 38 + 42 + 48 + 38 + 40; // every col except Cause(9) & Remarks(18)
+        var flexW = Math.max(160, availW - fixedColsW);
+        var causeColW = Math.round(flexW * 0.38);
+        var remarkColW = flexW - causeColW;
+
+        doc.autoTable({
+            startY: 58,
+            head: [pdfHeaders],
+            body: records.map(alrtRecordToRow),
+            theme: 'grid',
+            styles: {
+                fontSize: 6,
+                cellPadding: 2,
+                valign: 'middle',
+                halign: 'center',
+                lineColor: [226, 232, 240],
+                lineWidth: 0.3,
+                overflow: 'linebreak'
+            },
+            headStyles: {
+                fillColor: [31, 59, 94],
+                textColor: [255, 255, 255],
+                fontStyle: 'bold'
+            },
+            alternateRowStyles: { fillColor: [241, 245, 249] },
+            bodyStyles: { textColor: [51, 51, 51] },
+            columnStyles: {
+                0: { cellWidth: 22 },   // Sr.No
+                1: { cellWidth: 30 },   // Zone
+                2: { cellWidth: 38 },   // Division
+                3: { cellWidth: 35 },   // Station
+                4: { cellWidth: 35 },   // Vendor Name
+                5: { cellWidth: 35 },   // Alert Type
+                6: { cellWidth: 32 },   // Asset Type
+                7: { cellWidth: 38 },   // Asset Number
+                8: { cellWidth: 32 },   // Alert Status
+                9: { cellWidth: causeColW, halign: 'left' },  // Cause
+                10: { cellWidth: 40 },  // Alert Feedback
+                11: { cellWidth: 42 },  // Incidence DateTime
+                12: { cellWidth: 42 },  // Rectification DateTime
+                13: { cellWidth: 38 },  // Duration
+                14: { cellWidth: 42 },  // Feedback DateTime
+                15: { cellWidth: 48, halign: 'left' },  // Maintainer Name
+                16: { cellWidth: 38 },  // Designation
+                17: { cellWidth: 40 },  // Mobile
+                18: { cellWidth: remarkColW, halign: 'left' }   // Remarks
+            },
+            tableWidth: 'wrap',
+            margin: { top: 58, bottom: 40, left: marginX, right: marginX },
+            rowPageBreak: 'avoid',
+            didParseCell: function (data) {
+                if (data.cell.section === 'body' && (data.column.index === 9 || data.column.index === 18)) {
+                    var txt = data.cell.text.join('\n').replace(/\r\n?/g, '\n');   // keep the remark's line breaks
+                    txt = txt.split('\n').map(function (line) { return alrtBreakLongWords(line, 16); }).join('\n');
+                    data.cell.text = txt.split('\n');
+                }
+            },
+            didDrawPage: function () {
+                // Title bar
+                doc.setFillColor(79, 70, 229);
+                doc.rect(0, 0, pageW, 36, 'F');
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(14);
+                doc.setTextColor(255, 255, 255);
+                doc.text('Alert History Report', pageW / 2, 23, { align: 'center' });
+
+                // Meta bar
+                doc.setFillColor(240, 244, 255);
+                doc.rect(0, 36, pageW, 18, 'F');
+                doc.setFont('helvetica', 'italic');
+                doc.setFontSize(8);
+                doc.setTextColor(71, 85, 105);
+                doc.text(metaText, pageW / 2, 47, { align: 'center' });
+            }
+        });
+
+        // Page numbers go on last: the total is only known once the table has been laid out
+        var totalPg = doc.internal.getNumberOfPages();
+        for (var pg = 1; pg <= totalPg; pg++) {
+            doc.setPage(pg);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(148, 163, 184);
+            doc.text('Page ' + pg + ' of ' + totalPg, pageW - 14, pageH - 8, { align: 'right' });
         }
+
+        doc.save(alrtExportFileName('pdf'));
+    }
+
+    function alrtBreakLongWords(text, maxLen) {
+        if (!text) return text;
+        return String(text).split(' ').map(function (word) {
+            if (word.length <= maxLen) return word;
+            var chunks = [];
+            for (var i = 0; i < word.length; i += maxLen) {
+                chunks.push(word.substring(i, i + maxLen));
+            }
+            return chunks.join('\n');
+        }).join(' ');
     }
 
     // ── Trigger browser download ──────────────────────────────────
@@ -7155,9 +7394,11 @@ window._alertWsState = window._alertWsState || {
     }
 
     // ============================================================
-    // ALERT EVENTS WEBSOCKET
-    // Single site  → ws://proxy.energy7.org:8081/subscribe/alertEvents/{siteId}
-    // No/multi site → ws://proxy.energy7.org:8081/subscribe/alertEvents
+    // ALERT EVENTS WEBSOCKET — same behaviour as 616 AlertLive:
+    //   ws://proxy.energy7.org:8081/subscribe/alertEvents (all sites; filtered client-side)
+    //   SET   → one debounced list reload
+    //   RESET → patch the matching row in place (no reload)
+    //   held while a dropdown / panel / modal is open, then refreshed once
     // ============================================================
 
     function alrtConnectAlertWS() {
@@ -7166,11 +7407,8 @@ window._alertWsState = window._alertWsState || {
         S.destroyed = false;
         if (S.reconnTimer) { clearTimeout(S.reconnTimer); S.reconnTimer = null; }
 
-        // ── Build URL: single site gets filtered endpoint, multi/none gets all ──
-        var siteIds = alrtGetValues('site');
-        var newUrl = (siteIds.length === 1)
-            ? ALERT_WS_BASE + '/' + siteIds[0]
-            : ALERT_WS_BASE;
+        // ── Same unfiltered topic as 616; station scope is applied in alrtHandleAlertWsMessage ──
+        var newUrl = ALERT_WS_BASE;
 
         // ── Append auth token when on HTTPS (same pattern as telemetrylive.js) ──
         if (isSecure && ALERT_WS_CONFIG.WebSocketAuthToken) {
@@ -7241,7 +7479,8 @@ window._alertWsState = window._alertWsState || {
             messages = [batch];
         }
 
-        var shouldRefresh = false;
+        var needsListRefresh = false;
+        var needsCountRefresh = false;
         messages.forEach(function (msgRaw) {
             var msg;
             try { msg = (typeof msgRaw === 'string') ? JSON.parse(msgRaw) : msgRaw; }
@@ -7254,24 +7493,113 @@ window._alertWsState = window._alertWsState || {
             var matches = (sel.length === 0) ||
                 (sel.indexOf(String(msg.SiteId)) > -1) ||
                 (sel.indexOf(parseInt(msg.SiteId)) > -1);
+            if (!matches) return;
 
-            if (matches) {
-                console.log('[AlertWS] Event — SiteId=' + msg.SiteId +
-                    ' | Asset=' + (msg.AssetName || '') +
-                    ' | Action=' + (msg.AlertAction || '') +
-                    ' | Type=' + (msg.AlertType || ''));
-                shouldRefresh = true;
+            var action = String(msg.AlertAction || '').toUpperCase();
+            console.log('[AlertWS] Event — SiteId=' + msg.SiteId +
+                ' | Asset=' + (msg.AssetName || '') +
+                ' | Action=' + action +
+                ' | Type=' + (msg.AlertType || ''));
+
+            if (action === 'RESET') {
+                // Patch the row in place; reload only if the row must leave the list (Pending filter)
+                var patched = alrtApplyResetToRow(msg);
+                var stFilter = $('#fltStatus').val();
+                if (patched && stFilter === '2') needsListRefresh = true;   // Pending view: row must drop out
+                if (!patched && stFilter === '1') needsListRefresh = true;  // Cleared view: row must appear
+                needsCountRefresh = true;
+            } else {
+                // SET (new alert) — the payload can't render a full row, so reload the list
+                needsListRefresh = true;
             }
         });
 
-        if (shouldRefresh) {
-            if (S.refreshTimer) clearTimeout(S.refreshTimer);
-            S.refreshTimer = setTimeout(function () {
-                console.log('[AlertWS] Refreshing alert list…');
-                fnGetAlertList(window._alertCurrentSkip || 0);
-                fnGetAlertCounts();
-            }, 800);
+        if (needsListRefresh) alrtRequestListRefresh();
+        else if (needsCountRefresh) fnGetAlertCounts();
+    }
+
+    // ── RESET — surgical row patch (no reload), as in 616 ──
+    function alrtApplyResetToRow(msg) {
+        var $row = alrtFindAlertRow(msg.SiteId, msg.AssetId, msg.CauseCode);
+        if (!$row || $row.length === 0) return false; // not on this page — counts still refresh
+
+        var resetDate = msg.TimestampDevice ? new Date(msg.TimestampDevice) : new Date();
+        if (isNaN(resetDate.getTime())) resetDate = new Date();
+        var id = $row.attr('data-alert-id');
+
+        // Status → Cleared
+        $('#alrtStatus_' + id).attr('class', 'alrt-status cleared').html('<i class="fas fa-check-circle"></i>&nbsp;Cleared');
+
+        // Reset Date & Time column
+        $('#alrtReset_' + id).html('<span class="alrt-time-main">' + alrtFmtDateTime(resetDate) + '</span>');
+
+        // Duration frozen at set → reset
+        var setDate = new Date($row.attr('data-set-timestamp'));
+        if (!isNaN(setDate.getTime())) {
+            var secs = Math.max(0, Math.floor((resetDate.getTime() - setDate.getTime()) / 1000));
+            var dCss = secs > 10800 ? 'critical' : secs > 3600 ? 'warning' : 'ok';
+            $('#alrtDur_' + id).attr('class', 'alrt-dur ' + dCss).text(alrtFmtDuration(secs));
         }
+
+        $row.find('td').css('background-color', 'var(--e7-green-soft, #dcfce7)');
+        setTimeout(function () { $row.find('td').css('background-color', ''); }, 1200);
+        return true;
+    }
+
+    function alrtFindAlertRow(siteId, assetId, causeCode) {
+        var want = String(causeCode || '').trim().toLowerCase();
+        var $match = null;
+        $('#divAlertDetailReport tbody tr[data-alert-id]').each(function () {
+            var $tr = $(this);
+            if (String($tr.attr('data-site-id')) === String(siteId) &&
+                String($tr.attr('data-asset-id')) === String(assetId) &&
+                String($tr.attr('data-cause-code') || '').trim().toLowerCase() === want &&
+                $('#alrtStatus_' + $tr.attr('data-alert-id')).hasClass('pending')) {
+                $match = $tr;
+                return false; // break
+            }
+        });
+        return $match;
+    }
+
+    // Date → "dd/MM/yyyy HH:mm:ss" — matches the Razor format in _List
+    function alrtFmtDateTime(d) {
+        var p = function (n) { return n < 10 ? '0' + n : String(n); };
+        return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' +
+            p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
+
+    // seconds → "HH:mm:ss" with total hours — matches the Razor format in _List
+    function alrtFmtDuration(secs) {
+        var p = function (n) { return n < 10 ? '0' + n : String(n); };
+        return p(Math.floor(secs / 3600)) + ':' + p(Math.floor((secs % 3600) / 60)) + ':' + p(secs % 60);
+    }
+
+    // Something the user is working in — a live reload now would disrupt it
+    function alrtIsUserBusy() {
+        if (alrtOpenDropdown) return true;
+        var fb = document.getElementById('fbPanel');
+        if (fb && (fb.style.right === '0' || fb.style.right === '0px')) return true;
+        var pv = document.getElementById('fbPhotoViewer');
+        if (pv && pv.classList.contains('is-open')) return true;
+        return $('.modal.show:visible').length > 0;
+    }
+
+    // Debounced — a burst of websocket messages collapses into ONE list reload;
+    // held while the user is busy and run once they are done (616 pause/resume)
+    function alrtRequestListRefresh() {
+        var S = window._alertWsState;
+        if (S.refreshTimer) clearTimeout(S.refreshTimer);
+        S.refreshTimer = setTimeout(function tick() {
+            if (alrtIsUserBusy()) {
+                S.refreshTimer = setTimeout(tick, 1500);
+                return;
+            }
+            S.refreshTimer = null;
+            console.log('[AlertWS] Refreshing alert list…');
+            fnGetAlertList(window._alertCurrentSkip || 0, true);
+            fnGetAlertCounts();
+        }, 400);
     }
 
     function alrtLoadEscalation(alertId, station, cause) {

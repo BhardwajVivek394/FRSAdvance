@@ -88,7 +88,7 @@ namespace Domain
             get
             {
                 return FromDateTime.HasValue
-                    ? FromDateTime.Value.ToString("HH:mm")
+                    ? FromDateTime.Value.ToString("HH:mm:ss")
                     : string.Empty;
             }
         }
@@ -98,7 +98,7 @@ namespace Domain
             get
             {
                 return ToDateTime.HasValue
-                    ? ToDateTime.Value.ToString("HH:mm")
+                    ? ToDateTime.Value.ToString("HH:mm:ss")
                     : string.Empty;
             }
         }
@@ -107,7 +107,7 @@ namespace Domain
             get
             {
                 return RectificationDateTime.HasValue
-                    ? RectificationDateTime.Value.ToString("dd-MM-yyyy")
+                    ? RectificationDateTime.Value.ToString("dd-MM-yyyy HH:mm:ss")
                     : string.Empty;
             }
         }
@@ -134,5 +134,6 @@ namespace Domain
         public int IsManual { get; set; }
         public string GeneratedBy { get; set; }
         public string AlertStatus { get; set; }
+        public int UserId { get; set; }
     }
 }

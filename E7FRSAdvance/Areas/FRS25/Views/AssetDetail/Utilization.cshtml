@@ -479,12 +479,53 @@
         margin-bottom: 4px;
         font-size: 12px;
     }
+
+    @@media (max-width: 768px) {
+        #selectedRangeBar {
+            min-width: 0 !important;
+            width: 100% !important;
+            flex-wrap: wrap;
+            row-gap: 10px;
+            margin-left: 0 !important;
+        }
+    }
+
+    @@media (max-width: 768px) {
+        #pager.pagination {
+            flex-wrap: wrap;
+            row-gap: 6px;
+            justify-content: center !important;
+        }
+
+        #pager .page-link {
+            padding: 6px 10px;
+            font-size: 13px;
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .au-range-arrow {
+            display: none; /* horizontal arrow doesn't make sense once From/To stack vertically */
+        }
+
+        .au-range-block {
+            width: 100%;
+            justify-content: space-between;
+        }
+
+        #selectedRangeBar {
+            margin-left: 0 !important;
+            padding: 10px 14px !important;
+        }
+    }
 </style>
 
 <script src="~/assets/js/jquery-3.5.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <section class="section">
     <div class="row">
@@ -520,28 +561,28 @@
                             <div class="filter-item">
                                 <label>Zone</label>
                                 <div class="select-btn" id="btnZone" data-target="ddZone">
-                                    <span class="text" id="txtZone">All</span>
+                                    <span class="text" id="txtZone">Select</span>
                                     <i class="fas fa-chevron-down"></i>
                                 </div>
                             </div>
                             <div class="filter-item">
                                 <label>Division</label>
                                 <div class="select-btn" id="btnDivision" data-target="ddDivision">
-                                    <span class="text" id="txtDivision">All</span>
+                                    <span class="text" id="txtDivision">Select</span>
                                     <i class="fas fa-chevron-down"></i>
                                 </div>
                             </div>
                             <div class="filter-item">
                                 <label>Station</label>
                                 <div class="select-btn" id="btnSite" data-target="ddSite">
-                                    <span class="text" id="txtSite">All</span>
+                                    <span class="text" id="txtSite">Select</span>
                                     <i class="fas fa-chevron-down"></i>
                                 </div>
                             </div>
                             <div class="filter-item">
                                 <label>Asset Type</label>
                                 <div class="select-btn" id="btnAssetType" data-target="ddAssetType">
-                                    <span class="text" id="txtAssetType">All</span>
+                                    <span class="text" id="txtAssetType">Select</span>
                                     <i class="fas fa-chevron-down"></i>
                                 </div>
                             </div>
@@ -554,11 +595,11 @@
                             </div>
                             <div class="filter-item">
                                 <label>From Date</label>
-                                <input type="text" class="filter-input" id="txtFromDate" placeholder="DD-MM-YYYY">
+                                <input type="text" class="filter-input" id="txtFromDate" placeholder="DD/MM/YYYY">
                             </div>
                             <div class="filter-item">
                                 <label>To Date</label>
-                                <input type="text" class="filter-input" id="txtToDate" placeholder="DD-MM-YYYY">
+                                <input type="text" class="filter-input" id="txtToDate" placeholder="DD/MM/YYYY">
                             </div>
                             <div class="filter-item">
                                 <label>View</label>
@@ -635,16 +676,7 @@
                         <div class="dropdown-search"><input type="text" placeholder="Search asset type..." onkeyup="filterDropdown('assetType', this.value)"></div>
                         <div class="dropdown-header"><input type="checkbox" id="chkAllAssetType"><label for="chkAllAssetType">Select All</label></div>
                         <div class="dropdown-list" id="listAssetType">
-                            @if (ViewBag.AssetTypes != null)
-                            {
-                                foreach (var assettype in (IEnumerable<SelectListItem>)ViewBag.AssetTypes)
-                                {
-                                    <div class="dropdown-item" data-value="@assettype.Value" data-text="@assettype.Text">
-                                        <input type="checkbox" class="cb-assetType" value="@assettype.Value">
-                                        <span>@assettype.Text</span>
-                                    </div>
-                                }
-                            }
+                            <div class="dropdown-empty">Select Station first</div>
                         </div>
                         <div class="dropdown-no-results">No results found</div>
                     </div>
@@ -684,6 +716,8 @@
     var openDropdown = null;
     var debounceTimer = null;
     var auChart = null;
+    var AU_AT_EMPTY_HTML = '<div class="dropdown-empty">Select Station first</div>';
+    var auAtXhr = null; // in-flight Asset Type request (aborted when station selection changes)
     var auChartList = [];
     var selectedViewType = 'Table';
 
@@ -694,6 +728,169 @@
         '#a855f7', '#d946ef', '#f59e0b', '#84cc16', '#0ea5e9',
         '#e11d48', '#7c3aed', '#059669', '#dc2626', '#2563eb'
     ];
+
+    // ==========================================================================
+    // PLUGIN: draws the Station name ABOVE each bar / point
+    // Register per-chart via: plugins: [auStationLabelPlugin],
+    //                         and pass options via: plugins: { auStationLabels: { labels: [...] } }
+    // ==========================================================================
+    var auStationLabelPlugin = {
+        id: 'auStationLabels',
+        afterDatasetsDraw: function (chart) {
+            var opts = chart.config.options.plugins && chart.config.options.plugins.auStationLabels;
+            if (!opts || !opts.labels) return;
+            var labels = opts.labels;
+            var ctx = chart.ctx;
+            var meta = chart.getDatasetMeta(0);
+            if (!meta || !meta.data) return;
+
+            ctx.save();
+            ctx.font = '600 10px Segoe UI, Arial, sans-serif';
+            ctx.fillStyle = '#6366f1';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+
+            meta.data.forEach(function (el, i) {
+                var text = labels[i];
+                if (!text) return;
+                var pos = el.tooltipPosition ? el.tooltipPosition() : { x: el.x, y: el.y };
+                ctx.fillText(text, pos.x, pos.y - 6);
+            });
+            ctx.restore();
+        }
+    };
+
+    // ==========================================================================
+    // PLUGIN: draws the Operation Count (value) ABOVE each bar / line point
+    // Usage per chart:
+    //   plugins: [auValueLabelPlugin],
+    //   options.plugins.auValueLabels = { formatter: function (value, index) { return '...'; } }
+    // Keep options.layout.padding.top >= 20 so the top-most label is not clipped.
+    // ==========================================================================
+    var auValueLabelPlugin = {
+        id: 'auValueLabels',
+        afterDatasetsDraw: function (chart) {
+            var opts = chart.config.options.plugins && chart.config.options.plugins.auValueLabels;
+            if (!opts || opts.display === false) return;
+            var ctx = chart.ctx;
+            var area = chart.chartArea;
+
+            chart.data.datasets.forEach(function (ds, dsIdx) {
+                var meta = chart.getDatasetMeta(dsIdx);
+                if (!meta || meta.hidden || !meta.data) return;
+
+                ctx.save();
+                ctx.font = '700 11px Segoe UI, Arial, sans-serif';
+                ctx.fillStyle = opts.color || auTheme().heading;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+
+                meta.data.forEach(function (el, i) {
+                    var v = ds.data[i];
+                    if (v === null || v === undefined || isNaN(v)) return;
+                    var text = opts.formatter ? opts.formatter(v, i) : String(v);
+                    if (text === '' || text === null || text === undefined) return;
+
+                    var x = el.x;
+                    var y = el.y - (meta.type === 'line' ? 9 : 5);   // line point has radius
+                    if (x < area.left - 1 || x > area.right + 1) return; // outside visible area
+                    if (y - 12 < 0) y = 12;                          // never draw off-canvas
+                    ctx.fillText(text, x, y);
+                });
+                ctx.restore();
+            });
+        }
+    };
+
+    // ==========================================================================
+    // PLUGIN: draws Total Operation Count in the CENTER of a doughnut / pie
+    // Usage per chart:
+    //   plugins: [auCenterTextPlugin],
+    //   options.plugins.auCenterText = { value: '1,234', label: 'Total Operations' }
+    // ==========================================================================
+    var auCenterTextPlugin = {
+        id: 'auCenterText',
+        afterDatasetsDraw: function (chart) {
+            var opts = chart.config.options.plugins && chart.config.options.plugins.auCenterText;
+            if (!opts) return;
+            var meta = chart.getDatasetMeta(0);
+            if (!meta || !meta.data || !meta.data.length) return;
+
+            var arc = meta.data[0];
+            var cx = arc.x, cy = arc.y;
+            var inner = arc.innerRadius || 0;
+            if (inner < 20) return; // no hole to draw in
+
+            var ctx = chart.ctx;
+            var maxW = inner * 1.6;
+            var valueText = String(opts.value);
+            var labelText = opts.label || '';
+
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            // Value — shrink font until it fits inside the hole
+            var vSize = Math.min(Math.round(inner * 0.42), 30);
+            ctx.font = '700 ' + vSize + 'px Segoe UI, Arial, sans-serif';
+            while (vSize > 10 && ctx.measureText(valueText).width > maxW) {
+                vSize--;
+                ctx.font = '700 ' + vSize + 'px Segoe UI, Arial, sans-serif';
+            }
+
+            // Label — smaller, below the value
+            var lSize = Math.max(9, Math.min(Math.round(inner * 0.14), 13));
+            var gap = 4;
+            var blockH = vSize + gap + lSize;
+            var top = cy - blockH / 2;
+
+            ctx.fillStyle = opts.valueColor || auTheme().heading;
+            ctx.fillText(valueText, cx, top + vSize / 2);
+
+            if (labelText) {
+                ctx.font = '600 ' + lSize + 'px Segoe UI, Arial, sans-serif';
+                while (lSize > 8 && ctx.measureText(labelText).width > maxW) {
+                    lSize--;
+                    ctx.font = '600 ' + lSize + 'px Segoe UI, Arial, sans-serif';
+                }
+                ctx.fillStyle = opts.labelColor || auTheme().text3;
+                ctx.fillText(labelText.toUpperCase(), cx, top + vSize + gap + lSize / 2);
+            }
+            ctx.restore();
+        }
+    };
+
+    // Builds { value, label } for the doughnut center from a station's rows.
+    // SIGNAL assets are hours-based, so the label/format follows the data.
+    function auBuildCenterInfo(rows, total) {
+        var anySignal = false, allSignal = rows.length > 0;
+        rows.forEach(function (r) { if (r.isSignal) anySignal = true; else allSignal = false; });
+        var label = allSignal ? 'Total Hours' : (anySignal ? 'Total Ops / Hrs' : 'Total Operations');
+        var value = anySignal
+            ? (+total).toFixed(2)
+            : Math.round(total).toLocaleString();
+        return { value: value, label: label };
+    }
+
+    // ==========================================================================
+    // Wraps a chart in a horizontally-scrollable box so bar/point labels get
+    // enough room and stop overlapping when there are many assets/stations.
+    // minSlot = minimum horizontal px reserved per bar/point.
+    // ==========================================================================
+    function auCreateScrollableBox(title, iconClass, height, canvasId, itemCount, minSlot, $target) {
+        var $box = $('<div></div>').css({ padding: '20px', background: 'var(--e7-surface, #fff)', borderRadius: '12px', boxShadow: 'var(--e7-shadow-card, 0 2px 14px rgba(0,0,0,0.07))', marginBottom: '16px' });
+        $box.append('<h5 style="margin:0 0 14px;font-size:15px;font-weight:600;color:var(--e7-heading,#1e293b);"><i class="' + iconClass + ' mr-2" style="color:var(--e7-accent,#6366f1);font-size:14px;"></i>' + title + '</h5>');
+
+        var $scroller = $('<div></div>').css({ overflowX: 'auto', overflowY: 'hidden', width: '100%', paddingBottom: '6px' });
+        var innerWidth = Math.max(itemCount * (minSlot || 60), 100);
+        var $wrap = $('<div></div>').css({ position: 'relative', height: height + 'px', width: innerWidth + 'px', minWidth: '100%' });
+        var $canvas = $('<canvas id="' + canvasId + '"></canvas>');
+        $wrap.append($canvas);
+        $scroller.append($wrap);
+        $box.append($scroller);
+        ($target || $('#auChartContainer')).append($box);
+        return $canvas[0].getContext('2d');
+    }
 
     // Pie state — station-wise
     var _auStPieItems = [], auStPiePage = 1;
@@ -760,8 +957,8 @@
     // DOCUMENT READY
     // ==========================================================================
     $(document).ready(function () {
-        $('#txtFromDate').datepicker({ dateFormat: 'dd-mm-yyyy', changeMonth: true, changeYear: true, onSelect: function (d) { $(this).val(d); } });
-        $('#txtToDate').datepicker({ dateFormat: 'dd-mm-yyyy', changeMonth: true, changeYear: true, onSelect: function (d) { $(this).val(d); } });
+        $('#txtFromDate').datepicker({ dateFormat: 'dd/mm/yy', changeMonth: true, changeYear: true, onSelect: function (d) { $(this).val(d); } });
+        $('#txtToDate').datepicker({ dateFormat: 'dd/mm/yy', changeMonth: true, changeYear: true, onSelect: function (d) { $(this).val(d); } });
         setDefaultDates();
 
         $('.select-btn').on('click', function (e) { e.stopPropagation(); toggleDD($(this).data('target'), this); });
@@ -811,17 +1008,19 @@
         $('#txtFromDate').datepicker('setDate', today); $('#txtToDate').datepicker('setDate', today);
         $('#txtFromDate').val(formatDate(today)); $('#txtToDate').val(formatDate(today));
     }
-    // DD-MM-YYYY (display) -> MM/DD/YYYY (what the server expects)
-    function toServerDate(s) {
-        var m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(s || '').trim());
-        return m ? (m[2] + '/' + m[1] + '/' + m[3]) : s;
-    }
     function formatDate(date) {
-        return String(date.getDate()).padStart(2, '0') + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + date.getFullYear();
+        return String(date.getDate()).padStart(2, '0') + '/' + String(date.getMonth() + 1).padStart(2, '0') + '/' + date.getFullYear();
     }
     function updateRangeBar() {
         $('#dispFromDate').text($('#txtFromDate').val() || '—');
         $('#dispToDate').text($('#txtToDate').val() || '—');
+    }
+
+    function toServerDate(ddmmyyyy) {
+        if (!ddmmyyyy) return '';
+        var parts = ddmmyyyy.split('/');
+        if (parts.length !== 3) return ddmmyyyy;
+        return parts[1] + '/' + parts[0] + '/' + parts[2]; // MM/DD/YYYY
     }
 
     // ==========================================================================
@@ -882,7 +1081,7 @@
     }
     function updateText(type) {
         var $checked = $('.cb-' + type + ':checked'); var count = $checked.length;
-        var text = count === 0 ? 'All' : count === 1
+        var text = count === 0 ? (type === 'assetType' ? 'Select' : 'All') : count === 1
             ? ($checked.first().closest('.dropdown-item').data('text') || $checked.first().closest('.dropdown-item').find('span').text())
             : count + ' selected';
         $('#txt' + capitalize(type)).text(text);
@@ -897,13 +1096,17 @@
         if (type === 'zone') loadDivisions();
         else if (type === 'division') loadSites();
         else if (type === 'site' || type === 'assetType') debounceAssetNumbers();
+        if (type === 'site') {
+            loadAssetTypes();
+        }
     }
     function loadDivisions() {
         var zoneIds = getValues('zone');
         $('#listDivision').html('<div class="dropdown-empty">Loading...</div>');
-        $('#chkAllDivision').prop('checked', false); $('#txtDivision').text('All');
+        $('#chkAllDivision').prop('checked', false); $('#txtDivision').text('Select');
         $('#listSite').html('<div class="dropdown-empty">Select Division first</div>');
-        $('#chkAllSite').prop('checked', false); $('#txtSite').text('All');
+        $('#chkAllSite').prop('checked', false); $('#txtSite').text('Select');
+        resetAssetTypes();
         $('#listAssetNumber').html('<div class="dropdown-empty">Select Station &amp; Asset Type</div>');
         $('#chkAllAssetNumber').prop('checked', false); $('#txtAssetNumber').text('All');
         if (!zoneIds.length) { $('#listDivision').html('<div class="dropdown-empty">Select Zone first</div>'); return; }
@@ -919,7 +1122,8 @@
     function loadSites() {
         var divIds = getValues('division');
         $('#listSite').html('<div class="dropdown-empty">Loading...</div>');
-        $('#chkAllSite').prop('checked', false); $('#txtSite').text('All');
+        $('#chkAllSite').prop('checked', false); $('#txtSite').text('Select');
+        resetAssetTypes();
         $('#listAssetNumber').html('<div class="dropdown-empty">Select Station &amp; Asset Type</div>');
         $('#chkAllAssetNumber').prop('checked', false); $('#txtAssetNumber').text('All');
         if (!divIds.length) { $('#listSite').html('<div class="dropdown-empty">Select Division first</div>'); return; }
@@ -932,6 +1136,64 @@
             }, error: function () { $('#listSite').html('<div class="dropdown-empty">Error loading stations</div>'); }
         });
     }
+
+    // Clears the Asset Type dropdown back to its "Select Station first" state
+    function resetAssetTypes() {
+        if (auAtXhr) { auAtXhr.abort(); auAtXhr = null; }
+        $('#listAssetType').html(AU_AT_EMPTY_HTML);
+        $('#chkAllAssetType').prop('checked', false);
+        $('#txtAssetType').text('Select');
+    }
+
+    // Asset Type list is bound ONLY from the selected stations
+    function loadAssetTypes() {
+        var siteIds = getValues('site');
+        var prevSelected = getValues('assetType'); // keep user's ticks if still valid
+
+        if (auAtXhr) { auAtXhr.abort(); auAtXhr = null; }
+        $('#chkAllAssetType').prop('checked', false);
+        $('#txtAssetType').text('Select');
+
+        if (siteIds.length === 0) {
+            $('#listAssetType').html(AU_AT_EMPTY_HTML);
+            return;
+        }
+
+        $('#listAssetType').html('<div class="dropdown-empty">Loading...</div>');
+
+        auAtXhr = $.ajax({
+            url: '/FRS25/AssetDetail/GetAssetTypeBySiteIds',
+            type: 'POST',
+            data: JSON.stringify(siteIds),
+            contentType: 'application/json',
+            success: function (data) {
+                if (data && data.length > 0) {
+                    var html = '';
+                    $.each(data, function (key, value) {
+                        var isChecked = prevSelected.indexOf(String(value.Id)) > -1;
+                        html += '<div class="dropdown-item' + (isChecked ? ' checked' : '') + '" data-value="' + value.Id +
+                            '" data-text="' + value.Name + '">';
+                        html += '<input type="checkbox" class="cb-assetType" value="' +
+                            value.Id + '"' + (isChecked ? ' checked' : '') + '>';
+                        html += '<span>' + value.Name + '</span>';
+                        html += '</div>';
+                    });
+                    $('#listAssetType').html(html);
+                    updateSelectAllState('assetType');
+                    updateText('assetType');
+                    if (getValues('assetType').length) debounceAssetNumbers();
+                } else {
+                    $('#listAssetType').html('<div class="dropdown-empty">No asset types found</div>');
+                }
+            },
+            error: function (xhr, status) {
+                if (status === 'abort') return;
+                $('#listAssetType').html('<div class="dropdown-empty">Error loading asset types</div>');
+            },
+            complete: function () { auAtXhr = null; }
+        });
+    }
+
     function debounceAssetNumbers() { if (debounceTimer) clearTimeout(debounceTimer); debounceTimer = setTimeout(loadAssetNumbers, 300); }
     function loadAssetNumbers() {
         var siteIds = getValues('site').filter(function (id) { return id && id !== '0'; });
@@ -943,14 +1205,30 @@
         var allAssets = [], seen = {}, done = 0, total = siteIds.length * typeIds.length;
         siteIds.forEach(function (sid) {
             typeIds.forEach(function (tid) {
-                $.ajax({
-                    url: '/FRS25/AlertLive/GetAssestBy', type: 'POST', data: '{siteId:' + sid + ',assetTypeId:' + tid + '}', contentType: 'application/json', dataType: 'json',
-                    success: function (data) {
-                        if (data && data.length) data.forEach(function (item) { if (item && item.Id && !seen[item.Id]) { seen[item.Id] = true; allAssets.push({ Id: item.Id, Name: item.Name || item.AssetName || '' }); } });
-                        if (++done >= total) renderAssetNumbers(allAssets);
-                    }, error: function () { if (++done >= total) renderAssetNumbers(allAssets); }
-                });
+               
             });
+        });
+
+        var mAssetLister = {
+            assetTypeIds: typeIds,
+            siteIds: siteIds
+        };
+        $.ajax({
+            url: '/FRS25/AssetDetail/GetUtilizationAssestBy', type: 'POST', data: JSON.stringify(mAssetLister),
+            contentType: 'application/json',
+            dataType: 'json',
+            async: true,
+            success: function (data) {
+                if (data && data.length) data.forEach(function (item)
+                {
+                    if (item && item.Id && !seen[item.Id])
+                    {
+                        seen[item.Id] = true;
+                        allAssets.push({ Id: item.Id, Name: item.Name || item.AssetName || '' });
+                    }
+                });
+                renderAssetNumbers(allAssets);
+            }, error: function () { renderAssetNumbers(allAssets); }
         });
     }
     function renderAssetNumbers(assets) {
@@ -958,6 +1236,16 @@
         $('#listAssetNumber').html(assets.length
             ? assets.map(function (a) { return '<div class="dropdown-item" data-value="' + a.Id + '" data-text="' + a.Name + '"><input type="checkbox" class="cb-assetNumber" value="' + a.Id + '"><span>' + a.Name + '</span></div>'; }).join('')
             : '<div class="dropdown-empty">No assets found</div>');
+    }
+
+    function formattedNow() {
+        var now = new Date();
+        return String(now.getDate()).padStart(2, '0') + '/' +
+            String(now.getMonth() + 1).padStart(2, '0') + '/' +
+            now.getFullYear() + '  ' +
+            String(now.getHours()).padStart(2, '0') + ':' +
+            String(now.getMinutes()).padStart(2, '0') + ':' +
+            String(now.getSeconds()).padStart(2, '0');
     }
 
     // ==========================================================================
@@ -970,6 +1258,31 @@
         if (!assetTypeIds.length) { alert('Asset Type is required'); return; }
         if (!fromDate || !toDate) { alert('From Date and To Date are required'); return; }
 
+        var fParts = fromDate.split('/');
+        var dFrom = new Date(parseInt(fParts[2]), parseInt(fParts[1]) - 1, parseInt(fParts[0]));
+        var tParts = toDate.split('/');
+        var dTo = new Date(parseInt(tParts[2]), parseInt(tParts[1]) - 1, parseInt(tParts[0]));
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (dFrom > today) {
+            alert('From Date cannot be a future date');
+            $('#txtFromDate').focus();
+            return;
+        }
+
+        if (dTo > today) {
+            alert('To Date cannot be a future date');
+            $('#txtToDate').focus();
+            return;
+        }
+
+        if (dFrom > dTo) {
+            alert('From Date must be less than or equal to To Date');
+            $('#txtFromDate').focus();
+            return;
+        }
+
         var mAssetLister = {
             SearchCriteria: {
                 ZoneIds: getValues('zone'), DivisionIds: getValues('division'),
@@ -979,19 +1292,17 @@
         };
 
         auDestroyAllCharts();
-        $("#loader").show();
         $('#divAlertDetailReport').html('<div class="text-center p-5"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><br/><small class="text-muted mt-2">Loading data...</small></div>');
 
         $.ajax({
             url: '/FRS25/AssetDetail/_Utilization', type: 'POST',
             contentType: 'application/json', data: JSON.stringify(mAssetLister), dataType: 'html',
             success: function (data) {
-                $("#loader").hide();
                 $("#divAlertDetailReport").empty().append(data);
                 updateRangeBar();
                 renderAuView(selectedViewType);
             },
-            error: function () { $("#loader").hide(); CommonNotification("ERROR", "Something went wrong!", "Error"); }
+            error: function () { CommonNotification("ERROR", "Something went wrong!", "Error"); }
         });
     }
 
@@ -999,6 +1310,89 @@
         auChartList.forEach(function (c) { if (c) c.destroy(); });
         auChartList = [];
         if (auChart) { auChart.destroy(); auChart = null; }
+        _auBarStCharts = []; _auGrStCharts = []; _auBarAtCharts = [];
+    }
+
+    // Destroys only the charts of one paginated section (used on page change)
+    function auDestroySectionCharts(list) {
+        list.forEach(function (c) {
+            if (!c) return;
+            c.destroy();
+            var i = auChartList.indexOf(c);
+            if (i > -1) auChartList.splice(i, 1);
+        });
+        list.length = 0;
+    }
+
+    // Groups rows => Station -> Asset Number (ops, type, signal flag)
+    // Keyed per station, so the same asset number in two stations is NOT merged.
+    function auBuildStationAssets(data) {
+        var map = {}, order = [];
+        data.rows.forEach(function (r) {
+            if (!map[r.station]) {
+                map[r.station] = { station: r.station, zone: r.zone, division: r.division, assets: {}, assetOrder: [], totalOps: 0, anySignal: false, allSignal: true };
+                order.push(r.station);
+            }
+            var s = map[r.station];
+            if (!s.assets[r.assetNumber]) {
+                s.assets[r.assetNumber] = { ops: 0, assetType: r.assetType, isSignal: r.isSignal };
+                s.assetOrder.push(r.assetNumber);
+            }
+            s.assets[r.assetNumber].ops += r.ops;
+            s.totalOps += r.ops;
+            if (r.isSignal) s.anySignal = true; else s.allSignal = false;
+        });
+        return { map: map, order: order };
+    }
+
+    function auFmtVal(v, isSignal) { return isSignal ? (+v).toFixed(2) : v; }
+
+    // Groups one station's rows => Asset Type (ops + PER-TYPE signal flag).
+    // SIGNAL types are hours-based, every other type is operation-count based,
+    // so the unit is decided per asset type — NOT per station.
+    function auBuildStationTypeOps(data, station) {
+        var info = { keys: [], ops: {}, sig: {}, opsTotal: 0, hrsTotal: 0, anySignal: false, allSignal: true };
+        data.rows.forEach(function (r) {
+            if (r.station !== station) return;
+            if (!info.ops.hasOwnProperty(r.assetType)) {
+                info.ops[r.assetType] = 0;
+                info.sig[r.assetType] = false;
+                info.keys.push(r.assetType);
+            }
+            info.ops[r.assetType] += r.ops;
+            if (r.isSignal) info.sig[r.assetType] = true;
+        });
+        info.keys.forEach(function (k) {
+            if (info.sig[k]) { info.hrsTotal += info.ops[k]; info.anySignal = true; }
+            else { info.opsTotal += info.ops[k]; info.allSignal = false; }
+        });
+        if (!info.keys.length) info.allSignal = false;
+        info.mixed = info.anySignal && !info.allSignal;
+        return info;
+    }
+
+    // Unit text for one asset type value, e.g. "297 ops" / "102.07 hrs"
+    function auTypeValText(v, isSignal) { return isSignal ? (+v).toFixed(2) + ' hrs' : v + ' ops'; }
+
+    // Header text for a station's totals: "Total Ops: 297 | Signal Hours: 102.07"
+    function auTypeTotalsText(info) {
+        var parts = [];
+        if (!info.allSignal) parts.push('Total Ops: <strong>' + info.opsTotal + '</strong>');
+        if (info.anySignal) parts.push('Signal Hours: <strong>' + info.hrsTotal.toFixed(2) + '</strong>');
+        return parts.join(' &nbsp;|&nbsp; ');
+    }
+
+    // Y-axis title based on the units present in a chart
+    function auAxisTitle(info) {
+        return info.allSignal ? 'Hours' : (info.anySignal ? 'Operations / Hours (Signal)' : 'Number of operations');
+    }
+    function auStepSize(vals) { var m = Math.max.apply(null, vals.concat([0])); return Math.ceil(m / 8) || 1; }
+    function auSectionHeader(icon, color, text) {
+        return $('<div></div>').css({
+            fontSize: '13px', fontWeight: '600', color: color,
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+            margin: '8px 0 14px', display: 'flex', alignItems: 'center', gap: '8px'
+        }).html('<i class="' + icon + '" style="font-size:11px;"></i> ' + text);
     }
 
     // ==========================================================================
@@ -1010,10 +1404,10 @@
             rows: [], assetGroups: {}, assetNumOrder: [],
             stationGroups: {}, stationOrder: [],
             assetTypeGroups: {}, totalOps: 0, assetCount: 0,
-            // Per-station asset breakdown (grouped by station name only)
             stationOnly: {}, stationOnlyOrder: [],
-            // Per-assetType asset breakdown
-            assetTypeOnly: {}, assetTypeOnlyOrder: []
+            assetTypeOnly: {}, assetTypeOnlyOrder: [],
+            // Track which asset types are SIGNAL (hours-based)
+            signalTypes: {}
         };
         var stSet = {}, assetSet = {}, stOnlySet = {}, atOnlySet = {};
 
@@ -1023,50 +1417,54 @@
             var zone = $.trim($tds.eq(1).text());
             var division = $.trim($tds.eq(2).text());
             var station = $.trim($tds.eq(3).text());
-            var assetType = $.trim($tds.eq(4).text());
+            var assetType = $.trim($tds.eq(4).text()).replace(/\s+/g, ' ').toUpperCase();
             var assetNum = $.trim($tds.eq(5).text());
-            var ops = parseInt($.trim($tds.eq(6).text())) || 0;
 
-            data.rows.push({ zone: zone, division: division, station: station, assetType: assetType, assetNumber: assetNum, ops: ops });
+            // Read clean numeric value and signal flag from data attributes
+            var $opsTd = $tds.eq(6);
+            var rawVal = parseFloat($opsTd.attr('data-raw')) || 0;
+            var isSignal = $opsTd.attr('data-signal') === '1';
+            var ops = rawVal;
 
-            // Asset groups (for line graph)
+            // Track which asset types are signal-based (hours)
+            if (isSignal) data.signalTypes[assetType] = true;
+
+            data.rows.push({ zone: zone, division: division, station: station, assetType: assetType, assetNumber: assetNum, ops: ops, isSignal: isSignal });
+
             if (!data.assetGroups[assetNum]) {
-                data.assetGroups[assetNum] = { ops: 0, station: station, assetType: assetType, zone: zone, division: division };
+                data.assetGroups[assetNum] = { ops: 0, station: station, assetType: assetType, zone: zone, division: division, isSignal: isSignal };
             }
             data.assetGroups[assetNum].ops += ops;
             if (!assetSet[assetNum]) { assetSet[assetNum] = true; data.assetNumOrder.push(assetNum); }
 
-            // Station groups (station+assetType key — for line graph)
             var stKey = station + ' (' + assetType + ')';
             if (!stSet[stKey]) {
                 stSet[stKey] = true;
                 data.stationOrder.push(stKey);
-                data.stationGroups[stKey] = { totalOps: 0, station: station, assetType: assetType, zone: zone, division: division, assets: [] };
+                data.stationGroups[stKey] = { totalOps: 0, station: station, assetType: assetType, zone: zone, division: division, assets: [], isSignal: isSignal };
             }
             data.stationGroups[stKey].totalOps += ops;
             if (data.stationGroups[stKey].assets.indexOf(assetNum) === -1) data.stationGroups[stKey].assets.push(assetNum);
 
-            // Asset type groups (for line graph)
-            if (!data.assetTypeGroups[assetType]) data.assetTypeGroups[assetType] = { totalOps: 0, assets: [] };
+            if (!data.assetTypeGroups[assetType]) data.assetTypeGroups[assetType] = { totalOps: 0, assets: [], isSignal: isSignal };
             data.assetTypeGroups[assetType].totalOps += ops;
             if (data.assetTypeGroups[assetType].assets.indexOf(assetNum) === -1) data.assetTypeGroups[assetType].assets.push(assetNum);
 
-            // ── Station-only grouping (for pie: one chart per station) ──
             if (!stOnlySet[station]) {
                 stOnlySet[station] = true;
                 data.stationOnlyOrder.push(station);
-                data.stationOnly[station] = { totalOps: 0, zone: zone, division: division, assetOps: {}, assetOrder: [] };
+                data.stationOnly[station] = { totalOps: 0, zone: zone, division: division, assetOps: {}, assetOrder: [], isSignal: isSignal };
             }
             var so = data.stationOnly[station];
             so.totalOps += ops;
+            if (isSignal) so.isSignal = true;
             if (!so.assetOps[assetNum]) { so.assetOps[assetNum] = 0; so.assetOrder.push(assetNum); }
             so.assetOps[assetNum] += ops;
 
-            // ── AssetType-only grouping (for pie: one chart per asset type) ──
             if (!atOnlySet[assetType]) {
                 atOnlySet[assetType] = true;
                 data.assetTypeOnlyOrder.push(assetType);
-                data.assetTypeOnly[assetType] = { totalOps: 0, assetOps: {}, assetOrder: [] };
+                data.assetTypeOnly[assetType] = { totalOps: 0, assetOps: {}, assetOrder: [], isSignal: isSignal };
             }
             var ao = data.assetTypeOnly[assetType];
             ao.totalOps += ops;
@@ -1125,11 +1523,9 @@
         if (!data.rows.length) { auNoData(); return; }
         _auPieData = data;
         auStPiePg = 1;
-        auAtPiePg = 1;
 
         var $c = $('#auChartContainer').empty();
 
-        // ── Section heading ──
         function secHd(icon, color, text) {
             return $('<div></div>').css({
                 fontSize: '13px', fontWeight: '600', color: color,
@@ -1138,7 +1534,7 @@
             }).html('<i class="' + icon + '" style="font-size:11px;"></i> ' + text);
         }
 
-        // ── SECTION 1: Station-wise (paginated) ──
+        // ── SECTION 1: Station-wise (paginated doughnuts) ──
         if (data.stationOnlyOrder.length > 0) {
             $c.append(secHd('fas fa-map-marker-alt', '#6366f1', 'Station-wise'));
             $c.append('<div id="auStChartArea"></div>');
@@ -1146,31 +1542,65 @@
             drawAuStPiePage();
         }
 
-        // ── SECTION 2: Asset Type-wise (paginated) ──
-        if (data.assetTypeOnlyOrder.length > 0) {
+        // ── SECTION 2: Asset Type-wise — ONE combined doughnut ──
+        // ── SECTION 2: Asset Type-wise — one doughnut per station ──
+        if (data.stationOnlyOrder.length > 0) {
             $c.append(secHd('fas fa-layer-group', '#3b82f6', 'Asset Type-wise'));
             $c.append('<div id="auAtChartArea"></div>');
             $c.append('<div id="auAtPagerArea"></div>');
-            drawAuAtPiePage();
+            drawAuAtPiePageBySite(data);
         }
 
-        // ── SECTION 3: Asset Number-wise — ONE combined chart ──
-        var anLabels = data.assetNumOrder;
-        var anVals = anLabels.map(function (k) { return data.assetGroups[k].ops; });
-        if (anLabels.length > 0) {
-            $c.append(secHd('fas fa-hashtag', '#f59e0b', 'Asset Number-wise (All)'));
-            auRenderBarDonut($c,
-                'All Assets — Operations', anLabels, anVals,
-                [{ label: 'Total Operations', val: data.totalOps },
-                { label: 'Asset Numbers', val: anLabels.length },
-                { label: 'Avg per Asset', val: (data.totalOps / Math.max(anLabels.length, 1)).toFixed(1) }],
-                'auPieAn', false);
-        }
+    }
+    var auAtSitePg = 1, AU_AT_SITE_PER_PG = 3;
+    var _auAtSiteData = null;
+
+    function drawAuAtPiePageBySite(data) {
+        if (data) _auAtSiteData = data;
+        var d = _auAtSiteData;
+        var all = d.stationOnlyOrder;
+        var total = all.length;
+        var start = (auAtSitePg - 1) * AU_AT_SITE_PER_PG;
+        var page = all.slice(start, start + AU_AT_SITE_PER_PG);
+        var $area = $('#auAtChartArea').empty();
+
+        page.forEach(function (station, idx) {
+            // Build asset-type breakdown for this station
+            var atOps = {}, atOrder = [];
+            d.rows.forEach(function (row) {
+                if (row.station !== station) return;
+                var key = row.assetType; // already normalized upstream now
+                if (!Object.prototype.hasOwnProperty.call(atOps, key)) {
+                    atOps[key] = 0;
+                    atOrder.push(key);
+                }
+                atOps[key] += row.ops;
+            });
+
+            var atKeys = atOrder;
+            var atVals = atKeys.map(function (k) { return atOps[k]; });
+            var atTotal = atVals.reduce(function (a, b) { return a + b; }, 0);
+
+            auRenderBarDonut($area,
+                station + ' — Operations by Asset Type',
+                atKeys, atVals,
+                [
+                    { label: 'Station', val: station },
+                    { label: 'Total Ops', val: atTotal },
+                    { label: 'Asset Types', val: atKeys.length }
+                ],
+                'auPieAt' + (start + idx), true,
+                auBuildCenterInfo(d.rows.filter(function (r) { return r.station === station; }), atTotal));
+        });
+
+        buildAuSectionPager('auAtPagerArea', auAtSitePg,
+            Math.ceil(total / AU_AT_SITE_PER_PG), total,
+            start + 1, Math.min(start + AU_AT_SITE_PER_PG, total),
+            function (pg) { auAtSitePg = pg; drawAuAtPiePageBySite(null); });
     }
 
-    // ── Draw one page of station charts ──────────────────────────────────────
     function drawAuStPiePage() {
-        auDestroyAllCharts();
+        // NOTE: do NOT call auDestroyAllCharts() here — only destroy station charts
         var data = _auPieData;
         var all = data.stationOnlyOrder;
         var total = all.length;
@@ -1185,10 +1615,13 @@
             auRenderBarDonut($area,
                 station + ' — Operations by Asset Number',
                 anKeys, anVals,
-                [{ label: 'Station', val: station },
-                { label: 'Total Ops', val: so.totalOps },
-                { label: 'Assets', val: anKeys.length }],
-                'auPieSt' + (start + idx), true);
+                [
+                    { label: 'Station', val: station },
+                    { label: 'Total Ops', val: so.totalOps },
+                    { label: 'Assets', val: anKeys.length }
+                ],
+                'auPieSt' + (start + idx), true,
+                auBuildCenterInfo(data.rows.filter(function (r) { return r.station === station; }), so.totalOps));
         });
 
         buildAuSectionPager('auStPagerArea', auStPiePg,
@@ -1275,10 +1708,20 @@
 
     // Build one panel: Summary cards + Bar chart + Legend strip + Doughnut
     // addToGlobal=true → push charts to auChartList so they are destroyed on next render
-    function auRenderBarDonut($container, sectionTitle, labels, values, summaryCards, idPrefix, addToGlobal) {
+    // centerInfo (optional) = { value, label } shown in the doughnut hole
+    function auRenderBarDonut($container, sectionTitle, labels, values, summaryCards, idPrefix, addToGlobal, centerInfo) {
         var colors = labels.map(function (_, i) { return auChartColors[i % auChartColors.length]; });
-        var th = auTheme();
-        var total = values.reduce(function (a, b) { return a + b; }, 0) || 1;
+        var rawTotal = values.reduce(function (a, b) { return a + b; }, 0);
+        var total = rawTotal || 1; // used only as % divisor
+
+        // Fallback center info when caller did not pass one
+        if (!centerInfo) {
+            var hasFraction = values.some(function (v) { return v !== Math.round(v); });
+            centerInfo = {
+                value: hasFraction ? rawTotal.toFixed(2) : Math.round(rawTotal).toLocaleString(),
+                label: hasFraction ? 'Total Ops / Hrs' : 'Total Operations'
+            };
+        }
 
         var $panel = $('<div></div>').css({
             padding: '24px', background: 'var(--e7-surface, #fff)', borderRadius: '12px',
@@ -1288,7 +1731,7 @@
         // ── Section heading ──
         $panel.append(
             '<div style="font-size:15px;font-weight:600;color:var(--e7-heading,#1e293b);border-bottom:2px solid var(--e7-border,#e5e7eb);padding-bottom:10px;margin-bottom:20px;">' +
-            '<i class="fas fa-chart-bar mr-2" style="color:var(--e7-accent,#6366f1);font-size:13px;"></i>' + sectionTitle + '</div>'
+            '<i class="fas fa-chart-pie mr-2" style="color:var(--e7-accent,#6366f1);font-size:13px;"></i>' + sectionTitle + '</div>'
         );
 
         // ── Summary cards ──
@@ -1302,91 +1745,40 @@
         cardHtml += '</div>';
         $panel.append(cardHtml);
 
-        // ── Bar chart ──
-        var barH = Math.max(240, labels.length * 36);
-        var $barWrap = $('<div></div>').css({ position: 'relative', height: barH + 'px', marginBottom: '24px' });
-        var $barCanvas = $('<canvas id="' + idPrefix + 'Bar"></canvas>');
-        $barWrap.append($barCanvas);
-        $panel.append($barWrap);
-
-        var barChart = new Chart($barCanvas[0].getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: values,
-                    backgroundColor: colors,
-                    borderRadius: 5,
-                    barThickness: labels.length > 14 ? 'flex' : 28
-                }]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8,
-                        callbacks: {
-                            label: function (c) {
-                                var pct = ((c.parsed.y / total) * 100).toFixed(1);
-                                return ' Operations: ' + c.parsed.y + ' (' + pct + '%)';
-                            }
-                        }
-                    }
-                },
-                scales: {
-                    x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false, color: th.text2 } },
-                    y: { beginAtZero: true, grid: { color: th.grid }, ticks: { font: { size: 11 }, color: th.text3 } }
-                }
-            }
-        });
-        if (addToGlobal !== false) auChartList.push(barChart);
-
-        // ── Legend strip (same style as sample chart) ──
-        var $legend = $('<div></div>').css({
-            display: 'flex', flexWrap: 'wrap', gap: '8px 16px',
-            marginBottom: '20px', padding: '0 2px'
-        });
-        labels.forEach(function (lbl, i) {
-            var pct = Math.round((values[i] / total) * 100);
-            $legend.append(
-                '<span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--e7-text-2,#475569);">' +
-                '<span style="width:10px;height:10px;border-radius:2px;background:' + colors[i] + ';flex-shrink:0;"></span>' +
-                lbl + ' ' + pct + '%</span>'
-            );
-        });
-        $panel.append($legend);
-
         // ── Doughnut chart ──
         var donutH = labels.length > 8 ? 400 : 320;
-        var $donutWrap = $('<div></div>').css({ position: 'relative', height: donutH + 'px' });
+        var $donutWrap = $('<div></div>').css({ position: 'relative', height: donutH + 'px', marginBottom: '16px' });
         var $donutCanvas = $('<canvas id="' + idPrefix + 'Donut"></canvas>');
         $donutWrap.append($donutCanvas);
         $panel.append($donutWrap);
 
         var donutChart = new Chart($donutCanvas[0].getContext('2d'), {
             type: 'doughnut',
+            plugins: [auCenterTextPlugin],
             data: {
                 labels: labels,
                 datasets: [{
                     data: values,
                     backgroundColor: colors,
-                    borderColor: th.surface,
+                    borderColor: auTheme().surface,
                     borderWidth: 2,
                     hoverOffset: 10
                 }]
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                cutout: '55%',
+                cutout: '58%',
                 plugins: {
+                    auCenterText: centerInfo,
                     legend: { display: false },
                     tooltip: {
-                        backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8,
+                        backgroundColor: auTheme().surface, titleColor: auTheme().heading, bodyColor: auTheme().text, borderColor: auTheme().border, borderWidth: 1, padding: 12, cornerRadius: 8,
                         callbacks: {
                             label: function (c) {
                                 var pct = ((c.parsed / total) * 100).toFixed(1);
-                                return ' ' + c.label + ': ' + c.parsed + ' ops (' + pct + '%)';
+                                var isHrs = c.parsed !== Math.round(c.parsed);
+                                var valStr = isHrs ? c.parsed.toFixed(2) + ' hrs' : c.parsed + ' ops';
+                                return ' ' + c.label + ': ' + valStr + ' (' + pct + '%)';
                             }
                         }
                     }
@@ -1395,38 +1787,228 @@
         });
         if (addToGlobal !== false) auChartList.push(donutChart);
 
+        // ── Legend strip ──
+        var $legend = $('<div></div>').css({
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+            gap: '8px 12px',
+            padding: '12px 0 0'
+        });
+        labels.forEach(function (lbl, i) {
+            var pct = ((values[i] / total) * 100).toFixed(1);
+            var $item = $('<div></div>').css({
+                display: 'flex', alignItems: 'center', gap: '10px',
+                background: 'var(--e7-surface-2, #f8fafc)', borderRadius: '8px',
+                padding: '10px 12px', border: '1px solid var(--e7-border, #e5e7eb)'
+            });
+            $item.append(
+                '<span style="width:12px;height:12px;border-radius:3px;background:' + colors[i] + ';flex-shrink:0;"></span>'
+            );
+            $item.append(
+                '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:12px;font-weight:600;color:var(--e7-heading,#1e293b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + lbl + '">' + lbl + '</div>' +
+                '<div style="display:flex;gap:10px;margin-top:3px;">' +
+                '<span style="font-size:11px;color:var(--e7-text-3,#64748b);">' + (values[i] !== Math.round(values[i]) ? 'Hours' : 'Ops') + ': <strong style="color:var(--e7-heading,#1e293b);">' + (values[i] !== Math.round(values[i]) ? values[i].toFixed(2) : values[i]) + '</strong></span>' +
+                '<span style="font-size:11px;color:var(--e7-text-3,#64748b);">Share: <strong style="color:' + colors[i] + ';">' + pct + '%</strong></span>' +
+                '</div>' +
+                '</div>'
+            );
+            $legend.append($item);
+        });
+        $panel.append($legend);
+
         $container.append($panel);
     }
 
     // ==========================================================================
     // BAR CHART (Chart.js — unchanged)
     // ==========================================================================
-    function renderAuBar(data) {
-        var assetKeys = Object.keys(data.assetGroups);
-        var stKeys = Object.keys(data.stationGroups);
-        if (!assetKeys.length) { auNoData(); return; }
+    // Station-wise bar state
+    var _auBarStData = null, _auBarStCharts = [], auBarStPg = 1, AU_BAR_ST_PER_PG = 3;
+    // Bar — Asset Type-wise (Station-wise) state
+    var _auBarAtData = null, _auBarAtCharts = [], auBarAtPg = 1, AU_BAR_AT_PER_PG = 3;
 
-        var thick1 = assetKeys.length > 12 ? 'flex' : 22;
-        var thick2 = stKeys.length > 12 ? 'flex' : 22;
-        var th = auTheme();
+    // One page of station-wise "Total Operations by Asset Type" bar charts
+    function drawAuBarAtPage() {
+        auDestroySectionCharts(_auBarAtCharts);
+        var d = _auBarAtData;
+        var total = d.order.length;
+        var start = (auBarAtPg - 1) * AU_BAR_AT_PER_PG;
+        var page = d.order.slice(start, start + AU_BAR_AT_PER_PG);
+        var $area = $('#auBarAtArea').empty();
 
-        var ctx1 = auCreateBox('Number of Operations per Asset', 'fas fa-chart-bar', Math.max(340, assetKeys.length * 48), 'auBarAsset');
-        var c1 = new Chart(ctx1, {
-            type: 'bar',
-            data: { labels: assetKeys, datasets: [{ label: 'Operations', data: assetKeys.map(function (k) { return data.assetGroups[k].ops; }), backgroundColor: assetKeys.map(function (_, i) { return auChartColors[i % auChartColors.length]; }), borderRadius: 5, barThickness: thick1 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8, callbacks: { label: function (c) { return ' Operations: ' + c.parsed.y; } } } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false, color: th.text2 } }, y: { beginAtZero: true, grid: { color: th.grid }, ticks: { font: { size: 11 }, stepSize: 1, color: th.text3 } } } }
-        });
-        auChartList.push(c1);
+        page.forEach(function (station, idx) {
+            var info = auBuildStationTypeOps(d.data, station);
+            var keys = info.keys;
+            var vals = keys.map(function (k) { return info.ops[k]; });
+            var so = d.data.stationOnly[station] || {};
 
-        if (stKeys.length > 0) {
-            var ctx2 = auCreateBox('Total Operations by Station', 'fas fa-chart-bar', Math.max(300, stKeys.length * 48), 'auBarStation');
-            var c2 = new Chart(ctx2, {
+            var title = station +
+                ' <span style="font-weight:400;color:var(--e7-text-3,#64748b);font-size:12px;">(' + (so.division || '') + ' / ' + (so.zone || '') + ')' +
+                ' &nbsp;|&nbsp; Asset Types: <strong>' + keys.length + '</strong>' +
+                ' &nbsp;|&nbsp; ' + auTypeTotalsText(info) + '</span>';
+
+            var ctx = auCreateScrollableBox(title, 'fas fa-layer-group', 280,
+                'auBarAt' + (start + idx), keys.length, 110, $area);
+
+            var ch = new Chart(ctx, {
                 type: 'bar',
-                data: { labels: stKeys, datasets: [{ label: 'Total Operations', data: stKeys.map(function (k) { return data.stationGroups[k].totalOps; }), backgroundColor: stKeys.map(function (_, i) { return auChartColors[i % auChartColors.length]; }), borderRadius: 5, barThickness: thick2 }] },
-                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { backgroundColor: th.surface, titleColor: th.heading, bodyColor: th.text, borderColor: th.border, borderWidth: 1, padding: 12, cornerRadius: 8, callbacks: { label: function (c) { return ' Total Operations: ' + c.parsed.y; } } } }, scales: { x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 40, minRotation: 20, autoSkip: false, color: th.text2 } }, y: { beginAtZero: true, grid: { color: th.grid }, ticks: { font: { size: 11 }, stepSize: 1, color: th.text3 } } } }
+                plugins: [auValueLabelPlugin],
+                data: {
+                    labels: keys,
+                    datasets: [{
+                        label: 'Total Operations',
+                        data: vals,
+                        backgroundColor: keys.map(function (_, i) { return auChartColors[i % auChartColors.length]; }),
+                        borderRadius: 5,
+                        barThickness: keys.length > 8 ? 28 : 40
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 22 } },
+                    plugins: {
+                        // Total count (ops) / hours (Signal) on top of each Asset Type bar
+                        auValueLabels: {
+                            formatter: function (v, i) { return auFmtVal(v, info.sig[keys[i]]); }
+                        },
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: auTheme().surface, titleColor: auTheme().heading, bodyColor: auTheme().text, borderColor: auTheme().border, borderWidth: 1, padding: 12, cornerRadius: 8,
+                            callbacks: {
+                                title: function (items) { return keys[items[0].dataIndex] + '  (' + station + ')'; },
+                                label: function (c) {
+                                    var k = keys[c.dataIndex];
+                                    return ' ' + (info.sig[k] ? 'Total Hours' : 'Total Operations') + ': ' + auFmtVal(c.parsed.y, info.sig[k]);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 11 }, autoSkip: false, maxRotation: 30 } },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: auTheme().grid },
+                            title: { display: true, text: auAxisTitle(info), font: { size: 12 }, color: auTheme().text2 },
+                            ticks: { font: { size: 11 }, stepSize: auStepSize(vals) }
+                        }
+                    }
+                }
             });
-            auChartList.push(c2);
+            _auBarAtCharts.push(ch);
+            auChartList.push(ch);
+        });
+
+        buildAuSectionPager('auBarAtPager', auBarAtPg,
+            Math.ceil(total / AU_BAR_AT_PER_PG), total,
+            start + 1, Math.min(start + AU_BAR_AT_PER_PG, total),
+            function (pg) { auBarAtPg = pg; drawAuBarAtPage(); });
+    }
+
+    function renderAuBar(data) {
+        _auBarStData = auBuildStationAssets(data);
+        if (!_auBarStData.order.length) { auNoData(); return; }
+
+        var $c = $('#auChartContainer');
+
+        // ── Chart 1: Number of Operations per Asset — one chart per Station ──
+        $c.append(auSectionHeader('fas fa-map-marker-alt', '#6366f1', 'Number of Operations per Asset — Station-wise'));
+        $c.append('<div id="auBarStArea"></div>');
+        $c.append('<div id="auBarStPager"></div>');
+        auBarStPg = 1;
+        drawAuBarStPage();
+
+        // ── Chart 1B: Total Operations by Asset Type — one chart per Station ──
+        _auBarAtData = { data: data, order: data.stationOnlyOrder.slice() };
+        if (_auBarAtData.order.length) {
+            $c.append(auSectionHeader('fas fa-layer-group', '#3b82f6', 'Asset Type-wise — Total Operations (Station-wise)'));
+            $c.append('<div id="auBarAtArea"></div>');
+            $c.append('<div id="auBarAtPager"></div>');
+            auBarAtPg = 1;
+            drawAuBarAtPage();
         }
+
+        // 'Total Operations by Station' chart removed — covered by the
+        // 'Asset Type-wise — Total Operations (Station-wise)' section above.
+    }
+
+    // One page of station-wise "Operations per Asset" bar charts
+    function drawAuBarStPage() {
+        auDestroySectionCharts(_auBarStCharts);
+        var d = _auBarStData;
+        var total = d.order.length;
+        var start = (auBarStPg - 1) * AU_BAR_ST_PER_PG;
+        var page = d.order.slice(start, start + AU_BAR_ST_PER_PG);
+        var $area = $('#auBarStArea').empty();
+
+        page.forEach(function (station, idx) {
+            var s = d.map[station];
+            var keys = s.assetOrder;
+            var vals = keys.map(function (k) { return s.assets[k].ops; });
+            var totalLbl = s.allSignal ? 'Total Hours' : (s.anySignal ? 'Total' : 'Total Ops');
+
+            var barHeight = Math.max(260, Math.min(keys.length * 25, 460));
+            var thick = keys.length > 20 ? 18 : keys.length > 12 ? 22 : 28;
+            var title = station +
+                ' <span style="font-weight:400;color:var(--e7-text-3,#64748b);font-size:12px;">(' + s.division + ' / ' + s.zone + ')' +
+                ' &nbsp;|&nbsp; Assets: <strong>' + keys.length + '</strong>' +
+                ' &nbsp;|&nbsp; ' + totalLbl + ': <strong>' + auFmtVal(s.totalOps, s.allSignal) + '</strong></span>';
+
+            var ctx = auCreateScrollableBox(title, 'fas fa-chart-bar', barHeight,
+                'auBarSt' + (start + idx), keys.length, 70, $area);
+
+            var ch = new Chart(ctx, {
+                type: 'bar',
+                plugins: [auValueLabelPlugin],
+                data: {
+                    labels: keys,
+                    datasets: [{
+                        label: 'Operations',
+                        data: vals,
+                        backgroundColor: keys.map(function (_, i) { return auChartColors[i % auChartColors.length]; }),
+                        borderRadius: 5,
+                        barThickness: thick
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 22 } },
+                    plugins: {
+                        // Operation count on top of each Asset Number bar
+                        auValueLabels: {
+                            formatter: function (v, i) { return auFmtVal(v, s.assets[keys[i]].isSignal); }
+                        },
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: auTheme().surface, titleColor: auTheme().heading, bodyColor: auTheme().text, borderColor: auTheme().border, borderWidth: 1, padding: 12, cornerRadius: 8,
+                            callbacks: {
+                                title: function (items) { return keys[items[0].dataIndex] + '  (' + station + ')'; },
+                                label: function (c) {
+                                    var a = s.assets[keys[c.dataIndex]];
+                                    return [
+                                        ' ' + (a.isSignal ? 'Hours' : 'Operations') + ': ' + auFmtVal(c.parsed.y, a.isSignal),
+                                        ' Asset Type: ' + a.assetType
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 11 }, maxRotation: 90, minRotation: 90, autoSkip: false } },
+                        y: { beginAtZero: true, grid: { color: auTheme().grid }, ticks: { font: { size: 11 }, stepSize: auStepSize(vals) } }
+                    }
+                }
+            });
+            _auBarStCharts.push(ch);
+            auChartList.push(ch);
+        });
+
+        buildAuSectionPager('auBarStPager', auBarStPg,
+            Math.ceil(total / AU_BAR_ST_PER_PG), total,
+            start + 1, Math.min(start + AU_BAR_ST_PER_PG, total),
+            function (pg) { auBarStPg = pg; drawAuBarStPage(); });
     }
 
     // ==========================================================================
@@ -1435,100 +2017,325 @@
     // Section 2: Asset Type-wise (X=asset types, one bar-line per station)
     // ==========================================================================
     function renderAuGraph(data) {
-        if (!data.stationOrder.length) { auNoData(); return; }
-
-        _auLineSites = data.stationOrder;
-        _auLineSiteMeta = {};
-        data.stationOrder.forEach(function (stKey) {
-            var sg = data.stationGroups[stKey];
-            _auLineSiteMeta[stKey] = { station: sg.station, assetType: sg.assetType, division: sg.division, zone: sg.zone };
-        });
-
-        // Station line: single line = operations per station (sorted by ops for visual clarity)
-        _auLineMatrix = { stOps: {} };
-        data.stationOrder.forEach(function (stKey) { _auLineMatrix.stOps[stKey] = data.stationGroups[stKey].totalOps; });
-
-        // Asset Type line
-        _auLineAtKeys = Object.keys(data.assetTypeGroups).sort(function (a, b) { return data.assetTypeGroups[b].totalOps - data.assetTypeGroups[a].totalOps; });
-        _auLineAtOps = {};
-        _auLineAtKeys.forEach(function (at) { _auLineAtOps[at] = data.assetTypeGroups[at].totalOps; });
-
-        // Asset Number line data
-        var _auLineAnKeys = data.assetNumOrder.slice(); // preserve insertion order
-        var _auLineAnOps = {};
-        _auLineAnKeys.forEach(function (an) { _auLineAnOps[an] = data.assetGroups[an] ? data.assetGroups[an].ops : 0; });
+        if (!data.rows.length) { auNoData(); return; }
 
         var $c = $('#auChartContainer').empty();
 
-        // ── Section 1: Station-wise Line ──
-        var $p1 = $('<div class="au-line-panel"></div>');
-        $p1.append('<div class="au-line-section-title"><i class="fas fa-map-marker-alt mr-2" style="color:#6366f1;"></i>Station-wise — Number of Operations (Line)</div>');
-        var $w1 = $('<div style="overflow-x:auto;overflow-y:hidden;position:relative;"></div>');
-        var $cv1 = $('<canvas id="auLineCanvasSt"></canvas>');
-        $w1.append($cv1); $p1.append($w1); $c.append($p1);
-        drawAuLineCanvas($cv1[0], $w1[0], _auLineSites,
-            function (stKey) { return _auLineMatrix.stOps[stKey] || 0; }, '#6366f1',
-            function (stKey) { var m = _auLineSiteMeta[stKey] || {}; return { title: m.station || stKey, sub: (m.assetType || '') + (m.division ? ' | ' + m.division + ', ' + m.zone : '') }; },
-            function (stKey) { var m = _auLineSiteMeta[stKey] || {}; return (m.station || stKey) + '\n' + (m.assetType || ''); });
+        // ── SECTION 1: Asset Number-wise — Number of Operations, one chart per Station ──
+        _auGrStData = auBuildStationAssets(data);
+        $c.append(auSectionHeader('fas fa-hashtag', '#f59e0b', 'Asset Number-wise — Number of Operations (Station-wise)'));
+        $c.append('<div id="auGrStArea"></div>');
+        $c.append('<div id="auGrStPager"></div>');
+        auGrStPg = 1;
+        drawAuGrStPage();
 
-        // ── Section 2: Asset Type-wise Line ──
-        var $p2 = $('<div class="au-line-panel"></div>');
-        $p2.append('<div class="au-line-section-title"><i class="fas fa-layer-group mr-2" style="color:#3b82f6;"></i>Asset Type-wise — Number of Operations (Line)</div>');
-        var $w2 = $('<div style="overflow-x:auto;overflow-y:hidden;position:relative;"></div>');
-        var $cv2 = $('<canvas id="auLineCanvasAt"></canvas>');
-        $w2.append($cv2); $p2.append($w2); $c.append($p2);
-        drawAuLineCanvas($cv2[0], $w2[0], _auLineAtKeys,
-            function (at) { return _auLineAtOps[at] || 0; }, '#3b82f6',
-            function (at) { return { title: at, sub: '' }; },
-            function (at) { return at; });
+        // ── SECTION 2: Station-wise — one chart per station ──
+        var stationOnlyOrder = data.stationOnlyOrder;
 
-        // ── Section 3: Asset Number-wise Line ──
-        var $p3 = $('<div class="au-line-panel"></div>');
-        $p3.append('<div class="au-line-section-title"><i class="fas fa-hashtag mr-2" style="color:#f59e0b;"></i>Asset Number-wise — Number of Operations (Line)</div>');
-        var $w3 = $('<div style="overflow-x:auto;overflow-y:hidden;position:relative;"></div>');
-        var $cv3 = $('<canvas id="auLineCanvasAn"></canvas>');
-        $w3.append($cv3); $p3.append($w3); $c.append($p3);
-        drawAuLineCanvas($cv3[0], $w3[0], _auLineAnKeys,
-            function (an) { return _auLineAnOps[an] || 0; }, '#f59e0b',
-            function (an) { var g = data.assetGroups[an] || {}; return { title: an, sub: (g.assetType || '') + (g.station ? ' | ' + g.station : '') }; },
-            function (an) { var g = data.assetGroups[an] || {}; return an + '\n' + (g.station || ''); });
+        if (stationOnlyOrder.length > 0) {
+            var $stHeader = $('<div></div>').css({
+                fontSize: '13px', fontWeight: '600', color: '#6366f1',
+                textTransform: 'uppercase', letterSpacing: '0.06em',
+                margin: '8px 0 14px', display: 'flex', alignItems: 'center', gap: '8px'
+            }).html('<i class="fas fa-map-marker-alt" style="font-size:11px;"></i> Asset Type-wise (Station-wise)');
+            $c.append($stHeader);
 
-        // Mouse hover events — Section 1
-        $cv1[0].addEventListener('mousemove', function (e) {
-            handleAuLineHover(e, $cv1[0], _auLineSites,
-                function (stKey) { return _auLineMatrix.stOps[stKey] || 0; }, '#6366f1',
-                function (stKey) {
-                    var m = _auLineSiteMeta[stKey] || {};
-                    return '<div class="au-tt-title">' + (m.station || stKey) + '</div>' +
-                        '<div class="au-tt-sub">' + (m.assetType || '') + (m.division ? ' | ' + m.division + ', ' + m.zone : '') + '</div>' +
-                        '<div class="au-tt-divider"><div class="au-tt-row">Operations: <strong>' + (_auLineMatrix.stOps[stKey] || 0) + '</strong></div></div>';
+
+            stationOnlyOrder.forEach(function (station, stIdx) {
+                var so = data.stationOnly[station];
+
+                // ── Build asset-type breakdown for this station (per-type unit) ──
+                var atInfo = auBuildStationTypeOps(data, station);
+                var atOps = atInfo.ops, atSig = atInfo.sig, atOrder = atInfo.keys;
+
+                // Sort asset types ascending by ops for rising curve
+                var sortedKeys = atOrder.slice().sort(function (a, b) {
+                    return atOps[a] - atOps[b];
                 });
-        });
-        $cv1[0].addEventListener('mouseleave', function () { $('#auPieTooltip').removeClass('show'); redrawAuLine($cv1[0]); });
+                var sortedVals = sortedKeys.map(function (k) { return atOps[k]; });
+                var stColors = sortedKeys.map(function (_, i) { return auChartColors[i % auChartColors.length]; });
 
-        // Mouse hover events — Section 2
-        $cv2[0].addEventListener('mousemove', function (e) {
-            handleAuLineHover(e, $cv2[0], _auLineAtKeys,
-                function (at) { return _auLineAtOps[at] || 0; }, '#3b82f6',
-                function (at) {
-                    return '<div class="au-tt-title">' + at + '</div>' +
-                        '<div class="au-tt-divider"><div class="au-tt-row">Operations: <strong>' + (_auLineAtOps[at] || 0) + '</strong></div></div>';
-                });
-        });
-        $cv2[0].addEventListener('mouseleave', function () { $('#auPieTooltip').removeClass('show'); redrawAuLine($cv2[0]); });
+                var stTotal = sortedVals.reduce(function (a, b) { return a + b; }, 0);
+                var avgOps = sortedKeys.length ? (stTotal / sortedKeys.length).toFixed(1) : 0;
+                // Peak type: when units are mixed, compare operation-count types only
+                var peakPool = atInfo.mixed ? sortedKeys.filter(function (k) { return !atSig[k]; }) : sortedKeys;
+                var peakType = peakPool.length ? peakPool.reduce(function (a, b) {
+                    return atOps[a] >= atOps[b] ? a : b;
+                }) : '—';
 
-        // Mouse hover events — Section 3
-        $cv3[0].addEventListener('mousemove', function (e) {
-            handleAuLineHover(e, $cv3[0], _auLineAnKeys,
-                function (an) { return _auLineAnOps[an] || 0; }, '#f59e0b',
-                function (an) {
-                    var g = data.assetGroups[an] || {};
-                    return '<div class="au-tt-title">' + an + '</div>' +
-                        '<div class="au-tt-sub">' + (g.assetType || '') + (g.station ? ' | ' + g.station : '') + '</div>' +
-                        '<div class="au-tt-divider"><div class="au-tt-row">Operations: <strong>' + (_auLineAnOps[an] || 0) + '</strong></div></div>';
+                var $panel = $('<div></div>').css({
+                    padding: '24px', background: 'var(--e7-surface, #fff)', borderRadius: '12px',
+                    boxShadow: 'var(--e7-shadow-card, 0 2px 12px rgba(0,0,0,0.08))', marginBottom: '20px'
                 });
+
+                // Section title
+                $panel.append(
+                    '<div style="font-size:15px;font-weight:600;color:var(--e7-heading,#1e293b);border-bottom:2px solid var(--e7-border,#e5e7eb);' +
+                    'padding-bottom:10px;margin-bottom:20px;">' +
+                    '<i class="fas fa-map-marker-alt mr-2" style="color:var(--e7-accent,#6366f1);font-size:13px;"></i>' +
+                    station + ' — Operations by Asset Type</div>'
+                );
+
+                // Stat cards
+                // Units are decided PER ASSET TYPE (Signal = hours, others = operations)
+                var peakTxt = peakType.length > 14 ? peakType.substring(0, 13) + '…' : peakType;
+                var stStats;
+                if (atInfo.mixed) {
+                    stStats = [
+                        { label: 'Asset types', val: sortedKeys.length },
+                        { label: 'Total operations', val: atInfo.opsTotal },
+                        { label: 'Signal hours', val: atInfo.hrsTotal.toFixed(2) },
+                        { label: 'Peak type (ops)', val: peakTxt }
+                    ];
+                } else {
+                    stStats = [
+                        { label: 'Asset types', val: sortedKeys.length },
+                        { label: atInfo.allSignal ? 'Total hours' : 'Total operations', val: atInfo.allSignal ? stTotal.toFixed(2) : stTotal },
+                        { label: 'Avg per type', val: atInfo.allSignal ? (stTotal / (sortedKeys.length || 1)).toFixed(2) : avgOps },
+                        { label: 'Peak type', val: peakTxt }
+                    ];
+                }
+                var $stCards = $('<div></div>').css({
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))',
+                    gap: '12px', marginBottom: '24px'
+                });
+                stStats.forEach(function (s) {
+                    $stCards.append(
+                        '<div style="background:var(--e7-surface-2,#f8fafc);border-radius:8px;padding:14px 18px;border:1px solid var(--e7-border,#e5e7eb);">' +
+                        '<div style="font-size:12px;color:var(--e7-text-3,#64748b);margin-bottom:6px;">' + s.label + '</div>' +
+                        '<div style="font-size:26px;font-weight:700;color:var(--e7-heading,#1e293b);">' + s.val + '</div>' +
+                        '</div>'
+                    );
+                });
+                $panel.append($stCards);
+
+                // Legend — one item per asset type
+                var $stLegend = $('<div></div>').css({
+                    display: 'flex', flexWrap: 'wrap', gap: '6px 20px',
+                    marginBottom: '16px', padding: '0 4px'
+                });
+                sortedKeys.forEach(function (k, i) {
+                    $stLegend.append(
+                        '<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--e7-text-2,#475569);">' +
+                        '<span style="width:12px;height:12px;border-radius:50%;background:' + stColors[i] + ';flex-shrink:0;"></span>' +
+                        k + ' — ' + auTypeValText(atOps[k], atSig[k]) + '</span>'
+                    );
+                });
+                $panel.append($stLegend);
+
+                // Canvas
+                var canvasId = 'auGraphSt' + stIdx;
+                var $stWrap = $('<div></div>').css({ position: 'relative', height: '300px' });
+                var $stCanvas = $('<canvas id="' + canvasId + '"></canvas>');
+                $stWrap.append($stCanvas);
+                $panel.append($stWrap);
+                $c.append($panel);
+
+                var stChart = new Chart($stCanvas[0].getContext('2d'), {
+                    type: 'line',
+                    plugins: [auValueLabelPlugin],
+                    data: {
+                        labels: sortedKeys,
+                        datasets: [{
+                            label: 'Operations',
+                            data: sortedVals,
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99,102,241,0.10)',
+                            borderWidth: 2.5,
+                            pointBackgroundColor: stColors,
+                            pointBorderColor: stColors,
+                            pointBorderWidth: 2.5,
+                            pointRadius: 6,
+                            pointHoverRadius: 9,
+                            fill: true,
+                            tension: 0.4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        layout: { padding: { top: 24, right: 12 } },
+                        plugins: {
+                            // Total operations (or Signal hours) above each Asset Type point
+                            auValueLabels: {
+                                color: auTheme().heading,
+                                formatter: function (v, i) { return auTypeValText(v, atSig[sortedKeys[i]]); }
+                            },
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: auTheme().surface, titleColor: auTheme().heading, bodyColor: auTheme().text, borderColor: auTheme().border, borderWidth: 1,
+                                padding: 12, cornerRadius: 8,
+                                callbacks: {
+                                    title: function (items) { return items[0].label; },
+                                    label: function (c) {
+                                        var k = sortedKeys[c.dataIndex];
+                                        return [
+                                            ' ' + (atSig[k] ? 'Total Hours' : 'Total Operations') + ': ' + auFmtVal(c.parsed.y, atSig[k]),
+                                            ' Asset Type: ' + k,
+                                            ' Station: ' + station
+                                        ];
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { display: false },
+                                ticks: { font: { size: 11 }, color: auTheme().text2, autoSkip: false, maxRotation: 30 }
+                            },
+                            y: {
+                                beginAtZero: false,
+                                grid: { color: auTheme().grid },
+                                title: { display: true, text: auAxisTitle(atInfo), font: { size: 12 }, color: auTheme().text2 },
+                                ticks: { font: { size: 11 }, color: auTheme().text3, stepSize: auStepSize(sortedVals) }
+                            }
+                        }
+                    }
+                });
+                auChartList.push(stChart);
+            });
+        }
+    }
+
+    // Station-wise graph state
+    var _auGrStData = null, _auGrStCharts = [], auGrStPg = 1, AU_GR_ST_PER_PG = 3;
+
+    // One page of station-wise "Asset Number-wise — Number of Operations" line charts
+    function drawAuGrStPage() {
+        auDestroySectionCharts(_auGrStCharts);
+        var d = _auGrStData;
+        var total = d.order.length;
+        var start = (auGrStPg - 1) * AU_GR_ST_PER_PG;
+        var page = d.order.slice(start, start + AU_GR_ST_PER_PG);
+        var $area = $('#auGrStArea').empty();
+
+        page.forEach(function (station, idx) {
+            var s = d.map[station];
+            var keys = s.assetOrder;
+
+            // Sort ascending for rising curve
+            var sorted = keys.slice().sort(function (a, b) { return s.assets[a].ops - s.assets[b].ops; });
+            var sortedVals = sorted.map(function (k) { return s.assets[k].ops; });
+            var pointColors = sorted.map(function (k) { return auChartColors[keys.indexOf(k) % auChartColors.length]; });
+            var peakAsset = sorted.length ? sorted[sorted.length - 1] : '—';
+            var avg = sorted.length ? s.totalOps / sorted.length : 0;
+            var unitLbl = s.allSignal ? 'hours' : (s.anySignal ? 'ops / hrs' : 'operations');
+
+            var $panel = $('<div></div>').css({
+                padding: '24px', background: 'var(--e7-surface, #fff)', borderRadius: '12px',
+                boxShadow: 'var(--e7-shadow-card, 0 2px 12px rgba(0,0,0,0.08))', marginBottom: '20px'
+            });
+
+            $panel.append(
+                '<div style="font-size:15px;font-weight:600;color:var(--e7-heading,#1e293b);border-bottom:2px solid var(--e7-border,#e5e7eb);padding-bottom:10px;margin-bottom:20px;">' +
+                '<i class="fas fa-hashtag mr-2" style="color:#f59e0b;font-size:13px;"></i>' +
+                station + ' — Asset Number-wise Number of Operations' +
+                ' <span style="font-weight:400;color:var(--e7-text-3,#64748b);font-size:12px;">(' + s.division + ' / ' + s.zone + ')</span></div>'
+            );
+
+            // Stat cards
+            var stats = [
+                { label: 'Asset numbers', val: sorted.length },
+                { label: 'Total ' + unitLbl, val: s.anySignal ? s.totalOps.toFixed(2) : s.totalOps },
+                { label: 'Avg per asset', val: s.anySignal ? avg.toFixed(2) : avg.toFixed(1) },
+                { label: 'Peak asset', val: peakAsset.length > 14 ? peakAsset.substring(0, 13) + '…' : peakAsset }
+            ];
+            var $cards = $('<div></div>').css({ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '12px', marginBottom: '24px' });
+            stats.forEach(function (st) {
+                $cards.append(
+                    '<div style="background:var(--e7-surface-2,#f8fafc);border-radius:8px;padding:14px 18px;border:1px solid var(--e7-border,#e5e7eb);">' +
+                    '<div style="font-size:12px;color:var(--e7-text-3,#64748b);margin-bottom:6px;">' + st.label + '</div>' +
+                    '<div style="font-size:26px;font-weight:700;color:var(--e7-heading,#1e293b);" title="' + st.val + '">' + st.val + '</div>' +
+                    '</div>'
+                );
+            });
+            $panel.append($cards);
+
+            // Legend
+            var $legend = $('<div></div>').css({ display: 'flex', flexWrap: 'wrap', gap: '6px 20px', marginBottom: '16px', padding: '0 4px' });
+            sorted.forEach(function (k, i) {
+                var a = s.assets[k];
+                $legend.append(
+                    '<span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--e7-text-2,#475569);">' +
+                    '<span style="width:12px;height:12px;border-radius:50%;background:' + pointColors[i] + ';flex-shrink:0;"></span>' +
+                    k + ' — ' + (a.isSignal ? a.ops.toFixed(2) + ' hrs' : a.ops + ' ops') + '</span>'
+                );
+            });
+            $panel.append($legend);
+
+            // Canvas in horizontal scroller
+            var innerW = Math.max(sorted.length * 70, 100);
+            var $scroller = $('<div></div>').css({ overflowX: 'auto', overflowY: 'hidden', width: '100%', paddingBottom: '6px' });
+            var $wrap = $('<div></div>').css({ position: 'relative', height: '340px', width: innerW + 'px', minWidth: '100%' });
+            var $canvas = $('<canvas id="auGrSt' + (start + idx) + '"></canvas>');
+            $wrap.append($canvas); $scroller.append($wrap); $panel.append($scroller);
+            $area.append($panel);
+
+            var ch = new Chart($canvas[0].getContext('2d'), {
+                type: 'line',
+                plugins: [auValueLabelPlugin],
+                data: {
+                    labels: sorted,
+                    datasets: [{
+                        label: 'Operations',
+                        data: sortedVals,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59,130,246,0.10)',
+                        borderWidth: 2.5,
+                        pointBackgroundColor: pointColors,
+                        pointBorderColor: pointColors,
+                        pointBorderWidth: 2.5,
+                        pointRadius: 6,
+                        pointHoverRadius: 9,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 24 } },
+                    plugins: {
+                        // Operation count above each Asset Number point
+                        auValueLabels: {
+                            color: auTheme().heading,
+                            formatter: function (v, i) { return auFmtVal(v, s.assets[sorted[i]].isSignal); }
+                        },
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: auTheme().surface, titleColor: auTheme().heading, bodyColor: auTheme().text, borderColor: auTheme().border, borderWidth: 1, padding: 12, cornerRadius: 8,
+                            callbacks: {
+                                title: function (items) { return items[0].label; },
+                                label: function (c) {
+                                    var a = s.assets[sorted[c.dataIndex]];
+                                    return [
+                                        ' ' + (a.isSignal ? 'Hours' : 'Operations') + ': ' + auFmtVal(c.parsed.y, a.isSignal),
+                                        ' Type: ' + a.assetType,
+                                        ' Station: ' + station
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 11 }, color: auTheme().text2, autoSkip: false, maxRotation: 90, minRotation: 90 } },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: auTheme().grid },
+                            title: { display: true, text: s.allSignal ? 'Hours' : 'Number of operations', font: { size: 12 }, color: auTheme().text2 },
+                            ticks: { font: { size: 11 }, color: auTheme().text3, stepSize: auStepSize(sortedVals) }
+                        }
+                    }
+                }
+            });
+            _auGrStCharts.push(ch);
+            auChartList.push(ch);
         });
-        $cv3[0].addEventListener('mouseleave', function () { $('#auPieTooltip').removeClass('show'); redrawAuLine($cv3[0]); });
+
+        buildAuSectionPager('auGrStPager', auGrStPg,
+            Math.ceil(total / AU_GR_ST_PER_PG), total,
+            start + 1, Math.min(start + AU_GR_ST_PER_PG, total),
+            function (pg) { auGrStPg = pg; drawAuGrStPage(); });
     }
 
     // Generic Canvas line renderer (single line, generic X labels)
@@ -1651,13 +2458,14 @@
             titleRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 16, name: 'Calibri' };
             titleRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'center' };
 
-            var dateRow = worksheet.addRow(['Period: ' + fd + ' to ' + td + ' | Generated: ' + new Date().toLocaleString()]); dateRow.height = 20;
+            var dateRow = worksheet.addRow(['From ' + fd + ' to ' + td + ' | Generated: ' + formattedNow()]); dateRow.height = 20;
             worksheet.mergeCells(2, 1, 2, colCount);
             dateRow.getCell(1).font = { italic: true, size: 10, color: { argb: 'FF64748B' } };
             dateRow.getCell(1).alignment = { horizontal: 'center' };
             worksheet.addRow([]);
 
-            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Asset Number', 'Number of Operations'];
+            var hasSignalRow = $('#tblUtilization tbody td[data-signal="1"]').length > 0;
+            var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Asset Number', hasSignalRow ? 'Hours / Operations' : 'Number of Operations'];
             var headerRow = worksheet.addRow(headers); headerRow.height = 30;
             headerRow.eachCell(function (cell) {
                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } };
@@ -1696,18 +2504,221 @@
         if (!table) { alert('No data available to download'); return; }
         try {
             $("#loader").show();
+
+            var fd = $('#txtFromDate').val() || '';
+            var td = $('#txtToDate').val() || '';
+
+            var csv = [];
+
+            // Title row
+            csv.push('"Asset Utilization Report"');
+
+            // Period row
+            csv.push('"From ' + fd + ' to ' + td + '"');
+
+            // Generated row (separate line)
+            csv.push('"Generated: ' + formattedNow() + '"');
+
+            // Empty separator row
+            csv.push('');
+
+            // Header row
             var headers = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Asset Number', 'Number of Operations'];
-            var csv = [headers.map(function (h) { return '"' + h + '"'; }).join(',')];
-            var $allRows = $('#tblUtilization tbody tr'); $allRows.show();
+            csv.push(headers.map(function (h) { return '"' + h + '"'; }).join(','));
+
+            // Data rows
+            var $allRows = $('#tblUtilization tbody tr');
+            $allRows.show();
             $allRows.each(function () {
-                var $tr = $(this); if ($tr.find('td[colspan]').length) return;
-                var rowData = []; $tr.find('td').each(function (i) { if (i < 7) rowData.push('"' + $(this).text().replace(/(\r\n|\n|\r)/gm, ' ').trim().replace(/"/g, '""') + '"'); });
+                var $tr = $(this);
+                if ($tr.find('td[colspan]').length) return;
+                var rowData = [];
+                $tr.find('td').each(function (i) {
+                    if (i < 7) {
+                        rowData.push('"' + $(this).text()
+                            .replace(/(\r\n|\n|\r)/gm, ' ')
+                            .trim()
+                            .replace(/"/g, '""') + '"');
+                    }
+                });
                 csv.push(rowData.join(','));
             });
+
             if (typeof goToPage === 'function') goToPage(1);
-            saveAs(new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' }), getFileName('csv'));
-            $("#loader").hide(); CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
-        } catch (err) { $("#loader").hide(); console.error('CSV Error:', err); CommonNotification("ERROR", "Error downloading CSV", "Error"); }
+
+            saveAs(
+                new Blob(['\uFEFF' + csv.join('\n')], { type: 'text/csv;charset=utf-8;' }),
+                getFileName('csv')
+            );
+
+            $("#loader").hide();
+            CommonNotification("SUCCESS", "CSV downloaded successfully!", "Success");
+        } catch (err) {
+            $("#loader").hide();
+            console.error('CSV Error:', err);
+            CommonNotification("ERROR", "Error downloading CSV", "Error");
+        }
+    }
+
+    // ==========================================================================
+    // PDF DOWNLOAD
+    // ==========================================================================
+    function fnDownloadPDF() {
+        var table = document.querySelector('#tblUtilization');
+        if (!table) { alert('No data available to download'); return; }
+
+        try {
+            $("#loader").show();
+
+            var { jsPDF } = window.jspdf;
+            var doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+            var pageW = doc.internal.pageSize.getWidth();
+
+            // ── META TEXT ──────────────────────────────────────────────────────
+            var fd = $('#txtFromDate').val() || '—';
+            var td = $('#txtToDate').val() || '—';
+
+            // ── COLLECT TABLE DATA (show all rows first) ───────────────────────
+            var $rows = $('#tblUtilization tbody tr');
+            $rows.show();
+
+            var tableBody = [];
+            var rowIndex = 0;
+
+            $rows.each(function () {
+                var $tr = $(this);
+                if ($tr.find('td[colspan]').length > 0) return;
+                rowIndex++;
+                var row = [];
+                $tr.find('td').each(function (i) {
+                    if (i < 7) row.push($(this).text().replace(/(\r\n|\n|\r)/gm, ' ').trim());
+                });
+                tableBody.push(row);
+            });
+
+            if (typeof goToPage === 'function') goToPage(1);
+
+            if (tableBody.length === 0) {
+                $("#loader").hide();
+                alert('No data available to download');
+                return;
+            }
+
+            var metaText = 'Period: ' + fd + ' to ' + td +
+                '   |   Total Records: ' + rowIndex +
+                '   |   Generated: ' + (function () {
+                    var now = new Date();
+                    return String(now.getDate()).padStart(2, '0') + '/' +
+                        String(now.getMonth() + 1).padStart(2, '0') + '/' +
+                        now.getFullYear() + ' ' +
+                        String(now.getHours()).padStart(2, '0') + ':' +
+                        String(now.getMinutes()).padStart(2, '0');
+                })();
+
+            // ── COLUMN HEADERS ─────────────────────────────────────────────────
+            var headers = [
+                'Sr.No', 'Zone', 'Division', 'Station',
+                'Asset Type', 'Asset Number', 'Number of\nOperations'
+            ];
+
+            // ── autoTable ──────────────────────────────────────────────────────
+            doc.autoTable({
+                startY: 58,
+                head: [headers],
+                body: tableBody,
+                theme: 'grid',
+                tableWidth: 'auto',
+                styles: {
+                    fontSize: 9,
+                    cellPadding: 5,
+                    valign: 'middle',
+                    halign: 'center',
+                    lineColor: [226, 232, 240],
+                    lineWidth: 0.4,
+                    overflow: 'linebreak'
+                },
+                headStyles: {
+                    fillColor: [30, 58, 95],
+                    textColor: [255, 255, 255],
+                    fontStyle: 'bold',
+                    fontSize: 9,
+                    halign: 'center',
+                    valign: 'middle',
+                    minCellHeight: 30,
+                    cellPadding: { top: 6, bottom: 6, left: 4, right: 4 }
+                },
+                alternateRowStyles: {
+                    fillColor: [241, 245, 249]
+                },
+                bodyStyles: {
+                    textColor: [51, 51, 51]
+                },
+                columnStyles: {
+                    0: { cellWidth: 'auto' },   // Sr.No
+                    1: { cellWidth: 'auto' },   // Zone
+                    2: { cellWidth: 'auto' },   // Division
+                    3: { cellWidth: 'auto' },   // Station
+                    4: { cellWidth: 'auto' },   // Asset Type
+                    5: { cellWidth: 'auto' },   // Asset Number
+                    6: { cellWidth: 'auto' }    // Number of Operations
+                },
+                tableWidth: 'auto',
+                margin: { top: 58, left: 10, right: 10 },
+                didParseCell: function (data) {
+                    if (data.section === 'body') {
+                        if (data.column.index === 6) {
+                            data.cell.styles.fontStyle = 'bold';
+                            data.cell.styles.textColor = [30, 58, 95];
+                        }
+                        if (data.column.index === 2 || data.column.index === 3 ||
+                            data.column.index === 4 || data.column.index === 5) {
+                            data.cell.styles.halign = 'left';
+                        }
+                    }
+                },
+                // Repeat header banner on every page
+                didDrawPage: function (data) {
+                    // Title bar
+                    doc.setFillColor(79, 70, 229);
+                    doc.rect(0, 0, pageW, 36, 'F');
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(15);
+                    doc.setTextColor(255, 255, 255);
+                    doc.text('Asset Utilization Report', pageW / 2, 23, { align: 'center' });
+
+                    // Meta bar
+                    doc.setFillColor(240, 244, 255);
+                    doc.rect(0, 36, pageW, 18, 'F');
+                    doc.setFont('helvetica', 'italic');
+                    doc.setFontSize(8);
+                    doc.setTextColor(71, 85, 105);
+                    doc.text(metaText, pageW / 2, 47, { align: 'center' });
+
+                    // Page number
+                    var pageNum = doc.internal.getCurrentPageInfo().pageNumber;
+                    var totalPg = doc.internal.getNumberOfPages();
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(7);
+                    doc.setTextColor(148, 163, 184);
+                    doc.text(
+                        'Page ' + pageNum + ' of ' + totalPg,
+                        pageW - 14,
+                        doc.internal.pageSize.getHeight() - 8,
+                        { align: 'right' }
+                    );
+                },
+                margin: { top: 58, left: 14, right: 14 }
+            });
+
+            doc.save(getFileName('pdf'));
+            $("#loader").hide();
+            CommonNotification("SUCCESS", "PDF downloaded successfully!", "Success");
+
+        } catch (err) {
+            $("#loader").hide();
+            console.error('PDF Error:', err);
+            CommonNotification("ERROR", "Error downloading PDF", "Error");
+        }
     }
 
     function getFileName(ext) {

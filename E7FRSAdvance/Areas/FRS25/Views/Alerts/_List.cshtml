@@ -27,19 +27,20 @@ else
         <table class="alrt-table">
             <thead>
                 <tr>
-                    <th>Type</th>
+                    <th>S.No</th>
+                    <th>Alert Type / Status</th>
                     <th>Asset / Cause</th>
-                    <th>Incidence Time</th>
-                    <th>Duration</th>
-                    <th>Status</th>
+                    <th>Date &amp; Time</th>
                     <th>Feedback</th>
                     <th>Maintainer</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
+                @{ var sNo = skip; }
                 @foreach (var a in alerts)
                 {
+                    sNo++;
                     var alertTypeStr = a.AlertType ?? "";
                     var typeLbl = !string.IsNullOrEmpty(alertTypeStr)
                                     ? alertTypeStr
@@ -88,13 +89,21 @@ else
                     var incTime = a.SetTimeStamp.ToString("dd/MM/yyyy HH:mm:ss");
                     var isLocked = !string.IsNullOrEmpty(fb);
 
-                    <tr class>
+                    <tr data-alert-id="@a.Id" data-site-id="@a.SiteId" data-asset-id="@a.AssetId" data-cause-code="@a.CauseCode" data-set-timestamp="@a.SetTimeStamp.ToString("o")">
 
-                        @* TYPE *@
+                        @* S.NO *@
+                        <td>@sNo</td>
+
+                        @* ALERT TYPE / STATUS *@
                         <td>
-                            <span class="alrt-type-badge @typeCss">
-                                <i class="fas fa-@typeIco"></i>&nbsp;@typeLbl
-                            </span>
+                            <div class="alrt-stack">
+                                <span class="alrt-type-badge @typeCss">
+                                    <i class="fas fa-@typeIco"></i>&nbsp;@typeLbl
+                                </span>
+                                <span class="alrt-status @stCss" id="alrtStatus_@a.Id">
+                                    <i class="fas fa-@stIco"></i>&nbsp;@stLbl
+                                </span>
+                            </div>
                         </td>
 
                         @* ASSET / CAUSE *@
@@ -124,30 +133,32 @@ else
                             </div>
                         </td>
 
-                        @* INCIDENCE TIME *@
+                        @* INCIDENCE / RESET DATE & TIME + DURATION *@
                         <td>
-                            <div class="alrt-time-cell">
-                                <span class="alrt-time-main">@incTime</span>
-                                @if (a.ResetTimeStamp.HasValue)
-                                {
-                                    <span class="alrt-time-rel" style="color:var(--done);">
-                                        Reset: @a.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss")
-                                    </span>
-                                }
+                            <div class="alrt-stack">
+                                <div>
+                                    <span class="alrt-time-lbl">Incidence</span>
+                                    <div class="alrt-time-cell" id="alrtTime_@a.Id">
+                                        <span class="alrt-time-main">@incTime</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <span class="alrt-time-lbl">Reset</span>
+                                    <div class="alrt-time-cell" id="alrtReset_@a.Id">
+                                        @if (a.ResetTimeStamp.HasValue)
+                                        {
+                                            <span class="alrt-time-main">@a.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:var(--e7-text-4, #b3bdc9);font-size:13px;">—</span>
+                                        }
+                                    </div>
+                                </div>
+                                <span class="alrt-dur @dCss" id="alrtDur_@a.Id">@dur</span>
                             </div>
                         </td>
 
-                        @* DURATION *@
-                        <td>
-                            <span class="alrt-dur @dCss">@dur</span>
-                        </td>
-
-                        @* STATUS *@
-                        <td>
-                            <span class="alrt-status @stCss">
-                                <i class="fas fa-@stIco"></i>&nbsp;@stLbl
-                            </span>
-                        </td>
                         @* FEEDBACK *@
                         <td>
                             @{
@@ -181,17 +192,21 @@ else
 
                                             if (mAppConfig != null && mAppConfig.Id > 0)
                                             {
+                                                // 616: Alert Feedback Time is in Minutes or (default) Hours from the alert set time
                                                 try
                                                 {
-                                                    var ackSetTimeStamp = a.SetTimeStamp.AddHours(Convert.ToInt32(mAppConfig.AppValue));
+                                                    var ackSetTimeStamp = (mAppConfig.Unit != null && mAppConfig.Unit.Value == E7FRSAdvance.Utility.Utility.Unit.Minutes.GetHashCode())
+                                                        ? a.SetTimeStamp.AddMinutes(Convert.ToInt32(mAppConfig.AppValue))
+                                                        : a.SetTimeStamp.AddHours(Convert.ToInt32(mAppConfig.AppValue));
                                                     if (ackSetTimeStamp < DateTime.Now) { isShowbtn = false; }
                                                 }
-                                                catch { isShowbtn = false; }
+                                                catch { }
                                             }
                                         }
 
-                                        // Already submitted by this user class
-                                        if (mFRSAlertRemarks.Any(x => x.FRSAlertId == a.Id && x.MaintainerId == userClassId))
+                                        // Already submitted by this user class (an Acknowledge entry does not count)
+                                        if (mFRSAlertRemarks.Any(x => x.FRSAlertId == a.Id && x.MaintainerId == userClassId
+                                                && x.AcknowledgementStatusId != E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Acknowledge.GetHashCode()))
                                         {
                                             isShowbtn = false;
                                         }
@@ -206,6 +221,10 @@ else
                                         }
                                     }
                                 }
+
+                                // 616: T/PT/M/F can be given only by ESM / JE / SSECSI users inside the
+                                // Alert Feedback Time window; Energy7, Zonal/Divisional and Admin users only view.
+                                bool canGiveFeedback = isDisable;
 
                                 // ── Resolve badge state from FRSAlertRemark (latest entry for this alert) ──
                                 var alertRemarks = mFRSAlertRemarks.Where(x => x.FRSAlertId == a.Id).ToList();
@@ -405,7 +424,9 @@ else
 
                         @* MAINTAINER *@
                         <td>
-                            @if (a.AcknowledgemenTimeStamp.HasValue)
+                            @* Blank until a feedback type is given; status 1 (Pending) never shows a maintainer *@
+                            @if (a.AcknowledgemenTimeStamp.HasValue && hasFeedback
+                                && a.AcknowledgemenStatusId != E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Pending.GetHashCode())
                             {
                                 <div class="alrt-maintainer-cell">
                                     <div class="alrt-maint-avatar">@mIni</div>
@@ -416,14 +437,6 @@ else
                                     </div>
                                 </div>
                             }
-
-                            else
-                            {
-                                <span style="color:var(--e7-text-4, #b3bdc9);font-size:13px;">—</span>
-
-                            }
-
-
                         </td>
 
                         @* ACTIONS *@
@@ -445,14 +458,20 @@ else
                 </button>*@
                                 <button class="alrt-act-btn @(!isCleared ? "btn-primary" : "")"
                                         title="@(!isCleared ? "Give Feedback" : "View Feedback")"
-                                        onclick="openFeedbackSlidePanel('@a.Id','full','@displayStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)')">
+                                        onclick="openFeedbackSlidePanel('@a.Id','full','@displayStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)',@(canGiveFeedback ? "true" : "false"))">
                                     <i class="fas fa-comment-dots"></i>
                                 </button>
-                                <button class="alrt-act-btn alrt-act-analysis"
-                                        title="Alert Analysis"
-                                        onclick="alrtOpenAnalysis(@a.Id)">
-                                    <i class="fas fa-chart-bar"></i>
-                                </button>
+                                @* Alert Analysis — only Admin, Site Keeping and Vendor users *@
+                                @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.RoleId == E7FRSAdvance.Utility.Utility.Role.Admin.GetHashCode()
+                                    || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.IsSiteKeeping
+                                    || E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassTypeId == E7FRSAdvance.Utility.Utility.UserClassType.VendorUser.GetHashCode())
+                                {
+                                    <button class="alrt-act-btn alrt-act-analysis"
+                                            title="Alert Analysis"
+                                            onclick="alrtOpenAnalysis(@a.Id)">
+                                        <i class="fas fa-chart-bar"></i>
+                                    </button>
+                                }
                                 <button class="alrt-act-btn alrt-act-esc"
                                         title="Escalation Timeline"
                                         onclick="alrtLoadEscalation(@a.Id, '@Html.AttributeEncode(station)', '@Html.AttributeEncode(cause)')">
@@ -646,7 +665,7 @@ function AddRemark(id, statusId) {
 
 function fnUpdateRemark() {
     var remarkVal = $('#txtAlertRemark').val();
-    if (!remarkVal) { alert('Remark is required.'); return; }
+    if (!remarkVal) { showWarning('Remark is required.', 'Validation'); return; }
     var mFRSAlert = {};
     mFRSAlert.Id = $('#hdnAlertRemarkId').val();
     mFRSAlert.Remark = remarkVal;
@@ -654,12 +673,12 @@ function fnUpdateRemark() {
     var rectificationValue = $('#txtRectificationDateTime').val();
     if (rectificationValue) {
         var rectErr = window.e7RectificationError(rectificationValue, $('#txtRectificationDateTime').attr('data-inc'));
-        if (rectErr) { alert(rectErr); $('#txtRectificationDateTime').focus(); return; }
+        if (rectErr) { showWarning(rectErr, 'Validation'); $('#txtRectificationDateTime').focus(); return; }
         mFRSAlert.RectificationDateTime = new Date(rectificationValue).toISOString();
     }
     if (mFRSAlert.AcknowledgemenStatusId == '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()') {
         mFRSAlert.PTAlertInfoId = $('#drpRemarkAlertInfo').val();
-        if (!mFRSAlert.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+        if (!mFRSAlert.PTAlertInfoId) { showWarning('Cause Code is required.', 'Validation'); return; }
     }
     window.E7Loader && E7Loader.show('Please wait…');
     $.ajax({
@@ -677,7 +696,7 @@ function fnUpdateRemark() {
                 else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
             }
         },
-        error: function () { $('#modelAddRemark').modal('hide'); window.E7Loader && E7Loader.hide(); alert("Something went wrong!"); }
+        error: function () { $('#modelAddRemark').modal('hide'); window.E7Loader && E7Loader.hide(); showError('Something went wrong! Please try again.', 'Error'); }
     });
 }
 
@@ -690,7 +709,7 @@ function AddRemarkWithoutFeedback(id, statusId) {
 
 function fnUpdateRemarkWithoutFeedback() {
     var remarkVal = $('#txtAlertRemarkWithOutFeedback').val();
-    if (!remarkVal) { alert('Remark is required.'); return; }
+    if (!remarkVal) { showWarning('Remark is required.', 'Validation'); return; }
     var mFRSAlert = {};
     mFRSAlert.Id = $('#hdnAlertRemarkWithOutFeedbackId').val();
     mFRSAlert.Remark = remarkVal;
@@ -711,7 +730,7 @@ function fnUpdateRemarkWithoutFeedback() {
                 else if (data.type === 'error') CommonNotification("ERROR", msg, "error");
             }
         },
-        error: function () { $('#modelAddRemarkWithOutFeedback').modal('hide'); window.E7Loader && E7Loader.hide(); alert("Something went wrong!"); }
+        error: function () { $('#modelAddRemarkWithOutFeedback').modal('hide'); window.E7Loader && E7Loader.hide(); showError('Something went wrong! Please try again.', 'Error'); }
     });
 }
 
@@ -730,14 +749,44 @@ function fnShowRemark(id) {
     });
 }
 
+// Same as 616 AlertLive: fetch the alert, show the alert-card JSON when present,
+// otherwise fall back to the plain set / description / reset message text.
 function fnShowAlertMessage(id) {
-    var alertmsg  = $('#spnAlertmsg'         + id).text();
-    var alertDesc = $('#spnAlertDescription' + id).text();
-    var resetDesc = $('#spnResetAlertmsg'    + id).text();
-    var msg = alertmsg.replace(/\n/g, '') + '<br>' + alertDesc.replace(/\n/g, '');
-    if (resetDesc) { msg += '<br><b>Reset Message</b><br>' + resetDesc.replace(/\n/g, ''); }
-    $('#spnAlertMessage').html(msg.replace(/\n/g, '<br>'));
-    $('#modelShowAlertMessage').modal('show');
+    window.E7Loader && E7Loader.show('Please wait…');
+    $.ajax({
+        url: '/FRS25/Alerts/GetFRSAlertById',
+        type: 'POST',
+        data: JSON.stringify({ id: id }),
+        contentType: 'application/json',
+        success: function (data) {
+            window.E7Loader && E7Loader.hide();
+            data = data || {};
+
+            var alertCardJson = data.CloudAlertCardJson;
+            if (data.NotificationSentBy === 'Local') alertCardJson = data.LocalAlertCardJson;
+            var rectCardJson = data.ResetAlertCardJson || null;
+
+            // Alert-card JSON → 616 message format; otherwise plain text (server data, else the row's hidden spans)
+            var cardHtml = (alertCardJson && typeof fnBuildAlertMessageHtml === 'function')
+                ? fnBuildAlertMessageHtml(alertCardJson, rectCardJson) : '';
+            if (cardHtml) {
+                $('#spnAlertMessage').html(cardHtml);
+            } else {
+                var alertmsg  = data.SetAlertMessage   || $('#spnAlertmsg' + id).text()         || '';
+                var alertDesc = data.Description       || $('#spnAlertDescription' + id).text() || '';
+                var resetDesc = data.ResetAlertMessage || $('#spnResetAlertmsg' + id).text()    || '';
+                var msg = alertmsg.replace(/\n/g, '') + '<br>' + alertDesc.replace(/\n/g, '');
+                if (resetDesc) { msg += '<br><b>Reset Message</b><br>' + resetDesc.replace(/\n/g, ''); }
+                $('#spnAlertMessage').html(msg.replace(/\n/g, '<br>'));
+            }
+
+            $('#modelShowAlertMessage').modal('show');
+        },
+        error: function () {
+            window.E7Loader && E7Loader.hide();
+            showError('Could not load the alert message. Please try again.', 'Error');
+        }
+    });
 }
 
 function fnUpdateMaintenanceInActiveMode(assetId) {
@@ -1401,7 +1450,10 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
         if (bdrop) bdrop.style.display = 'none';
     };
 
-    window.openFeedbackSlidePanel = function (alertId, mode, statusId, asset, station, cause, incTime, duration, typeLbl, division, zone) {
+    window.openFeedbackSlidePanel = function (alertId, mode, statusId, asset, station, cause, incTime, duration, typeLbl, division, zone, canGiveFeedback) {
+
+        // 616: false = this user may only view (T/PT/M/F disabled by user class or Alert Feedback Time)
+        fbSetLocked(mode === 'full' && canGiveFeedback === false);
 
         // Reset photos on each open
         window._fbPhotos = [];
@@ -1434,115 +1486,43 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             window.e7SetRectLimits(document.getElementById('fbRectDate'), incTime);
             document.getElementById('fbCauseRow').style.display = 'none';
             document.getElementById('fbHdnAlertId').value  = alertId;
-            document.getElementById('fbHdnStatusId').value = statusId || '';
+            document.getElementById('fbHdnStatusId').value = '';
+            document.getElementById('fbDrpCause').innerHTML = '<option value="">Select</option>';
+            fbHideTypeError();
 
-            if (statusId) {
-                var match = document.querySelector('.fb-opt[data-sid="' + statusId + '"]');
-                if (match) highlightOpt(match);
-                if (statusId === ptId) document.getElementById('fbCauseRow').style.display = 'block';
-            }
+            // Pre-select the feedback already given (only PT / T / F are valid selections — 0 = Not given)
+            fbApplyStatus(statusId);
 
-            // (removed: loader shown with no matching hide -- the fetch below is commented out)
-            //$.ajax({
-            //    url: '/FRS25/Alerts/GetBy', type: 'POST',
-            //    data: '{id:' + alertId + '}', contentType: 'application/json',
-            //    //success: function (data) {
-            //    //    $("#loader").hide();
-            //    //    if (data && data.Id > 0 && data.Remark) {
-            //    //        document.getElementById('fbRemark').value = data.Remark;
-            //    //    }
-            //    //    document.getElementById('fbHdnStatusId').value = statusId;
-            //    //    if (data.mAlertInfos && data.mAlertInfos.length > 0 && statusId == ptId) {
-            //    //        document.getElementById('fbCauseRow').style.display = 'block';
-            //    //        var drp = document.getElementById('fbDrpCause');
-            //    //        drp.innerHTML = '<option value="">Select</option>';
-            //    //        data.mAlertInfos.forEach(function (x) {
-            //    //            drp.innerHTML += '<option value="' + x.Id + '">' + x.Name + '</option>';
-            //    //        });
-            //    //    }
-            //    //},
-            //    success: function (data) {
-            //        $("#loader").hide();
-            //        console.log('Alert data:', data);
-            //        if (data && data.Id > 0) {
+            // Load the saved feedback so it can be edited (same GetBy call 616 makes on open)
+            window.E7Loader && E7Loader.show('Please wait…');
+            $.ajax({
+                url: '/FRS25/Alerts/GetBy', type: 'POST',
+                data: JSON.stringify({ id: alertId }), contentType: 'application/json',
+                success: function (data) {
+                    window.E7Loader && E7Loader.hide();
+                    if (!data || !(data.Id > 0)) return;
+                    if (String(document.getElementById('fbHdnAlertId').value) !== String(alertId)) return; // panel reopened for another alert
 
-            //            // ── Remark ──
-            //            document.getElementById('fbRemark').value = data.Remark || '';
+                    // Cause-code list for Partially True
+                    var drp = document.getElementById('fbDrpCause');
+                    drp.innerHTML = '<option value="">Select</option>';
+                    (data.mAlertInfos || []).forEach(function (x) {
+                        var o = document.createElement('option');
+                        o.value = x.Id; o.textContent = x.Name;
+                        drp.appendChild(o);
+                    });
 
-            //            // ── Rectification DateTime ──
-            //            var rectRaw = data.RectificationDateTime || null;
+                    // Fall back to the alert's own status when the list had none
+                    if (!fbIsValidType(document.getElementById('fbHdnStatusId').value)) fbApplyStatus(data.AcknowledgemenStatusId);
+                    if (data.PTAlertInfoId) drp.value = String(data.PTAlertInfoId);
 
-            //            if (rectRaw) {
-            //                // Handle Microsoft /Date(1234567890000)/ format
-            //                if (typeof rectRaw === 'string' && rectRaw.indexOf('/Date(') === 0) {
-            //                    var ticks = parseInt(rectRaw.replace(/\/Date\((\d+)\)\//, '$1'), 10);
-            //                    rectRaw = new Date(ticks);
-            //                } else {
-            //                    rectRaw = new Date(rectRaw);
-            //                }
+                    document.getElementById('fbRemark').value = data.Remark || '';
 
-            //                if (!isNaN(rectRaw.getTime())) {
-            //                    var pad = function (n) { return n < 10 ? '0' + n : String(n); };
-            //                    var local = rectRaw.getFullYear() + '-' +
-            //                        pad(rectRaw.getMonth() + 1) + '-' +
-            //                        pad(rectRaw.getDate()) + 'T' +
-            //                        pad(rectRaw.getHours()) + ':' +
-            //                        pad(rectRaw.getMinutes());
-            //                    document.getElementById('fbRectDate').value = local;
-            //                } else {
-            //                    document.getElementById('fbRectDate').value = '';
-            //                }
-            //            } else {
-            //                document.getElementById('fbRectDate').value = '';
-            //            }
-
-            //            // ── Status ID ──
-            //            document.getElementById('fbHdnStatusId').value = statusId;
-
-            //            // ── Cause code dropdown (PT only) ──
-            //            // ── Cause code dropdown (PT only) ──
-            //            if (data.mAlertInfos && data.mAlertInfos.length > 0 && statusId == ptId) {
-            //                document.getElementById('fbCauseRow').style.display = 'block';
-            //                var drp = document.getElementById('fbDrpCause');
-            //                drp.innerHTML = '<option value="">Select</option>';
-            //                data.mAlertInfos.forEach(function (x) {
-            //                    drp.innerHTML += '<option value="' + x.Id + '">' + x.Name + '</option>';
-            //                });
-
-            //                // Try every possible field that could hold the saved PT cause ID
-            //                var savedId = data.PTAlertInfoId
-            //                    || data.PTCauseCodeId
-            //                    || data.CauseCodeId
-            //                    || data.SelectedAlertInfoId
-            //                    || data.FeedbackAlertInfoId
-            //                    || null;
-
-            //                console.log('Trying savedId:', savedId);
-            //                console.log('Full data keys:', Object.keys(data));
-
-            //                if (savedId) {
-            //                    drp.value = String(savedId);
-            //                    // If still not matched, loop by value
-            //                    if (!drp.value || drp.value === '') {
-            //                        for (var i = 0; i < drp.options.length; i++) {
-            //                            if (String(drp.options[i].value) === String(savedId)) {
-            //                                drp.selectedIndex = i;
-            //                                break;
-            //                            }
-            //                        }
-            //                    }
-            //                }
-            //            }
-            //        }
-            //    },
-            //    error: function () { $("#loader").hide(); }
-            //});
-            resetOpts();
-            document.getElementById('fbRemark').value = '';
-            document.getElementById('fbRectDate').value = '';
-            document.getElementById('fbHdnAlertId').value = alertId;
-            document.getElementById('fbHdnStatusId').value = statusId || '';
-            document.getElementById('fbCauseRow').style.display = 'none';
+                    var rect = fbParseMsDate(data.RectificationDateTime) || fbParseMsDate(data.ResetTimeStamp);
+                    document.getElementById('fbRectDate').value = rect ? fbToLocalInput(rect) : '';
+                },
+                error: function () { window.E7Loader && E7Loader.hide(); }
+            });
         } else {
             document.getElementById('fbFullMode').style.display      = 'none';
             document.getElementById('fbRemarkOnlyMode').style.display = 'block';
@@ -1557,11 +1537,9 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
     };
 
     window.selectFbOpt = function (el) {
-        resetOpts();
-        highlightOpt(el);
+        if (window._fbLocked) return;
         var sid = el.getAttribute('data-sid');
-        document.getElementById('fbHdnStatusId').value = sid;
-        document.getElementById('fbCauseRow').style.display = (sid === ptId) ? 'block' : 'none';
+        fbApplyStatus(sid);
         if (sid === ptId) {
             var drp = document.getElementById('fbDrpCause');
             if (drp.options.length <= 1) {
@@ -1583,6 +1561,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
     };
 
     window.selectFbOptM = function (el) {
+        if (window._fbLocked) return;
         var alertId = document.getElementById('fbHdnAlertId').value;
         var sid     = el.getAttribute('data-sid');
         window.closeFbPanel();
@@ -1605,8 +1584,8 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
     //    if (isFullMode) {
     //        var remark = document.getElementById('fbRemark').value.trim();
     //        var statusId = document.getElementById('fbHdnStatusId').value;
-    //        if (!remark) { alert('Remark is required.'); return; }
-    //        if (!statusId) { alert('Please select a feedback type.'); return; }
+    //        if (!remark) { showWarning('Remark is required.', 'Validation'); return; }
+    //        if (!statusId) { showWarning('Please select a feedback type.', 'Validation'); return; }
 
     //        payload = {
     //            Id: document.getElementById('fbHdnAlertId').value,
@@ -1624,12 +1603,12 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
 
     //        if (statusId === ptId) {
     //            payload.PTAlertInfoId = document.getElementById('fbDrpCause').value;
-    //            if (!payload.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+    //            if (!payload.PTAlertInfoId) { showWarning('Cause Code is required.', 'Validation'); return; }
     //        }
 
     //    } else {
     //        var remark = document.getElementById('fbRemarkOnly').value.trim();
-    //        if (!remark) { alert('Remark is required.'); return; }
+    //        if (!remark) { showWarning('Remark is required.', 'Validation'); return; }
     //        payload = {
     //            Id: document.getElementById('fbHdnROAlertId').value,
     //            Remark: remark,
@@ -1683,12 +1662,13 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
         const skip = window._alertCurrentSkip || 0;
         const isFullMode = document.getElementById('fbFullMode').style.display !== 'none';
         let payload;
+        if (isFullMode && window._fbLocked) return;
 
         if (isFullMode) {
             const remark = document.getElementById('fbRemark').value.trim();
             const statusId = document.getElementById('fbHdnStatusId').value;
-            if (!remark) { alert('Remark is required.'); return; }
-            if (!statusId) { alert('Please select a feedback type.'); return; }
+            if (!fbIsValidType(statusId)) { fbShowTypeError(); return; }
+            if (!remark) { showWarning('Remark is required.', 'Validation'); document.getElementById('fbRemark').focus(); return; }
 
             payload = {
                 Id: document.getElementById('fbHdnAlertId').value,
@@ -1701,17 +1681,17 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             const rectVal = rectInput.value;
             if (rectVal) {
                 const rectErr = window.e7RectificationError(rectVal, rectInput.getAttribute('data-inc'));
-                if (rectErr) { alert(rectErr); rectInput.focus(); return; }
+                if (rectErr) { showWarning(rectErr, 'Validation'); rectInput.focus(); return; }
                 payload.RectificationDateTime = new Date(rectVal).toISOString();
             }
 
             if (statusId === ptId) {
                 payload.PTAlertInfoId = document.getElementById('fbDrpCause').value;
-                if (!payload.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+                if (!payload.PTAlertInfoId) { showWarning('Cause Code is required.', 'Validation'); return; }
             }
         } else {
             const remark = document.getElementById('fbRemarkOnly').value.trim();
-            if (!remark) { alert('Remark is required.'); return; }
+            if (!remark) { showWarning('Remark is required.', 'Validation'); return; }
             payload = {
                 Id: document.getElementById('fbHdnROAlertId').value,
                 Remark: remark,
@@ -1727,7 +1707,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                 // Send as comma-separated base64 strings, or as JSON array – match your backend expectation
                 payload.PhotoEvidenceBase64 = base64List.join(','); // adjust separator as needed
             } catch (err) {
-                alert('Failed to encode images: ' + err.message);
+                showError('Failed to encode images: ' + err.message, 'Photo Evidence');
                 return;
             }
         }
@@ -1753,7 +1733,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             error: function () {
                 window.E7Loader && E7Loader.hide();
                 window.closeFbPanel();
-                alert("Something went wrong!");
+                showError('Something went wrong! Please try again.', 'Error');
             }
         });
     };
@@ -1780,7 +1760,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             error: function () {
                 window.E7Loader && E7Loader.hide();
                 window.closeFbPanel();
-                alert("Something went wrong!");
+                showError('Something went wrong! Please try again.', 'Error');
             }
         });
     }
@@ -1802,6 +1782,76 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
     function highlightOpt(el) {
         var sid = el.getAttribute('data-sid');
         if (optSelClass[sid]) el.classList.add(optSelClass[sid]);
+    }
+
+    /* Feedback types the form can submit (Maintenance goes through its own action) */
+    function fbIsValidType(sid) {
+        sid = String(sid || '');
+        return sid === ptId || sid === trueId || sid === falseId;
+    }
+
+    /* Select a saved status in the panel; anything else (0 = Not given, Pending) leaves it blank */
+    function fbApplyStatus(sid) {
+        sid = String(sid || '');
+        resetOpts();
+        if (!fbIsValidType(sid)) {
+            document.getElementById('fbHdnStatusId').value = '';
+            document.getElementById('fbCauseRow').style.display = 'none';
+            return;
+        }
+        document.getElementById('fbHdnStatusId').value = sid;
+        var match = document.querySelector('.fb-opt[data-sid="' + sid + '"]');
+        if (match) highlightOpt(match);
+        document.getElementById('fbCauseRow').style.display = (sid === ptId) ? 'block' : 'none';
+        fbHideTypeError();
+    }
+
+    /* 616 view-only: options greyed + not clickable, form read-only, Submit hidden */
+    function fbSetLocked(locked) {
+        window._fbLocked = !!locked;
+        var panel = document.getElementById('fbPanel');
+        if (panel) panel.classList.toggle('fb-locked', !!locked);
+        ['fbRemark', 'fbRectDate', 'fbDrpCause', 'fbPhotoInput'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.disabled = !!locked;
+        });
+        var note = document.getElementById('fbLockNote');
+        if (note) note.style.display = locked ? 'flex' : 'none';
+        var btn = document.getElementById('fbSubmitBtn');
+        if (btn) btn.style.display = locked ? 'none' : '';
+    }
+
+    function fbShowTypeError() {
+        var err = document.getElementById('fbTypeError');
+        var grid = document.querySelector('#fbPanel .fb-opt-grid');
+        if (err) err.style.display = 'flex';
+        if (grid) {
+            grid.classList.remove('fb-opt-grid-err');
+            void grid.offsetWidth; // restart the shake animation
+            grid.classList.add('fb-opt-grid-err');
+            grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
+
+    function fbHideTypeError() {
+        var err = document.getElementById('fbTypeError');
+        var grid = document.querySelector('#fbPanel .fb-opt-grid');
+        if (err) err.style.display = 'none';
+        if (grid) grid.classList.remove('fb-opt-grid-err');
+    }
+
+    /* "/Date(1700000000000)/" or ISO → Date; null for empty / DateTime.MinValue */
+    function fbParseMsDate(v) {
+        if (!v) return null;
+        var m = String(v).match(/\/Date\((-?\d+)/);
+        var d = m ? new Date(parseInt(m[1], 10)) : new Date(v);
+        return (isNaN(d.getTime()) || d.getFullYear() < 2000) ? null : d;
+    }
+
+    /* Date → "yyyy-MM-ddTHH:mm" for the datetime-local input */
+    function fbToLocalInput(d) {
+        var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
 
     /* ── Inject panel HTML once ── */
@@ -1854,6 +1904,8 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                       '<div class="fb-opt-lbl">Maintenance</div><div class="fb-opt-desc">Alert during maintenance</div>' +
                     '</div>' +
                   '</div>' +
+                  '<div id="fbLockNote" class="fb-lock-note" style="display:none;"><i class="fas fa-lock"></i>T / PT / M / F feedback is not available for your user, or the Alert Feedback Time for this alert has passed. View only.</div>' +
+                  '<div id="fbTypeError" class="fb-type-error" style="display:none;"><i class="fas fa-exclamation-circle"></i>Please select a feedback type (Partially True, True or False) before submitting.</div>' +
                   '<div id="fbCauseRow" class="fb-field" style="display:none;">' +
                     '<div class="fb-lbl fb-lbl-field">Cause Code <span class="fb-req">*</span></div>' +
                     '<select id="fbDrpCause" class="fb-input"></select>' +
@@ -1948,6 +2000,16 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             '.fb-ico-m{background:var(--frs-m-bg);color:var(--frs-m-fg);}' +
             '.fb-opt-lbl{font-size:11px;font-weight:700;color:var(--e7-text,#22303f);margin-bottom:2px;}' +
             '.fb-opt-desc{font-size:9px;color:var(--e7-text-3,#627186);line-height:1.3;}' +
+            '.fb-type-error{align-items:center;gap:7px;margin:-10px 0 18px;padding:9px 12px;border-radius:8px;font-size:12px;font-weight:600;background:var(--frs-f-bg,#fdecee);color:var(--frs-f-fg,#d1394f);border:1px solid var(--frs-f-bd,#f5c2c9);}' +
+            '.fb-opt-grid-err .fb-opt{border-color:var(--frs-f-dot,#d1394f);}' +
+            /* 616 view-only lock */
+            '#fbPanel.fb-locked .fb-opt{cursor:not-allowed;opacity:.45;}' +
+            '#fbPanel.fb-locked .fb-opt[class*="fb-sel-"]{opacity:1;}' +
+            '#fbPanel.fb-locked .fb-opt:hover{transform:none;box-shadow:none;}' +
+            '#fbPanel.fb-locked .fb-photo-zone{pointer-events:none;opacity:.45;}' +
+            '.fb-lock-note{align-items:center;gap:7px;margin:-10px 0 18px;padding:9px 12px;border-radius:8px;font-size:12px;font-weight:600;background:var(--frs-m-bg,#f6f8fa);color:var(--frs-m-fg,#627186);border:1px solid var(--frs-m-bd,#e7ebf1);}' +
+            '.fb-opt-grid-err{animation:fbShake .4s;}' +
+            '@@keyframes fbShake{0%,100%{transform:translateX(0);}20%,60%{transform:translateX(-6px);}40%,80%{transform:translateX(6px);}}' +
             /* footer — right padding keeps the buttons clear of the floating Ask-AI bubble */
             '#fbPanel .fb-ftr{flex-shrink:0;padding:14px 84px 14px 24px;background:var(--e7-surface-2,#f6f8fa);border-top:1px solid var(--e7-border,#e7ebf1);display:flex;justify-content:flex-end;gap:10px;}' +
             '#fbPanel .fb-btn-cancel{padding:10px 20px;border-radius:10px;background:var(--e7-surface,#fff);border:1px solid var(--e7-border-2,#dde3ec);color:var(--e7-text-2,#55657a);font-size:13px;font-weight:600;cursor:pointer;transition:all .18s;}' +
@@ -1972,11 +2034,11 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
         var files = Array.prototype.slice.call(input.files);
         files.forEach(function (file) {
             if (window._fbPhotos.length >= 5) {
-                alert('Maximum 5 photos allowed.');
+                showWarning('Maximum 5 photos allowed.', 'Photo Evidence');
                 return;
             }
             if (file.size > 5 * 1024 * 1024) {
-                alert(file.name + ' exceeds 5MB limit.');
+                showWarning(file.name + ' exceeds the 5MB limit.', 'Photo Evidence');
                 return;
             }
             var reader = new FileReader();
@@ -2004,6 +2066,10 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             var isImage = p.file.type.indexOf('image') === 0;
             var thumb = document.createElement('div');
             thumb.className = 'fb-photo-thumb';
+            thumb.title = isImage ? 'Click to view' : 'Click to open PDF';
+            thumb.onclick = (function (idx) {
+                return function () { fbOpenPhotoViewer(idx); };
+            }(i));
             thumb.innerHTML = isImage
                 ? '<img src="' + p.dataUrl + '" alt="photo-' + i + '" />'
                 : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:var(--frs-m-bg);color:var(--frs-m-fg);font-size:10px;font-weight:700;text-align:center;padding:4px;">PDF</div>';
@@ -2022,6 +2088,117 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                 ? window._fbPhotos.length + ' / 5 photo(s) attached'
                 : '';
         }
+    }
+
+    // ── Photo viewer (lightbox) — images open full size, PDFs open in a new tab ──
+    var _fbViewerIdx = -1;
+
+    function fbImageIndexes() {
+        var list = [];
+        window._fbPhotos.forEach(function (p, i) { if (p.file.type.indexOf('image') === 0) list.push(i); });
+        return list;
+    }
+
+    window.fbOpenPhotoViewer = function (idx) {
+        var p = window._fbPhotos[idx];
+        if (!p) return;
+        if (p.file.type.indexOf('image') !== 0) {
+            var url = URL.createObjectURL(p.file);
+            window.open(url, '_blank');
+            setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+            return;
+        }
+        fbEnsurePhotoViewer();
+        _fbViewerIdx = idx;
+        fbShowViewerImage();
+        document.getElementById('fbPhotoViewer').classList.add('is-open');
+        window.addEventListener('keydown', fbViewerKeys, true);
+    };
+
+    window.fbClosePhotoViewer = function () {
+        var v = document.getElementById('fbPhotoViewer');
+        if (v) v.classList.remove('is-open', 'is-zoomed');
+        window.removeEventListener('keydown', fbViewerKeys, true);
+        _fbViewerIdx = -1;
+    };
+
+    window.fbStepPhotoViewer = function (dir) {
+        var imgs = fbImageIndexes();
+        var pos = imgs.indexOf(_fbViewerIdx);
+        if (pos < 0 || imgs.length < 2) return;
+        _fbViewerIdx = imgs[(pos + dir + imgs.length) % imgs.length];
+        fbShowViewerImage();
+    };
+
+    function fbShowViewerImage() {
+        var v = document.getElementById('fbPhotoViewer');
+        var p = window._fbPhotos[_fbViewerIdx];
+        if (!v || !p) return;
+        var imgs = fbImageIndexes();
+        v.classList.remove('is-zoomed');
+        v.querySelector('.fb-pv-img').src = p.dataUrl;
+        v.querySelector('.fb-pv-name').textContent = p.file.name;
+        v.querySelector('.fb-pv-count').textContent = (imgs.indexOf(_fbViewerIdx) + 1) + ' / ' + imgs.length;
+        v.classList.toggle('is-single', imgs.length < 2);
+    }
+
+    function fbViewerKeys(e) {
+        var v = document.getElementById('fbPhotoViewer');
+        if (!v || !v.classList.contains('is-open')) return;
+        if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); fbClosePhotoViewer(); }
+        else if (e.key === 'ArrowLeft') fbStepPhotoViewer(-1);
+        else if (e.key === 'ArrowRight') fbStepPhotoViewer(1);
+    }
+
+    function fbEnsurePhotoViewer() {
+        if (document.getElementById('fbPhotoViewer')) return;
+
+        var css = document.createElement('style');
+        css.id = 'fbPhotoViewerStyles';
+        css.textContent =
+            '.fb-photo-thumb{cursor:zoom-in;}' +
+            '#fbPhotoViewer{position:fixed;inset:0;z-index:1090;display:none;flex-direction:column;background:rgba(10,20,34,.88);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);}' +
+            '#fbPhotoViewer.is-open{display:flex;}' +
+            '#fbPhotoViewer .fb-pv-bar{flex-shrink:0;display:flex;align-items:center;gap:12px;padding:12px 16px;color:#fff;font-size:13px;}' +
+            '#fbPhotoViewer .fb-pv-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;}' +
+            '#fbPhotoViewer .fb-pv-count{opacity:.75;white-space:nowrap;}' +
+            '#fbPhotoViewer .fb-pv-btn{width:36px;height:36px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .18s;}' +
+            '#fbPhotoViewer .fb-pv-btn:hover{background:rgba(255,255,255,.25);}' +
+            '#fbPhotoViewer .fb-pv-stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:auto;padding:0 64px 24px;}' +
+            '#fbPhotoViewer .fb-pv-img{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;box-shadow:0 18px 50px rgba(0,0,0,.45);cursor:zoom-in;}' +
+            '#fbPhotoViewer.is-zoomed .fb-pv-stage{align-items:flex-start;justify-content:flex-start;}' +
+            '#fbPhotoViewer.is-zoomed .fb-pv-img{max-width:none;max-height:none;margin:auto;cursor:zoom-out;}' +
+            '#fbPhotoViewer .fb-pv-nav{position:fixed;top:50%;transform:translateY(-50%);width:44px;height:44px;font-size:18px;}' +
+            '#fbPhotoViewer .fb-pv-prev{left:12px;}' +
+            '#fbPhotoViewer .fb-pv-next{right:12px;}' +
+            '#fbPhotoViewer.is-single .fb-pv-nav,#fbPhotoViewer.is-single .fb-pv-count{display:none;}' +
+            '@@media(max-width:600px){#fbPhotoViewer .fb-pv-stage{padding:0 8px 16px;}#fbPhotoViewer .fb-pv-nav{top:auto;bottom:16px;transform:none;}}';
+        document.head.appendChild(css);
+
+        var v = document.createElement('div');
+        v.id = 'fbPhotoViewer';
+        v.innerHTML =
+            '<div class="fb-pv-bar">' +
+              '<span class="fb-pv-name"></span>' +
+              '<span class="fb-pv-count"></span>' +
+              '<button type="button" class="fb-pv-btn" title="Zoom in / out" onclick="document.getElementById(\'fbPhotoViewer\').classList.toggle(\'is-zoomed\')"><i class="fas fa-search-plus"></i></button>' +
+              '<button type="button" class="fb-pv-btn" title="Close (Esc)" onclick="fbClosePhotoViewer()">&#x2715;</button>' +
+            '</div>' +
+            '<div class="fb-pv-stage">' +
+              '<img class="fb-pv-img" alt="Photo evidence" />' +
+            '</div>' +
+            '<button type="button" class="fb-pv-btn fb-pv-nav fb-pv-prev" title="Previous" onclick="fbStepPhotoViewer(-1)"><i class="fas fa-chevron-left"></i></button>' +
+            '<button type="button" class="fb-pv-btn fb-pv-nav fb-pv-next" title="Next" onclick="fbStepPhotoViewer(1)"><i class="fas fa-chevron-right"></i></button>';
+        document.body.appendChild(v);
+
+        // Click on the image toggles zoom; click on the dark backdrop closes
+        v.querySelector('.fb-pv-img').addEventListener('click', function (e) {
+            e.stopPropagation();
+            v.classList.toggle('is-zoomed');
+        });
+        v.querySelector('.fb-pv-stage').addEventListener('click', function (e) {
+            if (e.target === this) fbClosePhotoViewer();
+        });
     }
 
     // Drag and drop support
@@ -2055,7 +2232,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             var files = Array.prototype.slice.call(dt.files);
             files.forEach(function (file) {
                 if (window._fbPhotos.length >= 5) return;
-                if (file.size > 5 * 1024 * 1024) { alert(file.name + ' exceeds 5MB.'); return; }
+                if (file.size > 5 * 1024 * 1024) { showWarning(file.name + ' exceeds the 5MB limit.', 'Photo Evidence'); return; }
                 var reader = new FileReader();
                 reader.onload = function (ev) {
                     window._fbPhotos.push({ file: file, dataUrl: ev.target.result });

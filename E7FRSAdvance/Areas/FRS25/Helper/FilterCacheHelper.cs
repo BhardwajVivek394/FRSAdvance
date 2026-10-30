@@ -137,5 +137,63 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
             if (includeAssetType)
                 viewBag.FRSAssetType = GetFRSAssetTypes();
         }
+
+        // ──────────────────────────────────────────────
+        //  Clear ALL FRS25 filter cache entries for the CURRENT logged-in user
+        // ──────────────────────────────────────────────
+        public static void ClearCacheForCurrentUser()
+        {
+            ClearCacheByUserId(ClsHttpContent.LoginUser.Id.ToString());
+        }
+
+        // ──────────────────────────────────────────────
+        //  Clear ALL FRS25 filter cache entries for a SPECIFIC user id
+        // ──────────────────────────────────────────────
+        public static void ClearCacheByUserId(string userId)
+        {
+            var keysToRemove = _cache
+                .Where(kvp => kvp.Key.StartsWith("FRS25_") && kvp.Key.EndsWith(userId))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in keysToRemove)
+            {
+                _cache.Remove(key);
+            }
+        }
+
+        // ──────────────────────────────────────────────
+        //  Clear cache entries matching a specific PREFIX (e.g. "FRS25_DivByZone_")
+        //  across all users
+        // ──────────────────────────────────────────────
+        public static void ClearCacheByPrefix(string prefix)
+        {
+            var keysToRemove = _cache
+                .Where(kvp => kvp.Key.StartsWith(prefix))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in keysToRemove)
+            {
+                _cache.Remove(key);
+            }
+        }
+
+        // ──────────────────────────────────────────────
+        //  Clear EVERYTHING under the "FRS25_" namespace, for ALL users
+        //  (use with caution — wipes cache for every logged-in user)
+        // ──────────────────────────────────────────────
+        public static void ClearAllFRS25Cache()
+        {
+            var keysToRemove = _cache
+                .Where(kvp => kvp.Key.StartsWith("FRS25_"))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in keysToRemove)
+            {
+                _cache.Remove(key);
+            }
+        }
     }
 }

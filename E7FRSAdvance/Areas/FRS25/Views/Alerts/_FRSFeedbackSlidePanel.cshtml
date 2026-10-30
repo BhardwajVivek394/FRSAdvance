@@ -208,8 +208,17 @@
     var _fbMode = ''; // 'full' or 'remarkOnly'
 
     /* ───────────────── OPEN ───────────────── */
-    window.openFeedbackSlidePanel = function (alertId, mode, statusId, asset, station, cause, incTime, duration, typeLbl, division, zone) {
+    var _fbViewOnly = false; // 616: T/PT/M/F disabled for this user / Alert Feedback Time over
+
+    window.openFeedbackSlidePanel = function (alertId, mode, statusId, asset, station, cause, incTime, duration, typeLbl, division, zone, canGiveFeedback) {
         _fbMode = mode;
+        _fbViewOnly = (mode === 'full' && canGiveFeedback === false);
+        document.getElementById('fbBtnSubmit').style.display = _fbViewOnly ? 'none' : '';
+        var optsLock = document.querySelectorAll('#fbOptions .fb-option');
+        for (var j = 0; j < optsLock.length; j++) {
+            optsLock[j].style.opacity = _fbViewOnly ? '.45' : '';
+            optsLock[j].style.cursor = _fbViewOnly ? 'not-allowed' : '';
+        }
 
         /* Populate summary */
         document.getElementById('fbPanelAlertId').textContent = '#' + alertId;
@@ -312,6 +321,7 @@
 
     /* ───────────────── FEEDBACK OPTION SELECT ───────────────── */
     window.selectFbOption = function (el) {
+        if (_fbViewOnly) return;
         var opts = document.querySelectorAll('#fbOptions .fb-option');
         for (var i = 0; i < opts.length; i++) opts[i].classList.remove('selected');
         el.classList.add('selected');
@@ -335,6 +345,7 @@
 
     /* ── Maintenance — direct status update, no remark needed ── */
     window.selectFbOptionM = function (el) {
+        if (_fbViewOnly) return;
         var alertId = document.getElementById('fbHdnAlertRemarkId').value;
         var statusId = el.getAttribute('data-status');
         closeFeedbackSlidePanel();
@@ -348,11 +359,12 @@
         var currentSkip = window._alertCurrentSkip || 0;
 
         if (_fbMode === 'full') {
+            if (_fbViewOnly) return;
             var remarkVal = document.getElementById('fbTxtAlertRemark').value;
-            if (!remarkVal) { alert('Remark is required.'); return; }
+            if (!remarkVal) { showWarning('Remark is required.', 'Validation'); return; }
 
             var statusId = document.getElementById('fbHdnAlertAlertStatusId').value;
-            if (!statusId) { alert('Please select a feedback type.'); return; }
+            if (!statusId) { showWarning('Please select a feedback type.', 'Validation'); return; }
 
             var mFRSAlert = {
                 Id: document.getElementById('fbHdnAlertRemarkId').value,
@@ -364,14 +376,14 @@
             var rectVal = rectInput.value;
             if (rectVal) {
                 var rectErr = window.e7RectificationError(rectVal, rectInput.getAttribute('data-inc'));
-                if (rectErr) { alert(rectErr); rectInput.focus(); return; }
+                if (rectErr) { showWarning(rectErr, 'Validation'); rectInput.focus(); return; }
                 mFRSAlert.RectificationDateTime = new Date(rectVal).toISOString();
             }
 
             var ptId = '@E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()';
             if (statusId === ptId) {
                 mFRSAlert.PTAlertInfoId = document.getElementById('fbDrpRemarkAlertInfo').value;
-                if (!mFRSAlert.PTAlertInfoId) { alert('Cause Code is required.'); return; }
+                if (!mFRSAlert.PTAlertInfoId) { showWarning('Cause Code is required.', 'Validation'); return; }
             }
 
             $("#loader,#e7-loader").filter(':first').show();
@@ -388,14 +400,14 @@
                 error: function () {
                     $("#loader,#e7-loader").hide();
                     closeFeedbackSlidePanel();
-                    alert("Something went wrong!");
+                    showError('Something went wrong! Please try again.', 'Error');
                 }
             });
 
         } else {
             /* remarkOnly mode */
             var remarkVal = document.getElementById('fbTxtAlertRemarkWithOutFeedback').value;
-            if (!remarkVal) { alert('Remark is required.'); return; }
+            if (!remarkVal) { showWarning('Remark is required.', 'Validation'); return; }
 
             var mFRSAlert = {
                 Id: document.getElementById('fbHdnAlertRemarkWithOutFeedbackId').value,
@@ -417,7 +429,7 @@
                 error: function () {
                     $("#loader,#e7-loader").hide();
                     closeFeedbackSlidePanel();
-                    alert("Something went wrong!");
+                    showError('Something went wrong! Please try again.', 'Error');
                 }
             });
         }

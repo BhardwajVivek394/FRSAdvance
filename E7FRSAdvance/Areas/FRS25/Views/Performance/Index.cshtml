@@ -1,5 +1,15 @@
-﻿@{ ViewBag.Title = "Performance";
-    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
+﻿@{
+    ViewBag.Title = "Performance";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+
+    // Zonal and Divisional Admin can VIEW failures but NOT add/edit/delete
+    var _lu = E7FRSAdvance.Utility.ClsHttpContent.LoginUser;
+    var _ucn = (_lu.UserClassTypeName ?? "").Trim();
+
+    bool isZonalAdmin = _ucn.Equals("Headquarter Level User", StringComparison.OrdinalIgnoreCase);
+    bool isDivisionalAdmin = _ucn.Equals("Division Level User", StringComparison.OrdinalIgnoreCase);
+    bool isViewOnly = isZonalAdmin || isDivisionalAdmin;
+}
 
 <style>
     /* ===== SEARCH SECTION ===== */
@@ -343,7 +353,7 @@
     .chart-legend {
         display: flex;
         justify-content: center;
-        gap: 30px;
+        gap: 18px 28px;
         margin-top: 25px;
         padding-top: 20px;
         border-top: 1px solid var(--e7-border);
@@ -352,16 +362,20 @@
 
     .legend-item {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 8px;
         font-size: 13px;
         color: var(--e7-text-2);
+        max-width: 360px;
+        line-height: 1.4;
     }
 
     .legend-color {
         width: 16px;
         height: 16px;
         border-radius: 4px;
+        flex-shrink: 0;
+        margin-top: 2px;
     }
 
     /* ================================================================
@@ -1790,23 +1804,45 @@
     }
 
     html[data-aurora="light"] #modal-ActualFailureEntry input[type="date"],
+    html[data-aurora="light"] #modal-ActualFailureEntry input[type="time"],
     html[data-aurora="light"] #modal-vfEdit input[type="datetime-local"],
-    html[data-aurora="light"] #modal-vfEdit input[type="date"] {
+    html[data-aurora="light"] #modal-vfEdit input[type="date"],
+    html[data-aurora="light"] #modal-vfEdit input[type="time"] {
         color-scheme: light;
     }
 
     html:not([data-aurora="light"]) #modal-ActualFailureEntry input[type="date"],
+    html:not([data-aurora="light"]) #modal-ActualFailureEntry input[type="time"],
     html:not([data-aurora="light"]) #modal-vfEdit input[type="datetime-local"],
-    html:not([data-aurora="light"]) #modal-vfEdit input[type="date"] {
+    html:not([data-aurora="light"]) #modal-vfEdit input[type="date"],
+    html:not([data-aurora="light"]) #modal-vfEdit input[type="time"] {
         color-scheme: dark;
     }
 
 </style>
 
+
 <script src="~/assets/js/jquery-3.5.1.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<!-- Fix 6: exceljs (~1.16 MB) + FileSaver loaded lazily on first export click -->
+<script>
+    var _excelJsLoaded = false;
+    function ensureExcelJs(callback) {
+        if (_excelJsLoaded) { callback(); return; }
+        var s1 = document.createElement('script');
+        s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js';
+        s1.onload = function () {
+            var s2 = document.createElement('script');
+            s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js';
+            s2.onload = function () { _excelJsLoaded = true; callback(); };
+            document.head.appendChild(s2);
+        };
+        document.head.appendChild(s1);
+    }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 
 <section class="section">
     <div class="row">
@@ -1817,12 +1853,12 @@
                         <div class="col-12 col-sm-5">
                             <nav aria-label="breadcrumb">
                                 <ol class="breadcrumb">
-                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Performance</a></li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Performance of RDPMS</a></li>
                                 </ol>
                             </nav>
                         </div>
                         <div class="col-12 col-sm-7 d-flex flex-sm-row-reverse align-items-center">
-                            <h2 class="page-name">Performance</h2>
+                            <h2 class="page-name">Performance of RDPMS</h2>
                         </div>
                     </div>
                 </div>
@@ -1880,6 +1916,9 @@
                                 <input type="text" class="filter-input" id="txtToDate" placeholder="Select" readonly>
                             </div>
 
+                            <input type="hidden" id="hfFromTime" value="00:00:00" />
+                            <input type="hidden" id="hfToTime" value="23:59:59" />
+
                             <!-- View Type -->
                             <div class="filter-item">
                                 <label>View</label>
@@ -1896,14 +1935,19 @@
                                     <i class="fa-solid fa-magnifying-glass"></i>
                                 </button>
                             </div>
-
-                            <!-- Actual Failure Entry Button -->
-                            <div class="filter-item">
-                                <label>&nbsp;</label>
-                                <button type="button" class="btn-failure-entry" onclick="openActualFailureModal()">
-                                    <i class="fa fa-exclamation-triangle"></i> Actual Failure Entry
-                                </button>
-                            </div>
+                            @if (E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId != E7FRSAdvance.Utility.Utility.UserClass.Guest.GetHashCode()
+                              && E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassTypeId != (int)E7FRSAdvance.Utility.Utility.UserClassType.GuestUser)
+                            {
+                                <!-- Actual Failure Entry Button -->
+                                <div class="filter-item">
+                                    <label>&nbsp;</label>
+                                    <button type="button" class="btn-failure-entry" onclick="openActualFailureModal()">
+                                        <i class="fa fa-exclamation-triangle"></i> Actual Failure Entry
+                                    </button>
+                                </div>
+                            }
+                            <!-- Hidden flag: JS reads this to decide whether to show Add/Edit/Delete -->
+                            <input type="hidden" id="hfIsViewOnly" value="@(isViewOnly ? "1" : "0")" />
                         </div>
                     </div>
 
@@ -1922,11 +1966,11 @@
                             {
                                 foreach (var zone in (IEnumerable<SelectListItem>)ViewBag.Zones)
                                 {
-                <div class="dropdown-item" data-value="@zone.Value" data-text="@zone.Text">
-                    <input type="checkbox" class="cb-zone" value="@zone.Value">
-                    <span>@zone.Text</span>
-                </div>}
-        }
+                                    <div class="dropdown-item" data-value="@zone.Value" data-text="@zone.Text">
+                                        <input type="checkbox" class="cb-zone" value="@zone.Value">
+                                        <span>@zone.Text</span>
+                                    </div>}
+                            }
                         </div>
                         <div class="dropdown-no-results">No results found</div>
                     </div>
@@ -1945,11 +1989,11 @@
                             {
                                 foreach (var division in (IEnumerable<SelectListItem>)ViewBag.Divisions)
                                 {
-                <div class="dropdown-item" data-value="@division.Value" data-text="@division.Text">
-                    <input type="checkbox" class="cb-division" value="@division.Value">
-                    <span>@division.Text</span>
-                </div>}
-        }
+                                    <div class="dropdown-item" data-value="@division.Value" data-text="@division.Text">
+                                        <input type="checkbox" class="cb-division" value="@division.Value">
+                                        <span>@division.Text</span>
+                                    </div>}
+                            }
                         </div>
                         <div class="dropdown-no-results">No results found</div>
                     </div>
@@ -1968,11 +2012,11 @@
                             {
                                 foreach (var site in (IEnumerable<SelectListItem>)ViewBag.Sites)
                                 {
-                <div class="dropdown-item" data-value="@site.Value" data-text="@site.Text">
-                    <input type="checkbox" class="cb-site" value="@site.Value">
-                    <span>@site.Text</span>
-                </div>}
-        }
+                                    <div class="dropdown-item" data-value="@site.Value" data-text="@site.Text">
+                                        <input type="checkbox" class="cb-site" value="@site.Value">
+                                        <span>@site.Text</span>
+                                    </div>}
+                            }
                         </div>
                         <div class="dropdown-no-results">No results found</div>
                     </div>
@@ -1991,6 +2035,28 @@
                             </div>
                             <div class="dropdown-item" data-value="Graph" data-text="Graph">
                                 <span>Graph</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Selected Range Display Bar -->
+                    <div id="selectedRangeBar" style="display:none;margin:10px 0;padding:10px 16px;background:var(--e7-surface-2, #f8fafc);border:1px solid var(--e7-border, #e2e8f0);border-radius:10px;position:relative;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#3b82f6,#6366f1);border-radius:10px 0 0 10px;"></div>
+                        <div style="display:flex;align-items:center;gap:10px;padding-left:8px;">
+                            <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--e7-text-3, #6b7280);text-transform:uppercase;">From</span>
+                            <div style="display:flex;align-items:center;gap:6px;background:var(--e7-surface, #fff);border:1px solid var(--e7-border-2, #cbd5e1);border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" /><path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" /><path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                <span id="dispFromDate" style="font-size:13px;font-weight:600;color:var(--e7-heading, #1e293b);min-width:75px;">—</span>
+                            </div>
+                        </div>
+                        <div style="margin:0 14px;display:flex;align-items:center;color:var(--e7-text-3, #94a3b8);">
+                            <svg width="22" height="12" viewBox="0 0 22 12" fill="none"><path d="M1 6h18M14 1l5 5-5 5" stroke="#94a3b8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span style="font-size:11px;font-weight:700;letter-spacing:0.08em;color:var(--e7-text-3, #6b7280);text-transform:uppercase;">To</span>
+                            <div style="display:flex;align-items:center;gap:6px;background:var(--e7-surface, #fff);border:1px solid var(--e7-border-2, #cbd5e1);border-radius:6px;padding:5px 12px;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+                                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="14" height="12" rx="2" stroke="#3b82f6" stroke-width="1.4" /><path d="M1 7h14" stroke="#3b82f6" stroke-width="1.2" /><path d="M5 1v3M11 1v3" stroke="#3b82f6" stroke-width="1.4" stroke-linecap="round" /></svg>
+                                <span id="dispToDate" style="font-size:13px;font-weight:600;color:var(--e7-heading, #1e293b);min-width:75px;">—</span>
                             </div>
                         </div>
                     </div>
@@ -2041,11 +2107,14 @@
                         <div class="af-filter-row">
                             <div class="af-filter-item">
                                 <span class="af-filter-label">From Date</span>
-                                <input type="date" class="af-input" id="vf_FromDate" />
+                                <!-- max/min are set by vfApplyDateBounds() rather than rendered here: the
+                                     bound is TODAY on the viewer's own clock, and a value stamped by the
+                                     server is the server's date, which is not the same thing. -->
+                                <input type="date" class="af-input" id="vf_FromDate" onchange="vfApplyDateBounds('from')" />
                             </div>
                             <div class="af-filter-item">
                                 <span class="af-filter-label">To Date</span>
-                                <input type="date" class="af-input" id="vf_ToDate" />
+                                <input type="date" class="af-input" id="vf_ToDate" onchange="vfApplyDateBounds('to')" />
                             </div>
                             <div class="af-filter-item" style="max-width:220px;">
                                 <span class="af-filter-label">Station</span>
@@ -2055,7 +2124,8 @@
                                     {
                                         foreach (var s in (IEnumerable<SelectListItem>)ViewBag.Sites)
                                         {
-                        <option value="@s.Value">@s.Text</option>}
+                                            <option value="@s.Value">@s.Text</option>
+                                        }
                                     }
                                 </select>
                             </div>
@@ -2071,12 +2141,16 @@
                                     <i class="fa fa-undo"></i> Reset
                                 </button>
                             </div>
-                            <div class="af-filter-item btn-item">
-                                <span class="af-filter-label">&nbsp;</span>
-                                <button class="af-btn-add-table" onclick="afAddNewRow()" id="btnAddNewRow">
-                                    <i class="fa fa-plus"></i> Add New Row
-                                </button>
-                            </div>
+                            @* Add New Row hidden for Zonal / Divisional Admin (view-only roles) *@
+                            @if (!isViewOnly)
+                            {
+                                <div class="af-filter-item btn-item">
+                                    <span class="af-filter-label">&nbsp;</span>
+                                    <button class="af-btn-add-table" onclick="afAddNewRow()" id="btnAddNewRow">
+                                        <i class="fa fa-plus"></i> Add New Row
+                                    </button>
+                                </div>
+                            }
                             <div class="af-filter-item btn-item" style="margin-left:auto;">
                                 <span class="af-filter-label">&nbsp;</span>
                                 <div style="display:flex;gap:6px;align-items:center;">
@@ -2100,7 +2174,7 @@
                                         <th>S No</th>
                                         <th>Station Name</th>
                                         <th style="min-width:130px;">Asset Type</th>
-                                        <th style="min-width:120px;">Asset No.</th>
+                                        <th style="min-width:120px;">Asset Number</th>
                                         <th style="min-width:180px;">Incidence Date &amp; Time</th>
                                         <th style="min-width:180px;">Rectification Date &amp; Time</th>
                                         <th style="min-width:150px;">Cause Code</th>
@@ -2190,7 +2264,7 @@
                                             </select>
                                         </div>
                                         <div class="af-filter-item">
-                                            <span class="af-filter-label">Asset No <span style="font-weight:400;color:#94a3b8;text-transform:none;">(Ctrl+click multi)</span></span>
+                                            <span class="af-filter-label">Asset No <span style="font-weight:400;color:var(--e7-text-3, #94a3b8);text-transform:none;">(Ctrl+click multi)</span></span>
                                             <select class="af-select" id="af_AssetNo" multiple size="1">
                                                 <option value="0" selected>All</option>
                                             </select>
@@ -2229,7 +2303,7 @@
                             <tbody id="af_EntryTableBody">
                                 <tr class="af-empty-row" id="af_emptyRow">
                                     <td colspan="9">
-                                        <i class="fa fa-table" style="font-size:28px;color:#d1d5db;display:block;margin-bottom:8px;"></i>
+                                        <i class="fa fa-table" style="font-size:28px;color:var(--e7-text-4, #d1d5db);display:block;margin-bottom:8px;"></i>
                                         No rows yet — select filters above and click <strong>+ Add to Table</strong>
                                     </td>
                                 </tr>
@@ -2308,8 +2382,8 @@
                             </thead>
                             <tbody id="vf_ListBody">
                                 <tr>
-                                    <td colspan="10" style="text-align:center;padding:40px 0;color:#9ca3af;font-size:13px;">
-                                        <i class="fa fa-search" style="font-size:28px;color:#d1d5db;display:block;margin-bottom:8px;"></i>
+                                    <td colspan="10" style="text-align:center;padding:40px 0;color:var(--e7-text-3, #9ca3af);font-size:13px;">
+                                        <i class="fa fa-search" style="font-size:28px;color:var(--e7-text-4, #d1d5db);display:block;margin-bottom:8px;"></i>
                                         Select date range and click <strong>Search</strong> to load records.
                                     </td>
                                 </tr>
@@ -2370,7 +2444,7 @@
             <div style="background:var(--e7-surface-2, #f8faff);border-bottom:1px solid var(--e7-border, #e8edf5);padding:7px 16px;display:flex;gap:20px;flex-wrap:wrap;">
                 <div><div style="font-size:9.5px;font-weight:700;color:var(--e7-text-3, #94a3b8);text-transform:uppercase;">Station</div><div style="font-size:12.5px;font-weight:600;color:var(--e7-heading, #1e293b);" id="ef_StationName">—</div></div>
                 <div><div style="font-size:9.5px;font-weight:700;color:var(--e7-text-3, #94a3b8);text-transform:uppercase;">Asset Type</div><div style="font-size:12.5px;font-weight:600;color:var(--e7-heading, #1e293b);" id="ef_AssetType">—</div></div>
-                <div><div style="font-size:9.5px;font-weight:700;color:var(--e7-text-3, #94a3b8);text-transform:uppercase;">Asset No.</div><div style="font-size:12.5px;font-weight:600;color:var(--e7-heading, #1e293b);" id="ef_AssetNo">—</div></div>
+                <div><div style="font-size:9.5px;font-weight:700;color:var(--e7-text-3, #94a3b8);text-transform:uppercase;">Asset Number</div><div style="font-size:12.5px;font-weight:600;color:var(--e7-heading, #1e293b);" id="ef_AssetNo">—</div></div>
             </div>
 
             <div class="modal-body" style="padding:14px 16px 10px;">
@@ -2385,19 +2459,18 @@
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:12px;">
                     <div>
-                        <label style="font-size:10px;font-weight:700;color:var(--e7-text-2, #64748b);text-transform:uppercase;display:block;margin-bottom:3px;">
-                            Incidence Date <span style="color:var(--e7-red, #ef4444);">*</span>
-                        </label>
-                        <input type="date" id="ef_IncidenceDateTime"
-                               style="width:100%;height:30px;border:1px solid var(--e7-border-2, #dde3f0);border-radius:4px;padding:3px 8px;font-size:12.5px;color:var(--e7-text, #1e293b);background:var(--e7-surface, #fff);outline:none;" />
+                        <label style="font-size:10px;font-weight:700;color:var(--e7-text-2, #64748b);text-transform:uppercase;">Incidence Date & Time <span style="color:var(--e7-red, #ef4444);">*</span></label>
+                        <div style="display:flex;gap:5px;">
+                            <input type="date" id="ef_IncidenceDateTime" style="flex:2;height:30px;border:1px solid var(--e7-border-2, #dde3f0);border-radius:4px;padding:3px 8px;font-size:12.5px;color:var(--e7-text, #1e293b);background:var(--e7-surface, #fff);">
+                            <input type="time" id="ef_IncidenceTime" style="flex:1;height:30px;border:1px solid var(--e7-border-2, #dde3f0);border-radius:4px;padding:3px 8px;font-size:12.5px;color:var(--e7-text, #1e293b);background:var(--e7-surface, #fff);">
+                        </div>
                     </div>
                     <div>
-                        <label style="font-size:10px;font-weight:700;color:var(--e7-text-2, #64748b);text-transform:uppercase;display:block;margin-bottom:3px;">
-                            Rectification Date
-                            <span style="font-weight:400;color:var(--e7-text-3, #94a3b8);text-transform:none;font-size:9px;">(optional)</span>
-                        </label>
-                        <input type="date" id="ef_RectificationDateTime"
-                               style="width:100%;height:30px;border:1px solid var(--e7-border-2, #dde3f0);border-radius:4px;padding:3px 8px;font-size:12.5px;color:var(--e7-text, #1e293b);background:var(--e7-surface, #fff);outline:none;" />
+                        <label style="font-size:10px;font-weight:700;color:var(--e7-text-2, #64748b);text-transform:uppercase;">Rectification Date & Time</label>
+                        <div style="display:flex;gap:5px;">
+                            <input type="date" id="ef_RectificationDateTime" style="flex:2;height:30px;border:1px solid var(--e7-border-2, #dde3f0);border-radius:4px;padding:3px 8px;font-size:12.5px;color:var(--e7-text, #1e293b);background:var(--e7-surface, #fff);">
+                            <input type="time" id="ef_RectificationTime" style="flex:1;height:30px;border:1px solid var(--e7-border-2, #dde3f0);border-radius:4px;padding:3px 8px;font-size:12.5px;color:var(--e7-text, #1e293b);background:var(--e7-surface, #fff);">
+                        </div>
                     </div>
                 </div>
 
@@ -2507,29 +2580,168 @@
         rdpms: '#22c55e'         // Green
     };
 
-    // Displayed as DD-MM-YYYY like the other pages; sent to the server as MM/DD/YYYY (toServerDate)
-    var DATE_FORMAT = 'dd-mm-yyyy';
+    // Display format for both filter pickers: dd/MM/yyyy.
+    //
+    // It was 'dd/mm/yy'. In Air Datepicker 2.2.3 -- the library this page actually loads --
+    // 'yy' is the TWO-DIGIT year, not jQuery UI's four. So the field was prefilled by
+    // setDefaultDates() as "15/09/2026" and rewritten as "15/09/26" the moment anyone
+    // picked a date, and toBackend() then shipped "09/15/26" to the server. Every comparison
+    // below parses this string, so the format has to mean what the rest of the page assumes.
+    // 'dd/mm/yyyy' is what the other FRS25 date filters use (EquipmentRoom/History,
+    // RDPMSHealthLive/Detail).
+    var DATE_FORMAT = 'dd/mm/yyyy';
+
+    /* ==================================================================
+       DATE RANGE RULES -- no future date, and To is never before From.
+
+       Enforced in TWO places on purpose, because they fail differently:
+         - the PICKERS carry minDate/maxDate, so an invalid date cannot be clicked. That is
+           the part a user sees, and it is the only part that prevents the mistake.
+         - pfCheckRange() is asked again at search time, and IT is the authority. The fields
+           are prefilled before any picker exists, they are set programmatically in several
+           places (setDefaultDates, vfResetList, openActualFailureModal), and a reset that
+           runs while the page is idle leaves a value no picker ever vetted. A bound alone
+           would let those paths through.
+
+       LOCAL midnight throughout, never toISOString(). toISOString() is UTC, so in IST
+       (+05:30) it reports YESTERDAY until 05:30 in the morning -- a "not in the future"
+       bound built on it would refuse today's date for the first five and a half hours of
+       every day, which is precisely when the day's own data is being looked at.
+       ================================================================== */
+
+    // Today at local midnight -- the inclusive upper bound for both fields.
+    function pfToday() {
+        var n = new Date();
+        return new Date(n.getFullYear(), n.getMonth(), n.getDate());
+    }
+
+    // Local yyyy-MM-dd, for the native <input type="date"> min/max attributes and values.
+    function pfIsoLocal(d) {
+        d = d || pfToday();
+        return d.getFullYear()
+             + '-' + ('0' + (d.getMonth() + 1)).slice(-2)
+             + '-' + ('0' + d.getDate()).slice(-2);
+    }
+
+    // Local dd/MM/yyyy, for the two filter text fields.
+    function pfFmtDisplay(d) {
+        return ('0' + d.getDate()).slice(-2)
+             + '/' + ('0' + (d.getMonth() + 1)).slice(-2)
+             + '/' + d.getFullYear();
+    }
+
+    // 'dd/MM/yyyy' -> Date at local midnight, or null. Returns null for a date that does not
+    // exist (31/02/2026) rather than letting the Date constructor roll it into March, which
+    // would silently widen the range the user asked for.
+    function pfParseDisplay(s) {
+        var p = String(s || '').trim().split('/');
+        if (p.length !== 3) { return null; }
+        var dd = parseInt(p[0], 10), mm = parseInt(p[1], 10), yy = parseInt(p[2], 10);
+        if (!dd || !mm || !yy) { return null; }
+        var dt = new Date(yy, mm - 1, dd);
+        if (dt.getDate() !== dd || dt.getMonth() !== (mm - 1) || dt.getFullYear() !== yy) { return null; }
+        return dt;
+    }
+
+    // 'yyyy-MM-dd' (native date input) -> Date at local midnight, or null. Built from the
+    // parts rather than new Date(s): the string form is parsed as UTC by the spec, which
+    // shifts it a day behind in IST.
+    function pfParseIso(s) {
+        var p = String(s || '').trim().split('-');
+        if (p.length !== 3) { return null; }
+        var yy = parseInt(p[0], 10), mm = parseInt(p[1], 10), dd = parseInt(p[2], 10);
+        if (!dd || !mm || !yy) { return null; }
+        var dt = new Date(yy, mm - 1, dd);
+        if (dt.getDate() !== dd || dt.getMonth() !== (mm - 1) || dt.getFullYear() !== yy) { return null; }
+        return dt;
+    }
+
+    // The one rule, stated once. Returns '' when the range is usable, otherwise the message
+    // to show. Both date pairs on this page call it, so they cannot drift apart.
+    function pfCheckRange(from, to) {
+        if (!from || !to) { return 'Please select both From Date and To Date.'; }
+        var today = pfToday();
+        if (from > today && to > today) {
+            return 'From Date and To Date cannot be in the future. Please select dates up to today (' + pfFmtDisplay(today) + ').';
+        }
+        if (from > today) {
+            return 'From Date cannot be in the future. Please select a date up to today (' + pfFmtDisplay(today) + ').';
+        }
+        if (to > today) {
+            return 'To Date cannot be in the future. Please select a date up to today (' + pfFmtDisplay(today) + ').';
+        }
+        if (to < from) {
+            return 'To Date cannot be earlier than From Date.';
+        }
+        return '';
+    }
+
+    /* Keeps the two filter calendars consistent with each other.
+         - From is bounded by TODAY ONLY. Bounding it by To as well would mean anyone wanting
+           a later range has to edit To first, and a picker that refuses the field you reached
+           for reads as broken rather than as protective.
+         - To is bounded by today AND by the current From, so it can never land before it.
+         - Choosing a From later than the current To drags To along with it, instead of
+           leaving a crossed pair on screen for the search to reject a click later. */
+    function pfSyncMainBounds(which, picked) {
+        var $from = $('#txtFromDate'), $to = $('#txtToDate');
+        var dpTo = $to.data('datepicker');
+        var today = pfToday();
+
+        // onSelect hands over a Date -- or an array of them, if multipleDates is ever turned
+        // on for these fields. Read defensively rather than assuming the scalar.
+        var sel = (picked instanceof Date) ? picked
+                : (($.isArray(picked) && picked.length) ? picked[0] : null);
+
+        var from = (which === 'from' && sel) ? sel : pfParseDisplay($from.val());
+        var to = (which === 'to' && sel) ? sel : pfParseDisplay($to.val());
+
+        if (which === 'from' && from && to && to < from) {
+            // selectDate writes the field and re-enters this function as 'to'. Harmless:
+            // that branch only reads and re-applies the same bounds.
+            if (dpTo && dpTo.selectDate) { dpTo.selectDate(from); }
+            else { $to.val(pfFmtDisplay(from)); }
+        }
+
+        if (dpTo && dpTo.update) {
+            dpTo.update({ minDate: from || '', maxDate: today });
+        }
+    }
 
     $(document).ready(function () {
         // Set default dates to today with consistent format
         setDefaultDates();
 
         // Date pickers with consistent format
+        // maxDate: today -- a future day is not clickable in either calendar. The To picker
+        // additionally carries minDate = the current From, so the pair cannot be crossed.
+        //
+        // onSelect is NOT used to write the value back. Air Datepicker invokes it as
+        // this.opts.onSelect(...), so `this` inside is the options object, not the input --
+        // the old `$(this).val(dateText)` was setting a property on a plain object and doing
+        // nothing. The plugin fills the input itself; onSelect is only used here to move the
+        // other field's bound.
         $('#txtFromDate').datepicker({
             dateFormat: DATE_FORMAT,
             autoClose: true,
-            onSelect: function (dateText) {
-                $(this).val(dateText);
+            maxDate: pfToday(),
+            onSelect: function (dateText, date) {
+                pfSyncMainBounds('from', date);
             }
         });
 
         $('#txtToDate').datepicker({
             dateFormat: DATE_FORMAT,
             autoClose: true,
-            onSelect: function (dateText) {
-                $(this).val(dateText);
+            maxDate: pfToday(),
+            onSelect: function (dateText, date) {
+                pfSyncMainBounds('to', date);
             }
         });
+
+        // The fields are prefilled by setDefaultDates() before this runs, so seed the bounds
+        // from those values rather than waiting for the first pick.
+        pfSyncMainBounds('init', null);
 
         // Bind button clicks
         $('.select-btn').on('click', function (e) {
@@ -2598,26 +2810,30 @@
         fnGetAlertPerformanceReport();
     });
 
-    // ===== SET DEFAULT DATES (TODAY) WITH CONSISTENT FORMAT =====
+    // ===== SET DEFAULT DATES (TODAY) WITH CONSISTENT FORMAT =====fnGetAlertPerformanceReport
+    //function setDefaultDates() {
+    //    var today = new Date();
+    //    var formattedDate = formatDate(today);
+    //    $('#txtFromDate').val(formattedDate);
+    //    $('#txtToDate').val(formattedDate);
+    //}
+
     function setDefaultDates() {
         var today = new Date();
-        var formattedDate = formatDate(today);
-        $('#txtFromDate').val(formattedDate);
-        $('#txtToDate').val(formattedDate);
+        var dd = ('0' + today.getDate()).slice(-2);
+        var mm = ('0' + (today.getMonth() + 1)).slice(-2);
+        var yyyy = today.getFullYear();
+        var todayStr = dd + '/' + mm + '/' + yyyy;
+        $('#txtFromDate').val(todayStr);
+        $('#txtToDate').val(todayStr);
     }
 
-    // ===== FORMAT DATE AS DD-MM-YYYY (with leading zeros) =====
+    // ===== FORMAT DATE AS MM/DD/YYYY (with leading zeros) =====
     function formatDate(date) {
         var month = String(date.getMonth() + 1).padStart(2, '0');
         var day = String(date.getDate()).padStart(2, '0');
         var year = date.getFullYear();
-        return day + '-' + month + '-' + year;
-    }
-
-    // DD-MM-YYYY (display) -> MM/DD/YYYY (what the server expects)
-    function toServerDate(s) {
-        var m = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(s || '').trim());
-        return m ? (m[2] + '/' + m[1] + '/' + m[3]) : s;
+        return month + '/' + day + '/' + year;
     }
 
     // ===== DROPDOWN SEARCH FILTER =====
@@ -2840,30 +3056,114 @@
         });
     }
 
-    // ===== MAIN SEARCH FUNCTION =====
     function fnGetAlertPerformanceReport() {
         var mAssetLister = { SearchCriteria: {} };
 
-        // Multi-select values (arrays)
         mAssetLister.SearchCriteria.ZoneIds = getValues('zone');
         mAssetLister.SearchCriteria.DivisionIds = getValues('division');
         mAssetLister.SearchCriteria.SiteIds = getValues('site');
 
-        // Single values for backward compatibility
-        //mAssetLister.SearchCriteria.ZoneId = getFirstValue('zone');
-        //mAssetLister.SearchCriteria.DivisionId = getFirstValue('division');
-        //mAssetLister.SearchCriteria.SiteId = getFirstValue('site');
+        var fromDateDisplay = $('#txtFromDate').val();
+        var toDateDisplay = $('#txtToDate').val();
+        if (!fromDateDisplay || !toDateDisplay) {
+            showWarning('Please select both From Date and To Date.', 'Validation');
+            return;
+        }
 
-        // Date values
-        mAssetLister.SearchCriteria.FromDate = toServerDate($('#txtFromDate').val());
-        mAssetLister.SearchCriteria.ToDate = toServerDate($('#txtToDate').val());
+        // THE AUTHORITY on the range, not the calendars. The pickers stop the mistake being
+        // made by hand; this stops it being made any other way -- a prefilled value, a reset
+        // run from code, a field left over from a page that has been open since yesterday.
+        // Nothing is sent to the server until this passes.
+        var fromDateObj = pfParseDisplay(fromDateDisplay);
+        var toDateObj = pfParseDisplay(toDateDisplay);
+        var rangeError = pfCheckRange(fromDateObj, toDateObj);
+        if (rangeError) {
+            showWarning(rangeError, 'Validation');
+            return;
+        }
 
-        // Load based on view type
+        function toBackend(d) {
+            var parts = d.split('/');       // '09/06/2026' → ['09','06','2026']  (DD/MM/YYYY)
+            if (parts.length === 3) {
+                return parts[1] + '/' + parts[0] + '/' + parts[2];  // '06/09/2026'  (MM/DD/YYYY)
+            }
+            return d;
+        }
+        var fromDateBackend = toBackend(fromDateDisplay);
+        var toDateBackend = toBackend(toDateDisplay);
+
+        // Is the To Date today? It decides whether the range bar reads "up to now" or
+        // "to end of day", and it was never true: toDateBackend is MM/DD/YYYY and todayStr
+        // was a UTC yyyy-MM-dd, so the two could not match in any timezone on any date.
+        // The range now always showed 23:59:59, including for a range ending today.
+        // Compared as dates, against LOCAL today, now that both are already parsed.
+        var isToday = (toDateObj.getTime() === pfToday().getTime());
+
+        var fromTime = '00:00:00';
+        var toTime = isToday ? getCurrentTime() : '23:59:59';
+
+        // Update info bar with dd/MM/yyyy HH:mm:ss
+        $('#dispFromDate').text(fromDateDisplay + ' ' + fromTime);
+        $('#dispToDate').text(toDateDisplay + ' ' + toTime);
+        $('#selectedRangeBar').css('display', 'flex');
+
+        // Send dates to backend in yyyy-MM-dd format
+        mAssetLister.SearchCriteria.FromDate = fromDateBackend;
+        mAssetLister.SearchCriteria.ToDate = toDateBackend;
+
         if (selectedViewType === 'Table') {
             fnLoadTableView(mAssetLister);
         } else {
             fnLoadChartView(mAssetLister, selectedViewType);
         }
+    }    function getCurrentTime() {
+        var now = new Date();
+        var hh = ('0' + now.getHours()).slice(-2);
+        var mm = ('0' + now.getMinutes()).slice(-2);
+        var ss = ('0' + now.getSeconds()).slice(-2);
+        return hh + ':' + mm + ':' + ss;
+    }
+
+    // Helper: format date from yyyy-mm-dd to dd/MM/yyyy
+    function formatDateDDMMYYYY(dateStr) {
+        if (!dateStr) return '';
+        var parts = dateStr.split('-');
+        if (parts.length === 3) {
+            return parts[2] + '/' + parts[1] + '/' + parts[0];
+        }
+        return dateStr;
+    }
+
+    // Helper: format date from yyyy-mm-dd to yyyy-mm-dd (already)
+    function formatDateYYYYMMDD(date) {
+        var y = date.getFullYear();
+        var m = ('0' + (date.getMonth() + 1)).slice(-2);
+        var d = ('0' + date.getDate()).slice(-2);
+        return y + '-' + m + '-' + d;
+    }
+
+    // Helper: get current time in HH:MM:SS (24-hour)
+    function getCurrentTime() {
+        var now = new Date();
+        var hh = ('0' + now.getHours()).slice(-2);
+        var mm = ('0' + now.getMinutes()).slice(-2);
+        var ss = ('0' + now.getSeconds()).slice(-2);
+        return hh + ':' + mm + ':' + ss;
+    }
+
+    // Helper: format date (yyyy-mm-dd) and time (HH:MM:SS) to ddMMyyyy_HHmmss for API
+    function formatDateTimeForAPI(dateStr, timeStr) {
+        if (!dateStr) return '';
+        var parts = dateStr.split('-');
+        if (parts.length !== 3) return '';
+        var day = parts[2];
+        var month = parts[1];
+        var year = parts[0];
+        var timeParts = timeStr.split(':');
+        var hour = timeParts[0] || '00';
+        var minute = timeParts[1] || '00';
+        var second = timeParts[2] || '00';
+        return day + month + year + '_' + hour + minute + second;
     }
 
     // ===== TABLE VIEW =====
@@ -2969,7 +3269,6 @@
         $('#divChartContainer').html(html);
     }
 
-    // ===== RENDER CHART =====
     // Energy7 theme palette for the canvas (Chart.js cannot read CSS var()).
     function _perfTheme() {
         var cs = getComputedStyle(document.documentElement);
@@ -2986,12 +3285,14 @@
     var _perfLastChart = null;
     if (window.MutationObserver) {
         new MutationObserver(function () {
-            if (_perfLastChart && performanceChart != null && $('#divChartContainer').is(':visible')) {
+            var hasChart = performanceChart != null || (window._multiPieCharts && window._multiPieCharts.length);
+            if (_perfLastChart && hasChart && $('#divChartContainer').is(':visible')) {
                 renderChart(_perfLastChart.data, _perfLastChart.viewType);
             }
         }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-aurora'] });
     }
 
+    // ===== RENDER CHART =====
     function renderChart(data, viewType) {
         _perfLastChart = { data: data, viewType: viewType };
         var th = _perfTheme();
@@ -3000,10 +3301,15 @@
             titleColor: th.heading, bodyColor: th.text
         };
 
-        // Destroy existing chart
+        // Destroy existing chart(s)
         if (performanceChart != null) {
-            performanceChart.destroy();
+            try { performanceChart.destroy(); } catch (e) { }
             performanceChart = null;
+        }
+        // Destroy any previous multi-pie charts
+        if (window._multiPieCharts && window._multiPieCharts.length) {
+            window._multiPieCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+            window._multiPieCharts = [];
         }
 
         var chartTitle = viewType === 'Pie' ? 'Performance Distribution (Average %)' :
@@ -3020,11 +3326,11 @@
         $chartWrapper.append($canvas);
         $chartContainer.append($chartHeader).append($chartWrapper);
 
-        // Add legend
+        // Add legend — labels match Table view column names exactly
         var $legend = $('<div class="chart-legend">' +
-            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.failure + '"></div><span>% (True + PT) Failure Alerts</span></div>' +
-            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.predictive + '"></div><span>% (True + PT) Predictive Alerts</span></div>' +
-            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.rdpms + '"></div><span>% Failure Alerts by RDPMS</span></div>' +
+            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.failure + '"></div><span>% of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated</span></div>' +
+            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.predictive + '"></div><span>% of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated</span></div>' +
+            '<div class="legend-item"><div class="legend-color" style="background:' + chartColors.rdpms + '"></div><span>% of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station</span></div>' +
             '</div>');
 
         $chartContainer.append($legend);
@@ -3034,47 +3340,205 @@
         var chartConfig = {};
 
         // ===== PIE CHART =====
-        if (viewType === 'Pie') {
-            // Calculate averages for pie chart
-            var avgFailure = data.failure.length > 0 ? data.failure.reduce(function (a, b) { return a + b; }, 0) / data.failure.length : 0;
-            var avgPredictive = data.predictive.length > 0 ? data.predictive.reduce(function (a, b) { return a + b; }, 0) / data.predictive.length : 0;
-            var avgRdpms = data.rdpms.length > 0 ? data.rdpms.reduce(function (a, b) { return a + b; }, 0) / data.rdpms.length : 0;
+        //if (viewType === 'Pie') {
+        //    // Calculate averages for pie chart
+        //    var avgFailure = data.failure.length > 0 ? data.failure.reduce(function (a, b) { return a + b; }, 0) / data.failure.length : 0;
+        //    var avgPredictive = data.predictive.length > 0 ? data.predictive.reduce(function (a, b) { return a + b; }, 0) / data.predictive.length : 0;
+        //    var avgRdpms = data.rdpms.length > 0 ? data.rdpms.reduce(function (a, b) { return a + b; }, 0) / data.rdpms.length : 0;
 
-            chartConfig = {
-                type: 'doughnut',
-                data: {
-                    labels: ['% (True + PT) Failure Alerts', '% (True + PT) Predictive Alerts', '% Failure Alerts by RDPMS'],
-                    datasets: [{
-                        data: [avgFailure.toFixed(1), avgPredictive.toFixed(1), avgRdpms.toFixed(1)],
-                        backgroundColor: [chartColors.failure, chartColors.predictive, chartColors.rdpms],
-                        borderColor: th.surface,
-                        borderWidth: 3,
-                        hoverOffset: 15
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    cutout: '55%',
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: tip.backgroundColor, borderColor: tip.borderColor, borderWidth: tip.borderWidth,
-                            titleColor: tip.titleColor, bodyColor: tip.bodyColor,
-                            padding: 14,
-                            cornerRadius: 8,
-                            titleFont: { size: 14, weight: 'bold' },
-                            bodyFont: { size: 13 },
-                            callbacks: {
-                                label: function (context) {
-                                    return context.label + ': ' + context.parsed + '%';
+        //    // Build station name label for the pie view
+        //    // If single station → show its name. If multiple → show count + list (truncated).
+        //    var stationLabel = '';
+        //    if (data.labels && data.labels.length === 1) {
+        //        stationLabel = data.labels[0];
+        //    } else if (data.labels && data.labels.length > 1) {
+        //        stationLabel = 'All Stations (' + data.labels.length + ') — ' + data.labels.join(', ');
+        //        if (stationLabel.length > 120) {
+        //            stationLabel = 'All Stations (' + data.labels.length + ')';
+        //        }
+        //    }
+
+        //    // Update chart header to include station name(s)
+        //    if (stationLabel) {
+        //        $chartHeader.find('.chart-title').html(chartTitle + ' <span style="font-weight:500;font-size:14px;color:var(--e7-text-2, #475569);">— ' + stationLabel + '</span>');
+        //    }
+
+        //    chartConfig = {
+        //        type: 'doughnut',
+        //        data: {
+        //            labels: [
+        //                '% of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated',
+        //                '% of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated',
+        //                '% of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station'
+        //            ],
+        //            datasets: [{
+        //                data: [avgFailure.toFixed(1), avgPredictive.toFixed(1), avgRdpms.toFixed(1)],
+        //                backgroundColor: [chartColors.failure, chartColors.predictive, chartColors.rdpms],
+        //                borderColor: '#ffffff',
+        //                borderWidth: 3,
+        //                hoverOffset: 15
+        //            }]
+        //        },
+        //        options: {
+        //            responsive: true,
+        //            maintainAspectRatio: false,
+        //            cutout: '55%',
+        //            plugins: {
+        //                legend: { display: false },
+        //                tooltip: {
+        //                    backgroundColor: 'rgba(15, 23, 42, 0.9)',
+        //                    padding: 14,
+        //                    cornerRadius: 8,
+        //                    titleFont: { size: 13, weight: 'bold' },
+        //                    bodyFont: { size: 12 },
+        //                    displayColors: true,
+        //                    // Wrap long labels so the tooltip stays readable when tapped
+        //                    callbacks: {
+        //                        title: function (items) {
+        //                            // Title = station context for this pie
+        //                            return stationLabel || 'Performance Distribution';
+        //                        },
+        //                        label: function (context) {
+        //                            // Full descriptive metric name on tap (matches Table view)
+        //                            var fullLabel = context.label || '';
+        //                            var value = context.parsed + '%';
+        //                            // Break long label into multiple lines for readable tooltip
+        //                            return splitLabelForTooltip(fullLabel, value);
+        //                        }
+        //                    }
+        //                }
+        //            }
+        //        }
+        //    };
+        //}
+
+
+        // ===== PIE CHART =====
+        if (viewType === 'Pie') {
+
+            // Destroy any old multi-pie charts
+            if (window._multiPieCharts && window._multiPieCharts.length) {
+                window._multiPieCharts.forEach(function (c) { try { c.destroy(); } catch (e) { } });
+            }
+            window._multiPieCharts = [];
+
+            // Remove the single canvas that was appended — we build our own grid below
+            $canvas.remove();
+            $chartWrapper.remove();
+
+            var stationCount = data.labels ? data.labels.length : 0;
+
+            if (stationCount === 0) {
+                $chartContainer.append('<div class="no-data-box"><i class="fas fa-chart-pie"></i><p>No station data available</p></div>');
+                $container.append($chartContainer);
+                return;
+            }
+
+            // Update header
+            $chartHeader.find('.chart-title').text(
+                stationCount === 1
+                    ? 'Performance Distribution — ' + data.labels[0]
+                    : 'Performance Distribution — ' + stationCount + ' Stations'
+            );
+
+            // Grid wrapper: 1 col for single, 2 cols for 2+, 3 cols for 4+
+            var cols = stationCount === 1 ? 1 : stationCount <= 3 ? 2 : 3;
+            var $grid = $('<div style="display:grid;grid-template-columns:repeat(' + cols + ',1fr);gap:24px;padding:8px 0;"></div>');
+
+            for (var si = 0; si < stationCount; si++) {
+                (function (idx) {
+                    var stName = data.labels[idx] || ('Station ' + (idx + 1));
+                    var failure = parseFloat(data.failure[idx]) || 0;
+                    var predict = parseFloat(data.predictive[idx]) || 0;
+                    var rdpms = parseFloat(data.rdpms[idx]) || 0;
+
+                    var canvasId = 'pieChart_' + idx;
+                    var $cell = $(
+                        '<div style="background:var(--e7-surface-2, #f8fafc);border:1px solid var(--e7-border, #e2e8f0);border-radius:10px;padding:16px;display:flex;flex-direction:column;align-items:center;">' +
+                        '<div style="font-size:13px;font-weight:700;color:var(--e7-heading, #1e293b);margin-bottom:12px;text-align:center;">' + stName + '</div>' +
+                        '<div style="position:relative;height:220px;width:100%;max-width:260px;">' +
+                        '<canvas id="' + canvasId + '" role="img" aria-label="Pie chart for ' + stName + '"></canvas>' +
+                        '</div>' +
+                        '<div style="margin-top:12px;font-size:11px;color:var(--e7-text-2, #475569);text-align:left;width:100%;max-width:260px;">' +
+                        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">' +
+                        '<span style="width:10px;height:10px;border-radius:2px;background:' + chartColors.failure + ';flex-shrink:0;"></span>' +
+                        '<span>Failure Alerts: <b>' + failure.toFixed(1) + '%</b></span>' +
+                        '</div>' +
+                        '<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">' +
+                        '<span style="width:10px;height:10px;border-radius:2px;background:' + chartColors.predictive + ';flex-shrink:0;"></span>' +
+                        '<span>Predictive Alerts: <b>' + predict.toFixed(1) + '%</b></span>' +
+                        '</div>' +
+                        '<div style="display:flex;align-items:center;gap:6px;">' +
+                        '<span style="width:10px;height:10px;border-radius:2px;background:' + chartColors.rdpms + ';flex-shrink:0;"></span>' +
+                        '<span>RDPMS Alerts: <b>' + rdpms.toFixed(1) + '%</b></span>' +
+                        '</div>' +
+                        '</div>' +
+                        '</div>'
+                    );
+                    $grid.append($cell);
+
+                    // Init chart after DOM is ready
+                    setTimeout(function () {
+                        var ctxPie = document.getElementById(canvasId);
+                        if (!ctxPie) return;
+                        var pieInst = new Chart(ctxPie.getContext('2d'), {
+                            type: 'doughnut',
+                            data: {
+                                labels: [
+                                    '% Failure Alerts',
+                                    '% Predictive Alerts',
+                                    '% RDPMS Alerts'
+                                ],
+                                datasets: [{
+                                    data: [failure.toFixed(1), predict.toFixed(1), rdpms.toFixed(1)],
+                                    backgroundColor: [chartColors.failure, chartColors.predictive, chartColors.rdpms],
+                                    borderColor: th.surface,
+                                    borderWidth: 3,
+                                    hoverOffset: 10
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                cutout: '55%',
+                                plugins: {
+                                    legend: { display: false },
+                                    datalabels: { display: false },
+                                    tooltip: {
+                                        backgroundColor: tip.backgroundColor, borderColor: tip.borderColor, borderWidth: tip.borderWidth,
+                                        titleColor: tip.titleColor, bodyColor: tip.bodyColor,
+                                        padding: 12,
+                                        cornerRadius: 8,
+                                        titleFont: { size: 12, weight: 'bold' },
+                                        bodyFont: { size: 11 },
+                                        callbacks: {
+                                            title: function () { return stName; },
+                                            label: function (context) {
+                                                var names = [
+                                                    '% of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated',
+                                                    '% of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated',
+                                                    '% of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station'
+                                                ];
+                                                return splitLabelForTooltip(names[context.dataIndex] || context.label, context.parsed + '%');
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                        }
-                    }
-                }
-            };
+                        });
+                        window._multiPieCharts.push(pieInst);
+                    }, 0);
+                })(si);
+            }
+
+            $chartContainer.append($grid);
+            $container.append($chartContainer);
+
+            // Skip the single-chart init at the bottom — return early
+            return;
         }
+
+        // ===== BAR CHART =====
 
         // ===== BAR CHART =====
         else if (viewType === 'Bar') {
@@ -3084,7 +3548,7 @@
                     labels: data.labels,
                     datasets: [
                         {
-                            label: '% (True + PT) Failure Alerts',
+                            label: '% of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated',
                             data: data.failure,
                             backgroundColor: chartColors.failure,
                             borderRadius: 4,
@@ -3092,7 +3556,7 @@
                             categoryPercentage: 0.8
                         },
                         {
-                            label: '% (True + PT) Predictive Alerts',
+                            label: '% of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated',
                             data: data.predictive,
                             backgroundColor: chartColors.predictive,
                             borderRadius: 4,
@@ -3100,7 +3564,7 @@
                             categoryPercentage: 0.8
                         },
                         {
-                            label: '% Failure Alerts by RDPMS',
+                            label: '% of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station',
                             data: data.rdpms,
                             backgroundColor: chartColors.rdpms,
                             borderRadius: 4,
@@ -3114,14 +3578,24 @@
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { display: false },
+                        datalabels: { display: false },
                         tooltip: {
                             backgroundColor: tip.backgroundColor, borderColor: tip.borderColor, borderWidth: tip.borderWidth,
                             titleColor: tip.titleColor, bodyColor: tip.bodyColor,
                             padding: 14,
                             cornerRadius: 8,
+                            titleFont: { size: 13, weight: 'bold' },
+                            bodyFont: { size: 12 },
+                            // Show full descriptive metric on tap (matches Table view wording)
                             callbacks: {
+                                title: function (items) {
+                                    // Title = station name being tapped
+                                    return items && items.length ? items[0].label : '';
+                                },
                                 label: function (context) {
-                                    return context.dataset.label + ': ' + context.parsed.y + '%';
+                                    var fullLabel = context.dataset.label || '';
+                                    var value = context.parsed.y + '%';
+                                    return splitLabelForTooltip(fullLabel, value);
                                 }
                             }
                         }
@@ -3146,84 +3620,224 @@
             };
         }
 
-        // ===== LINE GRAPH =====
+        // ===== LINE GRAPH (Station Alert Accuracy Style) =====
         else if (viewType === 'Graph') {
+
+            // --- Transpose data: x-axis = 3 metrics, each station = a dataset ---
+            // Short, readable axis labels. The FULL calculation headings
+            // are shown in the "Calculation Headings" panel below the chart.
+            var metricLabels = [
+                ['\u2460 Failure Alert', 'Accuracy'],
+                ['\u2461 Predictive Alert', 'Accuracy'],
+                ['\u2462 RDPMS Failure', 'Detection']
+            ];
+
+            // Full calculation headings (kept in sync with the Table view columns)
+            var calcHeadings = [
+                '% of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated',
+                '% of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated',
+                '% of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station'
+            ];
+
+            // Distinct color palette for up to 12 stations
+            var stationPalette = [
+                { line: '#22c55e', bg: 'rgba(34,197,94,0.10)' },   // Green
+                { line: '#dc2626', bg: 'rgba(220,38,38,0.10)' },   // Red
+                { line: '#3b82f6', bg: 'rgba(59,130,246,0.10)' },  // Blue
+                { line: '#f59e0b', bg: 'rgba(245,158,11,0.10)' },  // Amber
+                { line: '#8b5cf6', bg: 'rgba(139,92,246,0.10)' },  // Violet
+                { line: '#ec4899', bg: 'rgba(236,72,153,0.10)' },  // Pink
+                { line: '#14b8a6', bg: 'rgba(20,184,166,0.10)' },  // Teal
+                { line: '#f97316', bg: 'rgba(249,115,22,0.10)' },  // Orange
+                { line: '#6366f1', bg: 'rgba(99,102,241,0.10)' },  // Indigo
+                { line: '#0ea5e9', bg: 'rgba(14,165,233,0.10)' },  // Sky
+                { line: '#84cc16', bg: 'rgba(132,204,22,0.10)' },  // Lime
+                { line: '#a855f7', bg: 'rgba(168,85,247,0.10)' }   // Purple
+            ];
+
+            var datasets = [];
+            for (var si = 0; si < data.labels.length; si++) {
+                var color = stationPalette[si % stationPalette.length];
+                datasets.push({
+                    label: data.labels[si],
+                    data: [
+                        parseFloat(data.failure[si]) || 0,
+                        parseFloat(data.predictive[si]) || 0,
+                        parseFloat(data.rdpms[si]) || 0
+                    ],
+                    borderColor: color.line,
+                    backgroundColor: color.bg,
+                    borderWidth: 2.5,
+                    fill: false,
+                    tension: 0.25,
+                    pointBackgroundColor: color.line,
+                    pointBorderColor: th.surface,
+                    pointBorderWidth: 2,
+                    pointRadius: 5,
+                    pointHoverRadius: 8,
+                    pointHoverBorderWidth: 3
+                    // NOTE: data labels are configured globally below so they can be
+                    // placed collision-free across all station lines.
+                });
+            }
+
+            // Build date range subtitle from the search bar
+            var dateFrom = $('#dispFromDate').text() || '';
+            var dateTo = $('#dispToDate').text() || '';
+            var dateSubtitle = '';
+            if (dateFrom && dateTo) {
+                // Show only date part (strip time)
+                dateSubtitle = (dateFrom.split(' ')[0] || dateFrom) + ' to ' + (dateTo.split(' ')[0] || dateTo);
+            }
+
+            // Give the line view extra height so stacked labels breathe.
+            $chartWrapper.css('height', '460px');
+
+            // Update chart title to match screenshot style (coloured title).
+            // !important + .css() defeats any theme stylesheet that colours h4/span.
+            $chartHeader.find('.chart-title')
+                .attr('style', 'color:var(--e7-accent, #4f46e5) !important;')
+                .html(
+                    '<span style="color:var(--e7-accent, #4f46e5) !important;">Station Alert Accuracy</span>' +
+                    (dateSubtitle ? ' <span style="font-weight:400;font-size:14px;color:var(--e7-text-2, #64748b) !important;">— ' + dateSubtitle + '</span>' : '')
+                );
+
+            // Replace the fixed legend with a dynamic per-station legend
+            $legend.empty();
+            for (var li = 0; li < data.labels.length; li++) {
+                var lc = stationPalette[li % stationPalette.length];
+                $legend.append(
+                    '<div class="legend-item" style="max-width:none;gap:8px;font-size:14px;font-weight:600;">' +
+                    '<div class="legend-color" style="background:' + lc.line + ';width:14px;height:14px;border-radius:50%;"></div>' +
+                    '<span style="color:' + lc.line + ' !important;">' + data.labels[li] + '</span>' +
+                    '</div>'
+                );
+            }
+
+            // Calculation Headings reference panel — lists the full text for
+            // every metric (\u2460 \u2461 \u2462) so the cramped axis labels stay readable
+            // while all calculation headings remain fully visible. Each heading is
+            // tinted with its own colour so it can be matched at a glance.
+            var headingMarks = ['\u2460', '\u2461', '\u2462'];
+            var headingColors = ['#dc2626', '#2563eb', '#16a34a']; // Failure / Predictive / RDPMS
+            var calcRows = '';
+            for (var ci = 0; ci < calcHeadings.length; ci++) {
+                // Colour set with !important on BOTH spans — the text span no longer
+                // relies on inheritance, so a theme "span { color }" rule can't strip it.
+                calcRows +=
+                    '<div style="display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.45;">' +
+                    '<span style="flex-shrink:0;font-weight:700;color:' + headingColors[ci] + ' !important;width:18px;text-align:center;">' + headingMarks[ci] + '</span>' +
+                    '<span style="font-weight:600;color:' + headingColors[ci] + ' !important;">' + calcHeadings[ci] + '</span>' +
+                    '</div>';
+            }
+            $legend.append(
+                '<div style="width:100%;border-top:1px solid var(--e7-border, #e5e7eb);margin-top:14px;padding-top:14px;">' +
+                '<div style="font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--e7-accent, #4f46e5) !important;margin-bottom:10px;">Calculation Headings</div>' +
+                '<div style="display:flex;flex-direction:column;gap:8px;max-width:760px;margin:0 auto;text-align:left;">' +
+                calcRows +
+                '</div>' +
+                '</div>'
+            );
+
             chartConfig = {
                 type: 'line',
                 data: {
-                    labels: data.labels,
-                    datasets: [
-                        {
-                            label: '% (True + PT) Failure Alerts',
-                            data: data.failure,
-                            borderColor: chartColors.failure,
-                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                            borderWidth: 3,
-                            fill: false,
-                            tension: 0.4,
-                            pointBackgroundColor: th.surface,
-                            pointBorderColor: chartColors.failure,
-                            pointBorderWidth: 2,
-                            pointRadius: 6,
-                            pointHoverRadius: 8
-                        },
-                        {
-                            label: '% (True + PT) Predictive Alerts',
-                            data: data.predictive,
-                            borderColor: chartColors.predictive,
-                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                            borderWidth: 3,
-                            fill: false,
-                            tension: 0.4,
-                            pointBackgroundColor: th.surface,
-                            pointBorderColor: chartColors.predictive,
-                            pointBorderWidth: 2,
-                            pointRadius: 6,
-                            pointHoverRadius: 8
-                        },
-                        {
-                            label: '% Failure Alerts by RDPMS',
-                            data: data.rdpms,
-                            borderColor: chartColors.rdpms,
-                            backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                            borderWidth: 3,
-                            fill: false,
-                            tension: 0.4,
-                            pointBackgroundColor: th.surface,
-                            pointBorderColor: chartColors.rdpms,
-                            pointBorderWidth: 2,
-                            pointRadius: 6,
-                            pointHoverRadius: 8
-                        }
-                    ]
+                    labels: metricLabels,
+                    datasets: datasets
                 },
+                plugins: [ChartDataLabels],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: { top: 42, right: 38, bottom: 10, left: 12 }
+                    },
                     plugins: {
                         legend: { display: false },
+                        datalabels: {
+                            display: true,
+                            clamp: true,
+                            clip: false,
+                            // White rounded "pill" keeps every label readable even
+                            // where lines cross or run close together.
+                            backgroundColor: th.surface,
+                            borderColor: function (ctx) { return ctx.dataset.borderColor; },
+                            borderWidth: 1.5,
+                            borderRadius: 6,
+                            padding: { top: 2, bottom: 2, left: 5, right: 5 },
+                            color: function (ctx) { return ctx.dataset.borderColor; },
+                            font: { weight: 'bold', size: 11.5 },
+                            anchor: 'center',
+                            // Rank this point against the other stations at the same
+                            // metric so the highest sits above and the rest fan out
+                            // alternately above/below — no two labels overlap.
+                            align: function (ctx) {
+                                return rankAtPoint(ctx) % 2 === 0 ? 'top' : 'bottom';
+                            },
+                            offset: function (ctx) {
+                                var rank = rankAtPoint(ctx);
+                                return 7 + Math.floor(rank / 2) * 20;
+                            },
+                            formatter: function (value) { return value + '%'; }
+                        },
                         tooltip: {
                             backgroundColor: tip.backgroundColor, borderColor: tip.borderColor, borderWidth: tip.borderWidth,
                             titleColor: tip.titleColor, bodyColor: tip.bodyColor,
-                            padding: 14,
-                            cornerRadius: 8,
+                            padding: 16,
+                            cornerRadius: 10,
+                            titleFont: { size: 14, weight: 'bold' },
+                            bodyFont: { size: 13 },
+                            bodySpacing: 6,
+                            boxPadding: 6,
+                            usePointStyle: true,
                             callbacks: {
+                                title: function (items) {
+                                    if (!items || !items.length) return '';
+                                    var metricNames = [
+                                        '% of (True + Partially True) Failure Alerts out of Total Failure Alerts Generated',
+                                        '% of (True + Partially True) Predictive Alerts out of Total Predictive Alerts Generated',
+                                        '% of (True + Partially True) Failure Alerts by RDPMS out of Total Actual Failures Occurred at Station'
+                                    ];
+                                    return metricNames[items[0].dataIndex] || '';
+                                },
                                 label: function (context) {
-                                    return context.dataset.label + ': ' + context.parsed.y + '%';
+                                    var stationName = context.dataset.label || '';
+                                    var value = context.parsed.y;
+                                    return '  ' + stationName + ':  ' + value + '%';
                                 }
                             }
                         }
                     },
                     scales: {
                         x: {
-                            grid: { display: false },
-                            ticks: { font: { size: 11 }, color: th.text3, maxRotation: 45, minRotation: 45 }
+                            grid: {
+                                color: th.grid,
+                                drawTicks: true
+                            },
+                            ticks: {
+                                font: { size: 12, weight: '700' },
+                                color: function (c) {
+                                    var arr = ['#dc2626', '#2563eb', '#16a34a'];
+                                    return arr[c.index] || th.text;
+                                },
+                                autoSkip: false,
+                                maxRotation: 0,
+                                minRotation: 0,
+                                padding: 12
+                            }
                         },
                         y: {
                             beginAtZero: true,
-                            max: 120,
+                            max: 115,
                             grid: { color: th.grid },
+                            title: {
+                                display: true,
+                                text: 'Percentage (%)',
+                                font: { size: 13, weight: '600' },
+                                color: th.text2
+                            },
                             ticks: {
+                                stepSize: 25,
                                 font: { size: 12 },
                                 color: th.text3,
                                 callback: function (value) { return value + '%'; }
@@ -3239,6 +3853,43 @@
         }
 
         performanceChart = new Chart(ctx, chartConfig);
+    }
+
+    // ── Helper: rank a line point against the other station lines at the
+    //    same metric index. 0 = highest value at that metric. Ties break by
+    //    dataset order so identical values still get distinct ranks (and thus
+    //    never land on the same spot).
+    function rankAtPoint(ctx) {
+        var idx = ctx.dataIndex;
+        var dsi = ctx.datasetIndex;
+        var myVal = parseFloat(ctx.dataset.data[idx]) || 0;
+        var rank = 0;
+        ctx.chart.data.datasets.forEach(function (d, i) {
+            var v = parseFloat(d.data[idx]) || 0;
+            if (v > myVal || (v === myVal && i < dsi)) rank++;
+        });
+        return rank;
+    }
+
+    // ── Helper: break a long metric label into multiple lines + value ──
+    //    Returns an array of strings, which Chart.js renders as separate
+    //    tooltip body lines — makes long descriptive labels readable on tap.
+    function splitLabelForTooltip(label, valueText) {
+        var maxLen = 48;            // chars per tooltip line
+        var lines  = [];
+        var words  = (label || '').split(' ');
+        var cur    = '';
+        for (var i = 0; i < words.length; i++) {
+            if ((cur + ' ' + words[i]).trim().length > maxLen) {
+                if (cur) lines.push(cur);
+                cur = words[i];
+            } else {
+                cur = (cur ? cur + ' ' : '') + words[i];
+            }
+        }
+        if (cur) lines.push(cur);
+        if (valueText) lines.push('▸ ' + valueText);
+        return lines;
     }
 
     function fnDownloadAlertDetailReport() {
@@ -3270,7 +3921,6 @@
         });
     }
 
-    // Adds a blank editable row to the unified table
     function afAddNewRow() {
         var siteId = $('#vf_Station').val();
         var siteName = $('#vf_Station option:selected').text();
@@ -3283,14 +3933,15 @@
         afRowCount++;
         afNewRowCount++;
         var idx = afRowCount;
-        var today = new Date().toISOString().split('T')[0];
+        var today = new Date();
+        var todayDate = today.toISOString().split('T')[0];
+        var currentTime = getCurrentTime(); // HH:MM:SS
 
         // Build asset type options from prefetched list
         var atHtml = '<option value="0">-- Select --</option>';
         $.each(afFilterAssetTypes, function (i, a) {
             atHtml += '<option value="' + a.Id + '">' + a.Name + '</option>';
         });
-        // If not yet loaded, fetch now
         if (afFilterAssetTypes.length === 0) {
             atHtml = '<option value="0">Loading...</option>';
             $.ajax({
@@ -3310,55 +3961,36 @@
             '    data-station-id="' + siteId + '" data-assettype-id="0" data-assetno-id="0" data-id="0" ' +
             '    style="background:var(--e7-amber-soft, #fffbeb);border-left:3px solid var(--e7-dot-amber, #f59e0b);">' +
 
-            // Col 1 — S No (new row icon)
-            '<td style="color:var(--e7-text-3, #94a3b8);font-size:12px;text-align:center;">' +
-            '  <i class="fa fa-plus" style="color:var(--e7-dot-amber, #f59e0b);"></i>' +
-            '</td>' +
-
-            // Col 2 — Station Name
+            '<td style="color:var(--e7-text-3, #94a3b8);font-size:12px;text-align:center;"><i class="fa fa-plus" style="color:var(--e7-dot-amber, #f59e0b);"></i></td>' +
             '<td style="font-size:12px;font-weight:600;color:var(--e7-heading, #1a2d5a);">' + siteName + '</td>' +
 
-            // Col 3 — Asset Type
-            '<td>' +
-            '  <select class="af-cell-select" id="af_assetType_' + idx + '" ' +
-            '          onchange="afNewRowLoadAssetNo(' + idx + ',' + siteId + ')">' + atHtml + '</select>' +
-            '</td>' +
+            '<td><select class="af-cell-select" id="af_assetType_' + idx + '" ' +
+            '        onchange="afNewRowLoadAssetNo(' + idx + ',' + siteId + ')">' + atHtml + '</select></td>' +
 
-            // Col 4 — Asset No
-            '<td>' +
-            '  <select class="af-cell-select" id="af_assetNo_' + idx + '">' +
+            '<td><select class="af-cell-select" id="af_assetNo_' + idx + '">' +
             '    <option value="0">-- Select Asset Type First --</option>' +
-            '  </select>' +
-            '</td>' +
+            '  </select></td>' +
 
-            // Col 5 — Incidence Date
-            '<td>' +
-            '  <input type="date" class="af-cell-input" id="af_incidenceDT_' + idx + '" value="' + today + '" max="' + today + '" style="width:100%;">' +
-            '</td>' +
+            // Incidence Date + Time
+            '<td><div style="display:flex;gap:4px;">' +
+            '  <input type="date" class="af-cell-input" id="af_incidenceDate_' + idx + '" value="' + todayDate + '" max="' + todayDate + '" style="width:60%;">' +
+            '  <input type="time" class="af-cell-input" id="af_incidenceTime_' + idx + '" value="00:00" style="width:40%;">' +
+            '</div></td>' +
 
-            // Col 6 — Rectification Date (optional)
-            '<td>' +
-            '  <input type="date" class="af-cell-input" id="af_rectificationDT_' + idx + '" max="' + today + '" style="width:100%;">' +
-            '</td>' +
+            // Rectification Date + Time
+            '<td><div style="display:flex;gap:4px;">' +
+            '  <input type="date" class="af-cell-input" id="af_rectificationDate_' + idx + '" max="' + todayDate + '" style="width:60%;">' +
+            '  <input type="time" class="af-cell-input" id="af_rectificationTime_' + idx + '" value="23:59" style="width:40%;">' +
+            '</div></td>' +
 
-            // Col 7 — Cause Code
-            '<td>' +
-            '  <select class="af-cell-select" id="af_causeCode_' + idx + '">' +
-            '    <option value="0">-- Select Asset Type First --</option>' +
-            '  </select>' +
-            '</td>' +
+            '<td><select class="af-cell-select" id="af_causeCode_' + idx + '">' +
+            '  <option value="0">-- Select Asset Type First --</option>' +
+            '</select></td>' +
 
-            // Col 8 — Remark
-            '<td>' +
-            '  <textarea class="af-cell-textarea" id="af_remark_' + idx + '" rows="2" placeholder="Optional remark..."></textarea>' +
-            '</td>' +
+            '<td><textarea class="af-cell-textarea" id="af_remark_' + idx + '" rows="2" placeholder="Optional remark..."></textarea></td>' +
 
-            // Col 9 — Alert Status (manual entry = not applicable)
-            '<td style="text-align:center;">' +
-            '  <span style="color:var(--e7-text-3, #9ca3af);font-size:11px;">&#8212;</span>' +
-            '</td>' +
+            '<td style="text-align:center;"><span style="color:var(--e7-text-3, #9ca3af);font-size:11px;">&#8212;</span></td>' +
 
-            // Col 10 — Generated By (manual entry = current user)
             '<td style="text-align:center;">' +
             '  <span style="display:inline-flex;align-items:center;gap:4px;background:var(--e7-green-soft, #f0fdf4);' +
             '    color:var(--e7-green, #166534);border:1px solid var(--e7-green-soft, #bbf7d0);padding:3px 10px;border-radius:20px;' +
@@ -3367,7 +3999,6 @@
             '  </span>' +
             '</td>' +
 
-            // Col 11 — Action buttons
             '<td style="text-align:center;white-space:nowrap;">' +
             '  <div class="af-row-actions">' +
             '    <button class="af-btn af-btn-save" onclick="afSaveRow(' + idx + ')" title="Save this row">' +
@@ -3380,13 +4011,10 @@
             '</td>' +
             '</tr>';
 
-        // ── prepend so new row appears at TOP of list ──
         $('#vf_ListBody').prepend(rowHtml);
-        // Scroll table to top so user sees the new row immediately
         $('#vf_ListBody').closest('.vf-table-wrap').scrollTop(0);
         $('#btnSaveAllFailures').show();
     }
-
     // Load asset nos when asset type changes in a new row
     function afNewRowLoadAssetNo(idx, siteId) {
         var assetTypeId = $('#af_assetType_' + idx).val();
@@ -3457,8 +4085,8 @@
         }
 
         $.ajax({
-            url: '/FRS25/AlertDetailReport/GetAlertInfo', type: 'POST', contentType: 'application/json',
-            data: JSON.stringify({ AssetTypeId: assetTypeId }),
+            url: '/FRS25/Performance/GetAlertInfoByFilter', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ AssetTypeIds: [parseInt(assetTypeId) || 0], AlertTypeIds: [] }),
             success: function (data) {
                 if (data && data.length > 0) {
                     // Normalise: API may return Id/Code/Name OR Id/AlertCode/AlertName OR Id/Title etc.
@@ -3513,11 +4141,14 @@
         afCauseCodeCache = {};
         afNewRowCount = 0;
         $('#btnSaveAllFailures').hide();
-        // Reset filters
-        var today = new Date().toISOString().split('T')[0];
+        // Reset filters. pfIsoLocal, not toISOString: the latter is UTC and hands back
+        // YESTERDAY in IST until 05:30, so the modal opened on the wrong day's list every
+        // morning -- and would now open on a date its own max attribute excludes.
+        var today = pfIsoLocal();
         $('#vf_FromDate').val(today);
         $('#vf_ToDate').val(today);
         $('#vf_Station').val('0');
+        vfApplyDateBounds('to');
         afFilterAssetTypes = [];
         // Show modal and auto-load today's list
         $('#modal-ActualFailureEntry').modal('show');
@@ -3559,7 +4190,7 @@
     //function afResetEntryTable() {
     //    $('#af_EntryTableBody').html(
     //        '<tr class="af-empty-row" id="af_emptyRow"><td colspan="9">' +
-    //        '<i class="fa fa-table" style="font-size:28px;color:#d1d5db;display:block;margin-bottom:8px;"></i>' +
+    //        '<i class="fa fa-table" style="font-size:28px;color:var(--e7-text-4, #d1d5db);display:block;margin-bottom:8px;"></i>' +
     //        'No rows yet — select filters above and click <strong>+ Add to Table</strong>' +
     //        '</td></tr>');
     //}
@@ -3930,20 +4561,28 @@
     }
     function afBuildRowPayload(idx) {
         var $row = $('#af_row_' + idx);
-        var incidenceDate     = $('#af_incidenceDT_'     + idx).val() || '';   // yyyy-MM-dd
-        var rectificationDate = $('#af_rectificationDT_' + idx).val() || '';   // yyyy-MM-dd (optional)
+        var incidenceDate = $('#af_incidenceDate_' + idx).val() || '';
+        var incidenceTime = $('#af_incidenceTime_' + idx).val() || '00:00';
+        var rectificationDate = $('#af_rectificationDate_' + idx).val() || '';
+        var rectificationTime = $('#af_rectificationTime_' + idx).val() || '23:59';
+
         var assetNoId = $('#af_assetNo_' + idx).val();
         if (assetNoId && assetNoId !== '0') $row.data('assetno-id', assetNoId);
         var $causeSelect = $('#af_causeCode_' + idx);
         var alertInfoId = parseInt($causeSelect.val()) || 0;
-        var causeCode   = $causeSelect.find('option:selected').data('code') || '';
-        var remark      = $('#af_remark_' + idx).val();
+        var causeCode = $causeSelect.find('option:selected').data('code') || '';
+        var remark = $('#af_remark_' + idx).val();
 
-        // Build full datetime strings (time defaults to 00:00)
-        var incidenceDT     = incidenceDate     ? incidenceDate     + 'T00:00' : '';
-        var rectificationDT = rectificationDate ? rectificationDate + 'T00:00' : '';
+        // Build datetime strings in yyyy-MM-dd HH:mm:ss format (backend expects)
+        function buildDateTime(date, time) {
+            if (!date) return '';
+            return date + ' ' + time + ':00';
+        }
 
-        // ── Validation ──────────────────────────────────────────────────
+        var incidenceDT = buildDateTime(incidenceDate, incidenceTime);
+        var rectificationDT = buildDateTime(rectificationDate, rectificationTime);
+
+        // Validation
         if (!incidenceDate) {
             showWarning('Row ' + idx + ': Incidence Date is required.', 'Validation');
             return null;
@@ -3952,35 +4591,40 @@
             showWarning('Row ' + idx + ': Cause Code is required.', 'Validation');
             return null;
         }
-        if (rectificationDate && rectificationDate < incidenceDate) {
-            showWarning('Row ' + idx + ': Rectification Date cannot be earlier than Incidence Date.', 'Validation');
-            return null;
+
+        // Compare full datetime if both present
+        if (rectificationDate && incidenceDate) {
+            var incFull = new Date(incidenceDate + 'T' + incidenceTime);
+            var recFull = new Date(rectificationDate + 'T' + rectificationTime);
+            if (recFull < incFull) {
+                showWarning('Row ' + idx + ': Rectification Date/Time cannot be earlier than Incidence Date/Time.', 'Validation');
+                return null;
+            }
         }
 
-        // Keep legacy split fields for backward compat
+        // Legacy split fields (some APIs might still expect them)
         var dateFrom = incidenceDate;
-        var dateTo   = rectificationDate;
-        var timeFrom = '';
-        var timeTo   = '';
+        var dateTo = rectificationDate;
+        var timeFrom = incidenceTime;
+        var timeTo = rectificationTime;
 
         return {
-            Id:           parseInt($row.data('id'))           || 0,   // 0 = INSERT, >0 = UPDATE
-            RowNo:        idx,
-            SiteId:       parseInt($row.data('station-id'))   || 0,
-            AssetTypeId:  parseInt($row.data('assettype-id')) || 0,
-            AssetId:      parseInt($row.data('assetno-id'))   || 0,
-            DateFrom:     dateFrom,
-            DateTo:       dateTo,
-            TimeFrom:     timeFrom       || '',
-            TimeTo:       timeTo         || '',
-            FromDateTime:         incidenceDT,               // ← Incidence Date & Time → FromDateTime column
-            RectificationDateTime: rectificationDT || '',      // ← Rectification Date & Time → RectificationDateTime column
-            AlertInfoId:  alertInfoId,   // ← integer FK required by API
-            CauseCode:    causeCode,     // ← display string (e.g. "EC")
-            Remark:       remark         || ''
+            Id: parseInt($row.data('id')) || 0,
+            RowNo: idx,
+            SiteId: parseInt($row.data('station-id')) || 0,
+            AssetTypeId: parseInt($row.data('assettype-id')) || 0,
+            AssetId: parseInt($row.data('assetno-id')) || 0,
+            DateFrom: dateFrom,
+            DateTo: dateTo,
+            TimeFrom: timeFrom,
+            TimeTo: timeTo,
+            FromDateTime: incidenceDT,               // yyyy-MM-dd HH:mm:ss
+            RectificationDateTime: rectificationDT,  // yyyy-MM-dd HH:mm:ss or empty
+            AlertInfoId: alertInfoId,
+            CauseCode: causeCode,
+            Remark: remark || ''
         };
     }
-
     /** Extract a clean, human-readable message from whatever the API returns.
      *  Handles: plain strings, "API error: Conflict – {...json...}", raw JSON objects/strings. */
     function afCleanMsg(raw) {
@@ -4037,10 +4681,11 @@
     // ----- TAB 2: View list -----
 
     function vfResetList() {
-        var today = new Date();
-        var fmt = function (d) { return d.toISOString().split('T')[0]; };
-        $('#vf_FromDate').val(fmt(today));
-        $('#vf_ToDate').val(fmt(today));
+        // Local today, for the same reason as openActualFailureModal above.
+        var today = pfIsoLocal();
+        $('#vf_FromDate').val(today);
+        $('#vf_ToDate').val(today);
+        vfApplyDateBounds('to');
     }
 
     function vfResetFilters() {
@@ -4055,8 +4700,13 @@
 
 
     function vfDownload(type) {
+        // Fix 6: Lazy-load ExcelJS on first export (skip for CSV which doesn't need it)
+        if (type !== 'csv' && typeof ExcelJS === 'undefined') {
+            ensureExcelJs(function () { vfDownload(type); });
+            return;
+        }
 
-        var headers = ['S No', 'Station Name', 'Asset Type', 'Asset No',
+        var headers = ['S No', 'Station Name', 'Asset Type', 'Asset Number',
             'Incidence Date & Time', 'Rectification Date & Time',
             'Cause Code', 'Remark', 'Alert Status', 'Generated By'];
         var rows = [];
@@ -4141,10 +4791,52 @@
         }
     }
 
+    /* The same two rules on the failure-list filter, which is a pair of native date inputs
+       rather than the Air Datepicker used above.
+
+       `max` and `min` are what the browser's own calendar honours -- a future day is greyed
+       out in the picker -- but they are advisory only: a native date field still accepts a
+       typed date outside them, and marks the field :invalid without telling anyone. So the
+       value is corrected here as well, and vfLoadList() checks it again before it queries. */
+    function vfApplyDateBounds(changed) {
+        var $from = $('#vf_FromDate'), $to = $('#vf_ToDate');
+        var today = pfToday(), todayIso = pfIsoLocal(today);
+
+        var from = pfParseIso($from.val());
+        var to = pfParseIso($to.val());
+
+        // Nothing later than today, in either field.
+        if (from && from > today) { $from.val(todayIso); from = today; }
+        if (to && to > today) { $to.val(todayIso); to = today; }
+
+        // Crossed pair: move the field the user did NOT just touch, so their own choice
+        // stands and the other one follows it.
+        if (from && to && to < from) {
+            if (changed === 'to') { $from.val(pfIsoLocal(to)); from = to; }
+            else { $to.val(pfIsoLocal(from)); to = from; }
+        }
+
+        // Browser-level guard rails, refreshed from the current values. From is bounded by
+        // TODAY only and never by To -- the same rule as the filter calendars above, and for
+        // the same reason: a From field that refuses a later date until To is edited first
+        // traps anyone moving a range forward. Crossing it instead drags To along, which the
+        // block above has already done.
+        $from.attr('max', todayIso);
+        $to.attr('min', from ? pfIsoLocal(from) : '');
+        $to.attr('max', todayIso);
+    }
+
     function vfLoadList() {
+        // Correct and bound the fields before reading them: the modal's own reset paths set
+        // these values directly, so this may be the first time they have been looked at.
+        vfApplyDateBounds('to');
+
         var fromDate = $('#vf_FromDate').val();
         var toDate = $('#vf_ToDate').val();
         var station = parseInt($('#vf_Station').val()) || 0;
+
+        var vfRangeError = pfCheckRange(pfParseIso(fromDate), pfParseIso(toDate));
+        if (vfRangeError) { showWarning(vfRangeError, 'Validation'); return; }
 
         // Convert yyyy-MM-dd → dd-MM-yyyy to match controller expected format
         //function fmtDate(d) {
@@ -4153,7 +4845,9 @@
         //    return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : d;
         //}
         function fmtDate(d) {
-            return d || '';
+            if (!d) return '';
+            var p = d.split('-');           // '2026-06-09' → ['2026','06','09']
+            return p.length === 3 ? p[1] + '/' + p[2] + '/' + p[0] : d;  // '06/09/2026'
         }
         fromDate = fmtDate(fromDate);
         toDate = fmtDate(toDate);
@@ -4180,6 +4874,8 @@
                         'No records found for the selected criteria.</td></tr>');
                     return;
                 }
+                // Zonal / Divisional Admin: view-only — no Edit or Delete in table
+                var isViewOnly = $('#hfIsViewOnly').val() === '1';
                 $.each(data, function (i, row) {
                     // ── Alert Status badge ──
                     var statusHtml = '';
@@ -4238,14 +4934,18 @@
                         '<td>' + (row.StationName || '') + '</td>' +
                         '<td>' + (row.AssetType || '') + '</td>' +
                         '<td>' + (row.AssetNo || '') + '</td>' +
-                        '<td style="white-space:nowrap;">' + (row.FailureDateFrom || '') + '</td>' +
-                        '<td style="white-space:nowrap;">' + (row.RectificationDateTimeFormatted|| '') + '</td>' +
+                        '<td style="white-space:nowrap;">' +
+                        ((row.FailureDateFrom || '') +
+                            (row.FailureTimeFrom ? ' ' + row.FailureTimeFrom : '')).trim() +
+                        '</td>' +
+                        '<td style="white-space:nowrap;">' + (row.RectificationDateTimeFormatted || '') + '</td>' +
                         '<td><span class="vf-badge">' + (row.CauseCode || '') + '</span></td>' +
                         '<td style="max-width:150px;white-space:normal;">' + (row.Remark || '') + '</td>' +
                         '<td style="text-align:center;">' + statusHtml + '</td>' +
                         '<td style="text-align:center;">' + generatedByHtml + '</td>' +
                         '<td style="text-align:center;white-space:nowrap;">' +
-                        (row.GeneratedBy === 'RDPMS'
+                        (row.GeneratedBy === 'RDPMS' || isViewOnly
+                            // RDPMS-generated rows always show "—"; view-only users (Zonal/Divisional Admin) also see "—"
                             ? '<span style="color:var(--e7-text-3, #94a3b8);font-size:11px;">—</span>'
                             : '<button class="vf-btn vf-btn-edit" style="margin-right:3px;" onclick=\'vfOpenEditModal(' + JSON.stringify(row).replace(/'/g, "\\'") + ')\' title="Edit"><i class="fa fa-pencil"></i></button>' +
                               '<button class="vf-btn vf-btn-del" onclick="vfDelete(' + row.Id + ')" title="Delete"><i class="fa fa-trash"></i></button>'
@@ -4367,34 +5067,41 @@
 
     // ── Save Edit (Update) ───────────────────────────────────────────
     function vfSaveEdit() {
-        var id          = parseInt($('#ef_Id').val())          || 0;
-        var siteId      = parseInt($('#ef_SiteId').val())      || 0;
+        var id = parseInt($('#ef_Id').val()) || 0;
+        var siteId = parseInt($('#ef_SiteId').val()) || 0;
         var assetTypeId = parseInt($('#ef_AssetTypeId').val()) || 0;
-        var assetId     = parseInt($('#ef_AssetId').val())     || 0;
-        var incidenceDate     = $('#ef_IncidenceDateTime').val()     || '';   // yyyy-MM-dd
-        var rectificationDate = $('#ef_RectificationDateTime').val() || '';   // optional
+        var assetId = parseInt($('#ef_AssetId').val()) || 0;
+        var incidenceDate = $('#ef_IncidenceDateTime').val() || '';
+        var incidenceTime = $('#ef_IncidenceTime').val() || '00:00';
+        var rectificationDate = $('#ef_RectificationDateTime').val() || '';
+        var rectificationTime = $('#ef_RectificationTime').val() || '23:59';
         var alertInfoId = parseInt($('#ef_CauseCode').val()) || 0;
-        var causeCode   = $('#ef_CauseCode option:selected').data('code') || '';
-        var remark      = $('#ef_Remark').val();
+        var causeCode = $('#ef_CauseCode option:selected').data('code') || '';
+        var remark = $('#ef_Remark').val();
 
-        if (!incidenceDate)    { showWarning('Incidence Date is required.', 'Validation');           return; }
-        if (alertInfoId === 0) { showWarning('Cause Code is required.', 'Validation');               return; }
-        if (rectificationDate && rectificationDate < incidenceDate) {
-            showWarning('Rectification Date cannot be earlier than Incidence Date.', 'Validation');
-            return;
+        function buildDateTime(date, time) {
+            if (!date) return '';
+            return date + ' ' + time + ':00';
+        }
+        var incidenceDT = buildDateTime(incidenceDate, incidenceTime);
+        var rectificationDT = buildDateTime(rectificationDate, rectificationTime);
+
+        if (!incidenceDate) { showWarning('Incidence Date is required.', 'Validation'); return; }
+        if (alertInfoId === 0) { showWarning('Cause Code is required.', 'Validation'); return; }
+
+        if (rectificationDate) {
+            var incFull = new Date(incidenceDate + 'T' + incidenceTime);
+            var recFull = new Date(rectificationDate + 'T' + rectificationTime);
+            if (recFull < incFull) {
+                showWarning('Rectification Date/Time cannot be earlier than Incidence Date/Time.', 'Validation');
+                return;
+            }
         }
 
-        // Build full datetime strings (time defaults to 00:00)
-        var incidenceDT     = incidenceDate     + 'T00:00';
-        var rectificationDT = rectificationDate ? rectificationDate + 'T00:00' : '';
-
-        // Keep legacy split fields for backward compat
         var dateFrom = incidenceDate;
-        var timeFrom = '';
-        var dateTo   = rectificationDate;
-        var timeTo   = '';
-
-        console.log('[UpdateActualFailure] Payload →', { id, siteId, assetTypeId, assetId, incidenceDT, rectificationDT, alertInfoId });
+        var dateTo = rectificationDate;
+        var timeFrom = incidenceTime;
+        var timeTo = rectificationTime;
 
         $('#loader').show();
         $.ajax({
@@ -4402,19 +5109,19 @@
             type: 'POST',
             contentType: 'application/json',
             data: JSON.stringify({
-                Id:                    id,
-                SiteId:                siteId,
-                AssetTypeId:           assetTypeId,
-                AssetId:               assetId,
-                DateFrom:              dateFrom,
-                DateTo:                dateTo,
-                TimeFrom:              timeFrom              || '',
-                TimeTo:                timeTo                || '',
-                FromDateTime:          incidenceDT,
-                RectificationDateTime: rectificationDT       || '',
-                AlertInfoId:           alertInfoId,
-                CauseCode:             causeCode,
-                Remark:                remark                || ''
+                Id: id,
+                SiteId: siteId,
+                AssetTypeId: assetTypeId,
+                AssetId: assetId,
+                DateFrom: dateFrom,
+                DateTo: dateTo,
+                TimeFrom: timeFrom,
+                TimeTo: timeTo,
+                FromDateTime: incidenceDT,
+                RectificationDateTime: rectificationDT,
+                AlertInfoId: alertInfoId,
+                CauseCode: causeCode,
+                Remark: remark || ''
             }),
             success: function (response) {
                 $('#loader').hide();
@@ -4429,7 +5136,6 @@
             error: function () { $('#loader').hide(); showError('Something went wrong.', 'Error'); }
         });
     }
-
     // ── Soft Delete ─────────────────────────────────────────────────
     function vfDelete(id) {
         afConfirm('Are you sure you want to delete this failure record?', 'Delete Record', function () {

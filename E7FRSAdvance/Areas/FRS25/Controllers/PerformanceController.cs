@@ -8,12 +8,52 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Globalization;
+using System.IO;
 using System.Web.Mvc;
+using Newtonsoft.Json.Linq;
 
 namespace E7FRSAdvance.Areas.FRS25.Controllers
 {
     public class PerformanceController : Controller
     {
+        // ── Culture-safe date re-parser ──────────────────────────────
+        // The default MVC model binder parses date strings with
+        // CultureInfo.CurrentCulture, which can mangle dd/MM vs MM/dd.
+        // This helper reads the raw JSON body and re-parses date fields
+        // with InvariantCulture so yyyy-MM-dd (ISO) always works.
+        private static readonly string[] _isoFormats = new[]
+        {
+            "yyyy-MM-dd", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd HH:mm:ss",
+            "MM/dd/yyyy", "dd/MM/yyyy", "MM/dd/yyyy HH:mm:ss"
+        };
+
+        private JObject TryReadRequestJson()
+        {
+            try
+            {
+                Request.InputStream.Position = 0;
+                var raw = new StreamReader(Request.InputStream).ReadToEnd();
+                if (!string.IsNullOrEmpty(raw))
+                    return JObject.Parse(raw);
+            }
+            catch { }
+            return null;
+        }
+
+        private DateTime ParseDateInvariant(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return DateTime.MinValue;
+            DateTime dt;
+            if (DateTime.TryParseExact(value, _isoFormats,
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out dt))
+                return dt;
+            if (DateTime.TryParse(value, CultureInfo.InvariantCulture,
+                    DateTimeStyles.None, out dt))
+                return dt;
+            return DateTime.MinValue;
+        }
+
         // GET: FRS25/Performance
         private readonly ISiteService _siteService;
         private readonly IZoneService _zoneService;
@@ -36,15 +76,29 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult Index()
         {
-            ViewBag.Sites = new SelectList(_siteService.GetAll(), "Id", "Name");
-            ViewBag.Zones = new SelectList(_zoneService.GetAllZones(), "Id", "Name");
-            ViewBag.Divisions = new SelectList(_divisionService.GetAllDivisions(), "Id", "Name");
+            Helper.FilterCacheHelper.SetFilterViewBag(ViewBag, _siteService, _zoneService, _divisionService, includeAssetType: false);
 
             return View();
         }
 
         public ActionResult _List(FRSAlertLister mFRSAlertLister)
         {
+            // ── Re-parse dates from raw JSON with invariant culture ──
+            var jBody = TryReadRequestJson();
+            if (jBody != null)
+            {
+                var sc = jBody["SearchCriteria"];
+                if (sc != null)
+                {
+                    var fromStr = sc["FromDate"]?.ToString();
+                    var toStr = sc["ToDate"]?.ToString();
+                    if (!string.IsNullOrEmpty(fromStr))
+                        mFRSAlertLister.SearchCriteria.FromDate = ParseDateInvariant(fromStr);
+                    if (!string.IsNullOrEmpty(toStr))
+                        mFRSAlertLister.SearchCriteria.ToDate = ParseDateInvariant(toStr);
+                }
+            }
+
             if (mFRSAlertLister != null && mFRSAlertLister.SearchCriteria != null && mFRSAlertLister.SearchCriteria.FromDate != null && mFRSAlertLister.SearchCriteria.FromDate == DateTime.MinValue)
             {
                 var today = DateTime.Today;
@@ -75,7 +129,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     var dsds = mFRSAlertLister.mFRSAlerts.Where(x => x.isManual == 1).ToList();
                     foreach (var mFRSAlert in mFRSAlertLister.mFRSAlerts.GroupBy(x => new { x.AssetTypeId, x.AssetType }).Select(x => x.Key).ToList())
                     {
-                        
+
                         mFRSAlertLister.AssetTypes.Add(new Domain.AssetType() { Id = mFRSAlert.AssetTypeId, Name = mFRSAlert.AssetType });
                     }
                 }
@@ -169,6 +223,30 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         [HttpPost]
         public ActionResult GetActualFailureList(PerformanceAlertLister model)
         {
+            // ── Re-parse dates from raw JSON with invariant culture ──
+            var jBody = TryReadRequestJson();
+            if (jBody != null)
+            {
+                var sc = jBody["SearchCriteria"];
+                if (sc != null)
+                {
+                    var fromStr = sc["FromDateTime"]?.ToString();
+                    var toStr = sc["ToDateTime"]?.ToString();
+                    if (!string.IsNullOrEmpty(fromStr))
+                    {
+                        var parsed = ParseDateInvariant(fromStr);
+                        if (parsed != DateTime.MinValue)
+                            model.SearchCriteria.FromDateTime = parsed;
+                    }
+                    if (!string.IsNullOrEmpty(toStr))
+                    {
+                        var parsed = ParseDateInvariant(toStr);
+                        if (parsed != DateTime.MinValue)
+                            model.SearchCriteria.ToDateTime = parsed;
+                    }
+                }
+            }
+
             var responseModel = new APIResponse();
             try
             {
@@ -180,6 +258,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         DateFormatString = "MM/dd/yyyy",
                         NullValueHandling = NullValueHandling.Ignore
                     };
+                    model.SearchCriteria.UserId = ClsHttpContent.LoginUser.Id;
+
 
                     var jsonStr = JsonConvert.SerializeObject(model, jsonSettings);
                     var content = new StringContent(jsonStr, Encoding.UTF8, "application/json");
@@ -321,5 +401,128 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return Json(result, JsonRequestBehavior.AllowGet);
         }
 
+        [HttpGet]
+        public ActionResult GetSiteById(int siteId)
+        {
+            using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+            {
+                var response = hcf.client.GetAsync("Site/GetSiteById/" + siteId).Result;
+                if (response.StatusCode == HttpStatusCode.OK)
+                {
+                    string json = response.Content.ReadAsStringAsync().Result;
+                    return Content(json, "application/json");
+                }
+                else
+                {
+                    return Json(new { error = "API returned status: " + response.StatusCode }, JsonRequestBehavior.AllowGet);
+                }
+            }
+        }
+        public JsonResult GetAlertInfo(int assetTypeId)
+        {
+            List<Domain.AlertInfo> mAlertInfos = new List<Domain.AlertInfo>();
+            try
+            {
+                using (var mHttpClientFactory = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = mHttpClientFactory.client.GetAsync(String.Format($"AlertInfo/AssetTypeId/{assetTypeId}")).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mAlertInfos = JsonConvert.DeserializeObject<List<Domain.AlertInfo>>(jsonString);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+
+            return Json(mAlertInfos, JsonRequestBehavior.AllowGet);
+        }
+        private List<Domain.AlertInfo> GetCauseCode()
+        {
+            List<Domain.AlertInfo> causeCodes = new List<Domain.AlertInfo>();
+            try
+            {
+                using (var mHttpClientFactory = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = mHttpClientFactory.client.GetAsync(String.Format("AlertInfo/GetAll")).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        causeCodes = JsonConvert.DeserializeObject<List<Domain.AlertInfo>>(jsonString);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+
+            return causeCodes;
+        }
+        [HttpPost]
+        public JsonResult GetAlertInfoByFilter(Domain.FRSAlert request)
+        {
+            var allCauses = new List<Domain.AlertInfo>();
+            var seenIds = new HashSet<int>();
+
+            // Guard: a missing/unbound body must not silently look identical to
+            // "user selected no asset types" — fail safe into the "load everything"
+            // path below instead of throwing on request.AssetTypeIds.
+            if (request == null) request = new Domain.FRSAlert();
+
+            try
+            {
+                if (request.AssetTypeIds != null && request.AssetTypeIds.Any())
+                {
+                    using (var mHttpClientFactory = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                    {
+                        var jsonStr = JsonConvert.SerializeObject(request);
+                        StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                        var response = mHttpClientFactory.client.PostAsync(String.Format("AlertInfo/GetBy"), str).Result;
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        if (response.StatusCode == HttpStatusCode.OK)
+                        {
+                            var items = JsonConvert.DeserializeObject<List<Domain.AlertInfo>>(jsonString);
+                            if (items != null)
+                            {
+                                foreach (var item in items)
+                                {
+                                    if (!seenIds.Contains(item.Id))
+                                    {
+                                        seenIds.Add(item.Id);
+                                        allCauses.Add(item);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    allCauses = GetCauseCode();
+                    foreach (var c in allCauses) seenIds.Add(c.Id);
+                }
+
+                if (request.AlertTypeIds != null && request.AlertTypeIds.Any())
+                {
+                    allCauses = allCauses
+                          .Where(c => c.AlertType == 0 || request.AlertTypeIds.Contains(c.AlertType))
+                          .ToList();
+                }
+            }
+            catch (Exception ex)
+            {
+                // NEW — surface the failure instead of returning an empty list with
+                // no trace. Swap Trace.TraceError for whatever logger this project
+                // already uses elsewhere (didn't see one in the code you've shared).
+                System.Diagnostics.Trace.TraceError("GetAlertInfoByFilter failed: " + ex);
+                allCauses = new List<Domain.AlertInfo>();
+            }
+
+            return Json(allCauses.OrderBy(c => c.Name).ToList(), JsonRequestBehavior.AllowGet);
+        }
     }
 }
