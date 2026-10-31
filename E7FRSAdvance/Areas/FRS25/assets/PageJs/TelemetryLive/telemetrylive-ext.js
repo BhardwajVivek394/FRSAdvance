@@ -992,10 +992,10 @@ function abortPmIndicationRequest() {
             '<div style="padding:10px 16px;background:var(--e7-surface-2, rgba(255,255,255,0.04));border:1px solid var(--e7-border, rgba(255,255,255,0.08));border-radius:10px;display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
             '<i class="fas fa-clock" style="color:var(--e7-accent, #22d3ee);font-size:13px;"></i>' +
             '<span style="font-size:13px;font-weight:600;color:var(--e7-heading, rgba(255,255,255,0.85));" id="singleArrTimeRange">Loading...</span>' +
-            '<span style="font-size:12px;color:var(--e7-text-3, rgba(255,255,255,0.5));">&nbsp;·&nbsp;full day ' + opDayLabel + '</span>' +
+            '<span style="font-size:12px;color:var(--e7-text-3, rgba(255,255,255,0.5));">&nbsp;·&nbsp;operation on ' + opDayLabel + '</span>' +
             '</div>' +
             '<div id="singleArrLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:var(--e7-text-2, rgba(255,255,255,0.6));gap:10px;">' +
-            '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading full-day array data...</div>' +
+            '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading array data...</div>' +
             '<div id="singleArrChartDiv" style="width:100%;height:500px;display:none;background:var(--e7-surface, #0a1228);border-radius:10px;"></div>' +
             '<div id="singleArrError" style="display:none;text-align:center;padding:50px;color:var(--e7-red, #fb7185);"></div>' +
             '</div></div></div>';
@@ -1014,17 +1014,23 @@ function abortPmIndicationRequest() {
         var $ld = $('#singleArrLoading'), $ch = $('#singleArrChartDiv'), $er = $('#singleArrError'), $tr = $('#singleArrTimeRange');
         $ld.show(); $ch.hide(); $er.hide();
 
-        var dayStart = new Date(p.opTimestamp); dayStart.setHours(0, 0, 0, 0);
-        var dayEnd = new Date(p.opTimestamp); dayEnd.setHours(23, 59, 59, 999);
-        var now = new Date();
-        if (dayEnd > now) dayEnd = now;
+        // Same API and window Telemetry History's table waveform uses: +/- 2 min around
+        // the operation. Array columns only come back when asked for by attrIds; the
+        // opposite-direction twin (1001 <-> 6001) is requested too, arrays have been
+        // seen at site stored under it.
+        var nearStart = new Date(p.opTimestamp - 120000);
+        var nearEnd = new Date(p.opTimestamp + 120000);
+        var altAttrId = (p.attrId >= 6000) ? p.attrId - 5000 : p.attrId + 5000;
         $tr.text('Loading...');
 
         if (_arrXhr) { _arrXhr._pm616Aborted = true; try { _arrXhr.abort(); } catch (e) { } }
         var token = ++_arrToken;
-        var url = histBase() + '?assetId=' + encodeURIComponent(p.assetId) + '&startDate=' + fmtApi(dayStart) + '&endDate=' + fmtApi(dayEnd);
         _arrXhr = $.ajax({
-            url: url, type: 'GET', dataType: 'json', timeout: 75000,
+            url: '/FRS25/Telemetry/GetPMHistoryOperationArray', type: 'GET', dataType: 'json', timeout: 75000,
+            data: {
+                assetId: parseInt(p.assetId, 10), startDate: fmtApi(nearStart), endDate: fmtApi(nearEnd),
+                page: 1, tsLimit: 50, attrIds: p.attrId + ',' + altAttrId
+            },
             success: function (response) {
                 if (token !== _arrToken || window._singleArrParams !== p) return;
                 _arrXhr = null;
@@ -1033,27 +1039,9 @@ function abortPmIndicationRequest() {
                     $er.html('<i class="fas fa-exclamation-circle fa-2x" style="display:block;margin-bottom:12px;"></i>Failed to load data: ' + esc(response.error)).show();
                     return;
                 }
-                if (!response || !response.Data || !response.Data.length) {
-                    $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data available for this day').show();
-                    return;
-                }
-                var ops = [], seen = {};
-                response.Data.forEach(function (item) {
-                    if (!item || parseInt(item.AttributeId, 10) !== p.attrId || !item.Values) return;
-                    for (var k in item.Values) {
-                        var en = item.Values[k];
-                        if (!en || typeof en.Value !== 'string' || en.Value.indexOf(',') === -1) continue;
-                        var ts = en.Timestamp ? en.Timestamp.TimestampDevice : null;
-                        if (!ts || String(ts).indexOf('0001') >= 0) continue;
-                        var t = deviceMs(ts);
-                        if (isNaN(t) || t <= 0 || seen[t]) continue;
-                        seen[t] = true;
-                        var arr = en.Value.split(',').map(function (v) { return parseFloat(String(v).trim()); })
-                            .filter(function (v) { return !isNaN(v); })
-                            .map(function (v) { return Number(zf(v)); });
-                        if (arr.length) ops.push({ timestamp: t, array: arr, tsStr: ts });
-                    }
-                });
+                var ops = window.tlPmParseArrayOps(response, p.attrId);
+                if (!ops.length) ops = window.tlPmParseArrayOps(response, altAttrId);
+                ops.forEach(function (op) { op.array = op.array.map(function (v) { return Number(zf(v)); }); });
                 if (!ops.length) {
                     $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No array data found for this operation<br><small>Attribute ID: ' + p.attrId + '</small>').show();
                     return;
@@ -1132,9 +1120,49 @@ function abortPmIndicationRequest() {
         var z = Number(zf(v));
         return dec === 0 ? String(Math.round(z)) : z.toFixed(2);
     }
+    // Adapt one { columns[], rows[{ts, v[]}] } page into the HistoryValue
+    // { AttributeId, Values{ k: {Value, Timestamp} } } shape buildDayHistoryRows reads.
+    function mergeDayHistoryPage(r, data, byAttr) {
+        if (!r || !Array.isArray(r.columns) || !Array.isArray(r.rows)) return;
+        r.columns.forEach(function (col, ci) {
+            if (!col || col.attrId === null || col.attrId === undefined || col.attrId === '') return;
+            var id = parseInt(col.attrId, 10);
+            if (isNaN(id)) return;
+            var at = byAttr[id];
+            if (!at) { at = byAttr[id] = { AttributeId: id, Values: {}, _n: 0 }; data.push(at); }
+            for (var ri = 0; ri < r.rows.length; ri++) {
+                var row = r.rows[ri];
+                if (!row || !row.ts || !Array.isArray(row.v)) continue;
+                var val = row.v[ci];
+                if (val === null || val === undefined) continue;
+                at.Values[String(++at._n)] = { Value: val, Timestamp: { TimestampDevice: row.ts, TimestampLocal: row.ts } };
+            }
+        });
+    }
+    // Paged DashboardPMHistoryOperation (scalar columns only, each row a real
+    // operation). Resolves { Data } as the two callers expect, or { error }.
     function fetchDayHistory(assetId, start, end) {
-        var url = histBase() + '?assetId=' + encodeURIComponent(assetId) + '&startDate=' + fmtApi(start) + '&endDate=' + fmtApi(end);
-        return $.ajax({ url: url, type: 'GET', dataType: 'json', timeout: 75000 });
+        var deferred = $.Deferred();
+        var data = [], byAttr = {}, page = 1, cursor = '', guard = 0;
+        function fetchPage() {
+            $.ajax({
+                url: '/FRS25/Telemetry/GetPMDayOperationHistory', type: 'GET', dataType: 'json', timeout: 120000,
+                data: { assetId: assetId, startDate: fmtApi(start), endDate: fmtApi(end), page: page, cursor: cursor, pageSize: 500 }
+            }).then(function (r) {
+                if (!r || r.error) { deferred.resolve({ error: (r && r.error) || 'Empty response' }); return; }
+                mergeDayHistoryPage(r, data, byAttr);
+                guard++;
+                var nc = r.nextCursor;
+                if (r.hasNextPage && nc && nc !== cursor && guard < 200) {
+                    page++; cursor = nc;
+                    fetchPage();
+                    return;
+                }
+                deferred.resolve({ Data: data });
+            }, function () { deferred.reject(); });
+        }
+        fetchPage();
+        return deferred.promise();
     }
     // Lower bound only (as v616): a device clock slightly ahead of the
     // browser must not hide the newest operations.
@@ -1401,7 +1429,9 @@ function abortPmIndicationRequest() {
             return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
         }
         $tr.text(fmt(startDate) + ' — ' + fmt(endDate));
-        var url = histBase() + '?assetId=' + encodeURIComponent(assetId) + '&startDate=' + fmtApi(startDate) + '&endDate=' + fmtApi(endDate);
+        // Only the selected end's indication columns: all this graph plots.
+        var url = histBase() + '?assetId=' + encodeURIComponent(assetId) + '&startDate=' + fmtApi(startDate) + '&endDate=' + fmtApi(endDate) +
+            '&attrIds=' + Object.keys(filterIds || {}).join(',');
         var retry = function () { loadPmIndicationByRange616(assetId, startDate, endDate, filterIds, end); };
 
         _indXhr = $.ajax({
@@ -3995,7 +4025,7 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         $('body').addClass('tl-modal-active');
         if (fn('disconnectWebSocket')) W.disconnectWebSocket();
 
-        $.ajax({
+        var circuitRequest = {
             url: '/FRS25/Telemetry/_Circuit',
             type: 'POST',
             contentType: 'application/json',
@@ -4036,6 +4066,12 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
                 $('#rdpmsCircuitLoading').hide();
                 $('#rdpmsCircuitError').show();
             }
+        };
+
+        W.tlResolveCircuitDiagramType(assetId, assetTypeId, assetName, siteId).done(function (diagramTypeId) {
+            if (String(W.circuitAssetId) !== String(assetId) || !document.getElementById('rdpmsCircuitOverlay')) return;
+            circuitRequest.data = JSON.stringify({ assetTypeId: diagramTypeId, assetId: assetId });
+            $.ajax(circuitRequest);
         });
     };
 

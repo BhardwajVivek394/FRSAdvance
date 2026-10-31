@@ -8113,6 +8113,81 @@ function loadCircuitScriptsOnce(htmlContent, callback) {
     loadNext(0);
 }
 
+// Shunt by name: "SH-16", "Signal No SH-16", "SH33", "Shunt ..." - "sh" as its own token
+// followed by a number, or the word shunt. Not "Ashwath" / "Shastri Nagar".
+function _isShuntSignalName(name) {
+    var n = String(name || '').toLowerCase();
+    return n.indexOf('shunt') >= 0 || /(^|[^a-z])sh[\s\-_]*\d/.test(n);
+}
+
+// Shunt by mapped attributes, for names that don't say so: On/Off Aspect or Sh-HPR
+// with no main lamp (RG/DG/HG/HHG). Attributes of the loaded metadata only.
+function _isShuntByAttributes(assetId) {
+    var asset = (typeof bulkAssetMap !== 'undefined' && bulkAssetMap) ? bulkAssetMap[String(assetId)] : null;
+    var attrs = (asset && (asset.assetAttributes || asset.AssetAttributes)) || [];
+    var seen = {};
+    for (var i = 0; i < attrs.length; i++) {
+        [attrs[i].Title, attrs[i].AliasName].forEach(function (name) {
+            if (name) seen[String(name).toLowerCase().replace(/[^a-z0-9]/g, '')] = 1;
+        });
+    }
+    function has(list) {
+        for (var j = 0; j < list.length; j++) {
+            if (seen[list[j]]) return true;
+        }
+        return false;
+    }
+    if (has(['rgma', 'rgv', 'dgma', 'dgv', 'hgma', 'hgv', 'hhgma', 'hhgv'])) return false;
+    return has(['onaspectma', 'onaspectv', 'offaspectma', 'offaspectv', 'shhpr']);
+}
+
+// Shunt diagram (30 = has PILOT mA, 31 = no PILOT mA) from this asset's own attributes.
+// One call per asset; failures are not cached and default to 31.
+var _shuntTypeCache = {};      // assetId|siteId -> { promise, t }
+var SHUNT_TYPE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getShuntDiagramType(assetId, siteId) {
+    var key = String(assetId) + '|' + String(siteId || '');
+    var hit = _shuntTypeCache[key];
+    if (hit && Date.now() - hit.t < SHUNT_TYPE_CACHE_TTL_MS) return hit.promise;
+
+    var deferred = $.Deferred();
+    _shuntTypeCache[key] = { promise: deferred.promise(), t: Date.now() };
+
+    $.ajax({
+        url: '/FRS25/Telemetry/GetShuntDiagramType',
+        type: 'POST',
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({ siteId: parseInt(siteId, 10) || 0, assetId: parseInt(assetId, 10) || 0 })
+    }).done(function (r) {
+        if (r && r.success) {
+            deferred.resolve(r.typeId === 30 ? 30 : 31);
+        } else {
+            delete _shuntTypeCache[key];
+            console.warn('[Circuit] PILOT mA check failed, defaulting shunt to 31');
+            deferred.resolve(31);
+        }
+    }).fail(function (xhr) {
+        delete _shuntTypeCache[key];
+        console.warn('[Circuit] PILOT mA check AJAX failed, defaulting shunt to 31:', xhr && xhr.status);
+        deferred.resolve(31);
+    });
+
+    return deferred.promise();
+}
+
+// Diagram to draw for an asset. Only a Signal can differ from its asset type; the live
+// stream and metadata always stay on the asset's own type.
+function tlResolveCircuitDiagramType(assetId, assetTypeId, assetName, siteId) {
+    if (parseInt(assetTypeId, 10) !== 2) return $.Deferred().resolve(assetTypeId).promise();
+    if (_isShuntSignalName(assetName) || _isShuntByAttributes(assetId)) {
+        return getShuntDiagramType(assetId, siteId);
+    }
+    return $.Deferred().resolve(assetTypeId).promise();
+}
+window.tlResolveCircuitDiagramType = tlResolveCircuitDiagramType;
+
 function fnBindCircuit() {
     var siteId = $('#drpSite').val();
     var atId = $('#drpAssetType').val();
@@ -8130,7 +8205,7 @@ function fnBindCircuit() {
 
     $("#loader").show();
 
-    $.ajax({
+    var circuitRequest = {
         url: '/FRS25/Telemetry/_Circuit',
         type: 'POST',
         contentType: 'application/json',
@@ -8155,6 +8230,13 @@ function fnBindCircuit() {
             $("#loader").hide();
             showError('Failed to load circuit', 'Error');
         }
+    };
+
+    var assetName = (wsLiveData[aId] && wsLiveData[aId].AssetName) || $('#drpAsset option:selected').text();
+    tlResolveCircuitDiagramType(aId, atId, assetName, siteId).done(function (diagramTypeId) {
+        if (String(circuitAssetId) !== String(aId)) return;   // selection moved on
+        circuitRequest.data = JSON.stringify({ assetTypeId: diagramTypeId, assetId: aId });
+        $.ajax(circuitRequest);
     });
 }
 
@@ -8710,6 +8792,28 @@ function updateCircuitSignal(attrs, zeroOffset) {
                 }
             }
         }
+
+        // Shunt lamps use examples.HalfRound: white while the gating current exceeds
+        // ZeroOffsetValue, dark otherwise.
+        if (val.type === 'examples.HalfRound') {
+            var _hrMap = {
+                'ISHSIG OFF': 'Off Aspect mA',
+                'ISHSIG ON': 'On Aspect mA',
+                'ISHSIG PILOT': 'PILOT mA'
+            };
+            var _wsAttr = _hrMap[labelText];
+            if (!_wsAttr) return;
+
+            var _ad = attrs[_wsAttr];
+            if (!_ad || _ad.Value === null || _ad.Value === undefined) return;
+
+            var _num = parseFloat(_ad.Value);
+            if (isNaN(_num)) return;
+
+            var _thresh = (zeroOffset !== null && zeroOffset !== undefined && !isNaN(parseFloat(zeroOffset)))
+                ? parseFloat(zeroOffset) : 0;
+            val.attrs.path.fill = (_num > _thresh) ? '#FFFFFF' : '#33334e';
+        }
     });
 }
 
@@ -9216,6 +9320,9 @@ var PMG_OP_ATTR_IDS =
                         complete((x && x.status) || 500, status || 'error', { text: JSON.stringify({ error: msg || status || 'error' }) });
                     }
                 };
+                // Same options e7mriv2web passes to tlFetchDashboardHistory directly.
+                if (qp(url, 'attrIds')) o.attrIds = qp(url, 'attrIds');
+                if (qp(url, 'edges') === '0') o.edges = false;
                 if (pmOp) { o.attrIds = PMG_OP_ATTR_IDS; o.edges = false; o.pmOpGroups = true; }
                 p = tlFetchDashboardHistory(o);
             },
@@ -15685,6 +15792,41 @@ function pmShowSingleArrayGraph(assetId, direction, type) {
     _saLoadForDate();
 }
 
+// DashboardPMHistoryOperationArray { columns[{attrId}], rows[{ts, v[]}] }
+// -> [{ timestamp, array, tsStr }] for one waveform attr. A value may be a JS
+// array, a JSON "[...]" string or "a,b,c".
+function tlPmParseArrayOps(r, attrId) {
+    var ops = [];
+    if (!r || !Array.isArray(r.columns) || !Array.isArray(r.rows)) return ops;
+    var ci = -1;
+    for (var i = 0; i < r.columns.length; i++) {
+        if (r.columns[i] && parseInt(r.columns[i].attrId, 10) === parseInt(attrId, 10)) { ci = i; break; }
+    }
+    if (ci < 0) return ops;
+    var seen = {};
+    for (var ri = 0; ri < r.rows.length; ri++) {
+        var row = r.rows[ri];
+        if (!row || !row.ts || !Array.isArray(row.v)) continue;
+        var raw = row.v[ci];
+        if (raw === null || raw === undefined) continue;
+        var arr = raw;
+        if (!Array.isArray(arr)) {
+            var s = String(raw).trim();
+            if (s.charAt(0) === '[') { try { arr = JSON.parse(s); } catch (e) { arr = s.replace(/[\[\]]/g, '').split(','); } }
+            else if (s.indexOf(',') !== -1) arr = s.split(',');
+            else continue;
+        }
+        arr = arr.map(function (v) { return parseFloat(v); }).filter(function (v) { return !isNaN(v); });
+        if (arr.length < 2) continue;
+        var t = pmParseDeviceTs(row.ts);
+        if (isNaN(t) || t <= 0 || seen[t]) continue;
+        seen[t] = true;
+        ops.push({ timestamp: t, array: arr, tsStr: row.ts });
+    }
+    return ops;
+}
+window.tlPmParseArrayOps = tlPmParseArrayOps;
+
 function loadSingleArrayData(startDate, endDate) {
     var p = window._singleArrParams;
     if (!p) return;
@@ -15703,58 +15845,34 @@ function loadSingleArrayData(startDate, endDate) {
     }
     $tr.text(_saFmt(startDate) + ' \u2014 ' + _saFmt(endDate));
 
-    var apiUrl = HISTORY_API_BASE + '?assetId=' + p.assetId + '&startDate=' + startStr + '&endDate=' + endStr;
+    // Array columns only come back when asked for by attrIds. Ask for this waveform
+    // AND its opposite-direction twin (1001 <-> 6001): arrays have been seen at site
+    // stored under the other direction's id.
+    var altAttrId = (p.attrId >= 6000) ? p.attrId - 5000 : p.attrId + 5000;
 
     $.ajax({
-        url: apiUrl,
+        url: '/FRS25/Telemetry/GetPMHistoryOperationArray',
         type: 'GET',
         dataType: 'json',
-        timeout: 30000,
+        timeout: 60000,
+        data: {
+            assetId: parseInt(p.assetId, 10),
+            startDate: startStr,
+            endDate: endStr,
+            page: 1,
+            tsLimit: 50,
+            attrIds: p.attrId + ',' + altAttrId
+        },
         success: function (response) {
             $ld.hide();
 
-            if (!response || !response.Data || response.Data.length === 0) {
-                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data available for the selected date').show();
+            if (!response || response.error) {
+                $er.html('<i class="fas fa-exclamation-circle fa-2x" style="display:block;margin-bottom:12px;"></i>Failed to load data: ' + ((response && response.error) || '')).show();
                 return;
             }
 
-            // Find the array data - Value should be a comma-separated string
-            var operations = [];
-            var seenTimestamps = {}; // De-duplicate by timestamp
-
-            response.Data.forEach(function (item) {
-                if (item.AttributeId === p.attrId && item.Values) {
-                    for (var key in item.Values) {
-                        var entry = item.Values[key];
-                        if (!entry || !entry.Value) continue;
-
-                        // Check if Value is a string (array data is comma-separated)
-                        var valueStr = entry.Value;
-                        if (typeof valueStr !== 'string') continue;
-
-                        // Skip if it doesn't look like an array (no commas)
-                        if (valueStr.indexOf(',') === -1) continue;
-
-                        var ts = entry.Timestamp ? entry.Timestamp.TimestampDevice : null;
-                        if (!ts || ts.indexOf('0001') >= 0) continue;
-
-                        var timestamp = pmParseDeviceTs(ts);
-                        if (isNaN(timestamp) || timestamp <= 0) continue;
-
-                        // De-duplicate by timestamp (same timestamp = same operation)
-                        if (seenTimestamps[timestamp]) continue;
-                        seenTimestamps[timestamp] = true;
-
-                        var arr = valueStr.split(',').map(function (v) { return parseFloat(v.trim()); });
-                        // Filter out NaN values
-                        arr = arr.filter(function (v) { return !isNaN(v); });
-
-                        if (arr.length > 0) {
-                            operations.push({ timestamp: timestamp, array: arr, tsStr: ts });
-                        }
-                    }
-                }
-            });
+            var operations = tlPmParseArrayOps(response, p.attrId);
+            if (!operations.length) operations = tlPmParseArrayOps(response, altAttrId);
 
             if (operations.length === 0) {
                 $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No array data found for Attribute ID: ' + p.attrId + '<br><small>Array values should be comma-separated strings</small>').show();
@@ -16556,13 +16674,16 @@ function loadCombinedArrayData(startDate, endDate) {
     }
     $tr.text(_coFmt(startDate) + ' \u2014 ' + _coFmt(endDate));
 
-    var apiUrl = HISTORY_API_BASE + '?assetId=' + p.assetId + '&startDate=' + startStr + '&endDate=' + endStr;
+    // Waveform arrays only: they are not in DashboardHistory's default columns.
+    // No window-edge rows: those are snapshots, not operations.
+    var apiUrl = HISTORY_API_BASE + '?assetId=' + p.assetId + '&startDate=' + startStr + '&endDate=' + endStr +
+        '&attrIds=' + p.aAttrId + ',' + p.bAttrId + '&edges=0';
 
     $.ajax({
         url: apiUrl,
         type: 'GET',
         dataType: 'json',
-        timeout: 30000,
+        timeout: 150000,
         success: function (response) {
             $ld.hide();
 

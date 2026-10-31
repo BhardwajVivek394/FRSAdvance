@@ -2611,11 +2611,17 @@ function fnBindPmGraph() {
     try {
         connectWebSocket(siteId, $('#drpAssetType').val(), [pmG.assetId]);
         pmgUpdateLiveStrip();
+        if (pmG.liveTimer) clearInterval(pmG.liveTimer);
+        pmG.liveTimer = setInterval(function () {
+            if (!document.getElementById('pmgLiveStrip')) { clearInterval(pmG.liveTimer); pmG.liveTimer = null; return; }
+            pmgUpdateLiveStrip();
+        }, 3000);
     } catch (ePmgWs) { console.warn('[PMG] live WS connect failed', ePmgWs); }
 }
 
 function _pmgShell() {
     pmG.tab = 'ind'; pmG.opLoaded = false; pmG.opSel = -1; pmG.opEvents = [];
+    if (!_pmgHasB() && (pmG.opType === 'BC' || pmG.opType === 'BV')) pmG.opType = 'AC';
     if (typeof _ipsInjectStyles === 'function') _ipsInjectStyles();
     if (!document.getElementById('pmgStyles')) {
         var st = document.createElement('style');
@@ -2623,6 +2629,27 @@ function _pmgShell() {
         st.textContent = '.pmg-end.on{background:var(--e7-accent,#22d3ee);color:var(--e7-surface,#0e1530);border-color:var(--e7-accent,#22d3ee);}' +
             '.pmg-optype.on{background:var(--e7-accent,#22d3ee);color:var(--e7-surface,#0e1530);border-color:var(--e7-accent,#22d3ee);}' +
             '.pmg-val{font-size:11px;font-weight:700;color:var(--e7-accent,#22d3ee);margin-left:4px;flex-shrink:0;}' +
+            '.pmg-strip{margin:0 0 10px;}' +
+            '.pmg-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;}' +
+            '.pmg-tile{position:relative;min-width:0;padding:8px 12px 8px 15px;border:1px solid var(--e7-border,rgba(255,255,255,.10));border-radius:10px;background:var(--e7-surface-2,rgba(255,255,255,.04));overflow:hidden;}' +
+            '.pmg-tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--pmg-c,#22d3ee);}' +
+            '.pmg-tile-name{font-size:11px;font-weight:600;color:var(--e7-text-2,rgba(255,255,255,.65));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+            '.pmg-tile-val{font-size:20px;font-weight:700;line-height:1.3;color:var(--e7-heading,#0f172a);font-variant-numeric:tabular-nums;}' +
+            '.pmg-tile-val small{font-size:11px;font-weight:600;margin-left:3px;color:var(--e7-text-3,rgba(255,255,255,.50));}' +
+            '.pmg-relays{position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin-top:8px;outline:none;}' +
+            '.pmg-relay{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:5px 8px 5px 10px;border:1px solid var(--e7-border,rgba(255,255,255,.10));border-radius:8px;background:var(--e7-surface-2,rgba(255,255,255,.04));cursor:default;}' +
+            '.pmg-relay-name{min-width:0;font-size:11px;font-weight:600;color:var(--e7-text-2,rgba(255,255,255,.65));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+            '.pmg-relays .rdpms-dl-badge{flex-shrink:0;padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;}' +
+            '.pmg-relays .rdpms-dl-badge.pickup{background:rgba(16,185,129,.15) !important;color:#059669 !important;}' +
+            '.pmg-relays .rdpms-dl-badge.drop{background:rgba(245,158,11,.20) !important;color:#d97706 !important;}' +
+            '.pmg-relays .rdpms-dl-badge.null{background:rgba(148,163,184,.16) !important;color:var(--e7-text-3,#64748b) !important;}' +
+            '.pmg-pop{display:none;position:absolute;left:0;top:100%;z-index:30;margin-top:6px;box-sizing:border-box;width:min(520px,100%);overflow-x:auto;padding:10px 12px;border:1px solid var(--e7-border,rgba(255,255,255,.12));border-radius:10px;background:var(--e7-surface,#0e1530);box-shadow:0 8px 24px rgba(0,0,0,.20);}' +
+            '.pmg-relays:hover .pmg-pop,.pmg-relays:focus-within .pmg-pop{display:block;}' +
+            '.pmg-pop-title{margin-bottom:6px;font-size:11px;font-weight:700;color:var(--e7-heading,#0f172a);}' +
+            '.pmg-pop table{width:100%;border-collapse:collapse;font-size:11px;color:var(--e7-text-2,rgba(255,255,255,.65));}' +
+            '.pmg-pop th{padding:3px 8px 3px 0;text-align:left;font-weight:600;color:var(--e7-text-3,rgba(255,255,255,.50));white-space:nowrap;}' +
+            '.pmg-pop td{padding:4px 8px 4px 0;border-top:1px solid var(--e7-border,rgba(255,255,255,.10));white-space:nowrap;}' +
+            '.pmg-pop td:first-child{font-weight:600;color:var(--e7-heading,#0f172a);}' +
             '.pmg-tabs{border-bottom:2px solid var(--e7-border,rgba(255,255,255,.10));}' +
             '.pmg-tab-btn{border:none;background:none;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:-2px;' +
             'color:var(--e7-text-3,rgba(255,255,255,.50));border-bottom:3px solid transparent;}' +
@@ -2666,16 +2693,16 @@ function _pmgShell() {
         '</div></div>';
 
     h += '<div class="pmg-tabs" style="display:flex;gap:6px;margin:2px 0 10px;">' +
-        '<button type="button" id="pmgTabBtnInd" class="pmg-tab-btn on" onclick="pmgSwitchTab(\'ind\')"><i class="fas fa-wave-square"></i> Indication</button>' +
+        '<button type="button" id="pmgTabBtnInd" class="pmg-tab-btn on" onclick="pmgSwitchTab(\'ind\')"><i class="fas fa-wave-square"></i> Indication &amp; Datalogger</button>' +
         '<button type="button" id="pmgTabBtnOp" class="pmg-tab-btn" onclick="pmgSwitchTab(\'op\')"><i class="fas fa-bolt"></i> Operation Event</button>' +
         '</div>';
     h += '<div id="pmgTabInd">';
-    h += '<div class="pmg-hint"><i class="fas fa-info-circle"></i> Indication voltages - A End & B End</div>';
+    h += '<div class="pmg-hint"><i class="fas fa-info-circle"></i> Indication voltages and datalogger relays - ' + (_pmgHasB() ? 'A End & B End' : 'A End') + '</div>';
     h += '<div class="ipsg-toolbar">' +
         '<button class="ipsg-tool" onclick="if(pmG.chart)pmG.chart.dispatchAction({type:\'restore\'})"><i class="fas fa-undo"></i> Reset Zoom</button>' +
         '<button class="ipsg-tool" onclick="pmgSavePng()"><i class="fas fa-download"></i> Save PNG</button></div>';
     h += '<div id="pmgLoad" class="ipsg-load"><div class="ipsg-spin"></div> Loading telemetry data…</div>';
-    h += '<div id="pmgLiveStrip" style="display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px;"></div>';
+    h += '<div id="pmgLiveStrip" class="pmg-strip"></div>';
     h += '<div id="pmgChart" class="ipsg-chart"></div>';
     h += '<div id="pmgEmpty" class="ipsg-empty">No data available for this time range</div>';
     h += '</div>';
@@ -2685,8 +2712,8 @@ function _pmgShell() {
         '<span class="ipsg-lbl">Signal:</span>' +
         '<button class="ipsg-sa pmg-optype on" data-type="AC" onclick="pmgSetOpType(\'AC\')">A Current</button>' +
         '<button class="ipsg-sa pmg-optype" data-type="AV" onclick="pmgSetOpType(\'AV\')">A Voltage</button>' +
-        '<button class="ipsg-sa pmg-optype" data-type="BC" onclick="pmgSetOpType(\'BC\')">B Current</button>' +
-        '<button class="ipsg-sa pmg-optype" data-type="BV" onclick="pmgSetOpType(\'BV\')">B Voltage</button>' +
+        (_pmgHasB() ? '<button class="ipsg-sa pmg-optype" data-type="BC" onclick="pmgSetOpType(\'BC\')">B Current</button>' +
+        '<button class="ipsg-sa pmg-optype" data-type="BV" onclick="pmgSetOpType(\'BV\')">B Voltage</button>' : '') +
         '<span id="pmgOpCount" class="ipsg-count"></span></div>';
     h += '<div style="display:flex;gap:14px;align-items:stretch;margin-top:8px;">';
     h += '<div class="pmg-pane" style="flex:0 0 240px;display:flex;flex-direction:column;max-height:520px;">' +
@@ -2888,6 +2915,19 @@ var PMG_LIVE_NAMES = {
     578: ['B End - NWKR (Loc)'],
     579: ['B End - RWKR (Loc)']
 };
+// Live relay for one DataLogger of the asset: by display name, else by key or role.
+function _pmgLiveRelay(asset, dl) {
+    var relays = (asset && asset.dlRelays) || {};
+    var want = dl.name.toLowerCase();
+    var byKey = null;
+    for (var key in relays) {
+        if (!relays.hasOwnProperty(key) || !relays[key]) continue;
+        if (String(relays[key].displayName || key).toLowerCase() === want) return relays[key];
+        if (key.toLowerCase() === want || key === dl.role || String(relays[key].role || '') === dl.role) byKey = relays[key];
+    }
+    return byKey;
+}
+
 function pmgUpdateLiveStrip() {
     var host = document.getElementById('pmgLiveStrip');
     if (!host || typeof pmG === 'undefined' || !pmG.assetId) return;
@@ -2922,7 +2962,7 @@ function pmgUpdateLiveStrip() {
     }
 
     var html = '';
-    PMG_IND_ORDER.forEach(function (id) {
+    _pmgIndIds().forEach(function (id) {
         var meta = PMG_IND_META[id];
         var a = resolve(id);
         var val = '\u2014';
@@ -2930,13 +2970,38 @@ function pmgUpdateLiveStrip() {
             var v = parseFloat(a.Value);
             val = isNaN(v) ? String(a.Value) : tlZeroFloor(v).toFixed(2);
         }
-        html += '<div style="flex:1 1 150px;min-width:140px;border:1px solid var(--e7-border, rgba(255,255,255,0.10));border-radius:8px;padding:6px 10px;background:var(--e7-surface-2, rgba(255,255,255,0.04));">' +
-            '<div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;color:var(--e7-text, rgba(255,255,255,0.72));">' +
-            '<span style="width:9px;height:9px;border-radius:50%;background:' + meta.color + ';flex-shrink:0;"></span>' + _pmgIndName(id) + '</div>' +
-            '<div style="font-size:16px;font-weight:800;color:var(--e7-heading, #0f172a);margin-top:2px;">' + val +
-            '<span style="font-size:10px;font-weight:600;color:var(--e7-text-3, rgba(255,255,255,0.50));margin-left:3px;">V</span></div>' +
+        var name = _pmgIndName(id);
+        html += '<div class="pmg-tile" style="--pmg-c:' + meta.color + ';">' +
+            '<div class="pmg-tile-name" title="' + name + '">' + name + '</div>' +
+            '<div class="pmg-tile-val">' + val + '<small>V</small></div>' +
             '</div>';
     });
+    html = '<div class="pmg-tiles">' + html + '</div>';
+
+    // Relay state uses the shared badge: its colour and arrow come from the CSS.
+    var relays = (typeof pmAssetDataloggers === 'function') ? pmAssetDataloggers(pmG.assetId) : [];
+    if (relays.length) {
+        var pills = '', rows = '';
+        relays.forEach(function (dl) {
+            var relay = _pmgLiveRelay(asset, dl);
+            var cls = !relay ? 'null' : (relay.isPickup ? 'pickup' : 'drop');
+            var text = !relay ? '—' : (relay.isPickup ? 'Pickup' : 'Drop');
+            var badge = '<span class="rdpms-dl-badge ' + cls + '">' + text + '</span>';
+            var name = escapeHtml(dl.name);
+            pills += '<div class="pmg-relay"><span class="pmg-relay-name">' + name + '</span>' + badge + '</div>';
+            rows += '<tr><td>' + name + '</td><td>' + (escapeHtml(dl.assetName) || '—') + '</td><td>' + badge + '</td>' +
+                '<td>' + (relay && relay.value !== undefined ? escapeHtml(String(relay.value)) : '—') + '</td>' +
+                '<td>' + (relay && relay.timestamp ? fmtTimestampDevice(relay.timestamp) : '—') + '</td></tr>';
+        });
+        // tabindex: keyboard and touch can open the popup too.
+        html += '<div class="pmg-relays" tabindex="0">' + pills +
+            '<div class="pmg-pop"><div class="pmg-pop-title">Datalogger attributes</div>' +
+            '<table><thead><tr><th>Attribute</th><th>Asset</th><th>State</th><th>Value</th><th>Updated</th></tr></thead>' +
+            '<tbody>' + rows + '</tbody></table></div></div>';
+    }
+    // Rebuilt only on a change: replacing the DOM under the cursor would flicker the popup.
+    if (host._pmgHtml === html) return;
+    host._pmgHtml = html;
     host.innerHTML = html;
 }
 window.pmgUpdateLiveStrip = pmgUpdateLiveStrip;
@@ -3075,9 +3140,35 @@ var PMG_IND_META = {
 };
 var PMG_IND_ORDER = [25, 576, 26, 577, 27, 578, 28, 579];
 
+// Indications the selected asset actually has, per its bulk metadata.
+function _pmgIndIds() {
+    return PMG_IND_ORDER.filter(function (id) {
+        if (PMG_IND_META[id].end === 'B' && !_pmgHasB()) return false;
+        return typeof pmAssetHasAttr !== 'function' || pmAssetHasAttr(pmG.assetId, id);
+    });
+}
+
+// A half point machine (IsHalfPointMachine) has no B End.
+function _pmgHasB() {
+    return typeof pmAssetHasEnd !== 'function' || pmAssetHasEnd(pmG.assetId, 'B');
+}
+
+// Asset metadata arrived after the graph opened: redraw with the asset's own list.
+function pmgRefreshForAssetMetadata() {
+    if (!document.getElementById('pmgLiveStrip')) return;
+    pmgUpdateLiveStrip();
+    if (pmG.tab === 'ind' && pmG.raw && pmG.raw.length) {
+        pmgRenderIndicationBoth(pmG.raw, pmG.start, pmG.endMs);
+    }
+}
+window.pmgRefreshForAssetMetadata = pmgRefreshForAssetMetadata;
+
 function _pmgIndName(id) {
+    var alias = (typeof pmAssetAttrAlias === 'function') ? pmAssetAttrAlias(pmG.assetId, id) : '';
+    if (alias) return alias;
     var base = (typeof PM_INDICATION_NAMES !== 'undefined' && PM_INDICATION_NAMES[id]) ? PM_INDICATION_NAMES[id] : ('Attr ' + id);
-    return PMG_IND_META[id].end + ' End - ' + base;
+    // PM_INDICATION_NAMES already starts with "A End - " / "B End - ".
+    return base.indexOf(' End - ') > -1 ? base : (PMG_IND_META[id].end + ' End - ' + base);
 }
 
 // Normalize Point Machine history response exactly before plotting.
@@ -3146,13 +3237,122 @@ function _pmgExtractRows(response) {
     return Array.isArray(rows) ? rows : [];
 }
 
+var PMG_DL_COLORS = ['#ea580c', '#65a30d', '#0284c7', '#c026d3', '#64748b', '#b45309'];
+var PMG_DL_LINE_GAP = 0.04;   // keeps relays in the same state from hiding each other
+
+// A relay reading as 1 (Pickup) / 0 (Drop), or null when it can't be read.
+function _pmgDlBit(value) {
+    var s = String(value == null ? '' : value).trim().toLowerCase();
+    if (s === 'pickup' || s === 'true') return 1;
+    if (s === 'drop' || s === 'false') return 0;
+    var n = parseFloat(s);
+    return isNaN(n) ? null : (n >= 0.5 ? 1 : 0);
+}
+
+function _pmgRowIsDatalogger(row) {
+    for (var k in row.Values) {
+        if (row.Values[k]) return String(row.Values[k].DataType || '').toLowerCase() === 'datalogger';
+    }
+    return false;
+}
+
+// History columns of a relay are keyed by Role (Value) or DataloggerAttributeId, and
+// DataType is not always DataLogger, so that only breaks ties.
+function _pmgDlRow(data, dl) {
+    var match = null;
+    for (var i = 0; i < data.length; i++) {
+        var id = String(_pmgAttrId(data[i]));
+        if (!data[i].Values || (id !== dl.role && id !== dl.attrId)) continue;
+        if (_pmgRowIsDatalogger(data[i])) return data[i];
+        match = match || data[i];
+    }
+    return match;
+}
+
+// One series per relay of this asset, in metadata order. Drop plots at 0 and Pickup at 1
+// on the State axis; the real reading stays on each point as bit, for the tooltip.
+function _pmgDlSeries(data, startMs, endMs) {
+    var relays = (typeof pmAssetDataloggers === 'function') ? pmAssetDataloggers(pmG.assetId) : [];
+    var found = [];
+    relays.forEach(function (dl) {
+        var row = _pmgDlRow(data, dl);
+        if (!row) return;
+        var pts = [];
+        for (var k in row.Values) {
+            var en = row.Values[k];
+            if (!en || !en.Timestamp) continue;
+            var t = _pmgEntryTime(en), bit = _pmgDlBit(en.Value);
+            if (isNaN(t) || t <= 0 || bit === null || (endMs && t > endMs)) continue;
+            pts.push([(startMs && t < startMs) ? startMs : t, bit]);
+        }
+        if (!pts.length) return;
+        pts.sort(function (a, b) { return a[0] - b[0]; });
+        found.push({ name: dl.name, pts: pts });
+    });
+
+    return found.map(function (relay, i) {
+        var gap = i * PMG_DL_LINE_GAP;
+        var points = relay.pts.map(function (p) {
+            return { value: [p[0], p[1] + gap], bit: p[1], symbol: 'none' };
+        });
+        var last = points[points.length - 1];
+        if (endMs && last.value[0] < endMs) {
+            points.push({ value: [endMs, last.value[1]], bit: last.bit, symbol: 'none' });
+        }
+        return { name: relay.name, color: PMG_DL_COLORS[i % PMG_DL_COLORS.length], points: points };
+    });
+}
+
+// Relay state at a time: the last reading at or before it, or null before the first one.
+function _pmgDlBitAt(relay, t) {
+    var bit = null;
+    for (var i = 0; i < relay.points.length; i++) {
+        if (relay.points[i].value[0] > t) break;
+        bit = relay.points[i].bit;
+    }
+    return bit;
+}
+
+// Relays share the voltage chart, legend, zoom and tooltip; they only need their own
+// right-hand State axis because 0 / 1 would be flat on a 0-30 V scale. Pickup sits below
+// the top of the plot so the relay lines stay clear of the voltage lines.
+function _pmgAddDlSeries(opt, relays) {
+    if (!relays.length) return;
+    opt.grid.right = 64;
+    // Relays lengthen the legend: on a narrow chart it would wrap into the plot.
+    if (pmG.chart && pmG.chart.getWidth() < 640) opt.legend.type = 'scroll';
+    opt.yAxis = [opt.yAxis, {
+        type: 'value', name: 'Relay', min: 0, max: 1.4, interval: 1, position: 'right',
+        nameTextStyle: { color: 'rgba(255,255,255,0.50)' },
+        axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.16)' } },
+        axisTick: { show: false },
+        axisPointer: { show: false },
+        axisLabel: {
+            color: 'rgba(255,255,255,0.50)',
+            formatter: function (v) { return v === 1 ? 'Pickup' : (v === 0 ? 'Drop' : ''); }
+        },
+        splitLine: { show: false }
+    }];
+    relays.forEach(function (relay) {
+        opt.legend.data.push(relay.name);
+        opt.series.push({
+            name: relay.name, type: 'line', step: 'end', smooth: false, showSymbol: false, clip: false,
+            yAxisIndex: 1,
+            lineStyle: { width: 2, color: relay.color }, itemStyle: { color: relay.color },
+            emphasis: { disabled: true },
+            data: relay.points
+        });
+    });
+}
+
 function pmgRenderIndicationBoth(data, startMs, endMs) {
     var el = document.getElementById('pmgChart');
     if (!el) return;
     data = data || [];
+    var dlSeries = _pmgDlSeries(data, startMs, endMs);
 
     var attrDataMap = {}, allTs = {};
-    PMG_IND_ORDER.forEach(function (id) {
+    _pmgIndIds().forEach(function (id) {
         for (var i = 0; i < data.length; i++) {
             if (_pmgAttrId(data[i]) === id) {
                 attrDataMap[id] = data[i];
@@ -3179,7 +3379,7 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
     var sortedTs = Object.keys(allTs).map(function (x) { return parseInt(x); }).sort(function (a, b) { return a - b; });
 
     var series = [], legends = [], colorByName = {};
-    PMG_IND_ORDER.forEach(function (id) {
+    _pmgIndIds().forEach(function (id) {
         var ad = attrDataMap[id];
         if (!ad) return;
         var meta = PMG_IND_META[id];
@@ -3315,7 +3515,7 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
 
     if (pmG.chart) { pmG.chart.dispose(); pmG.chart = null; }
 
-    if (!series.length) {
+    if (!series.length && !dlSeries.length) {
         $('#pmgChart').hide();
         $('#pmgEmpty').show();
         return;
@@ -3324,11 +3524,8 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
     $('#pmgEmpty').hide();
     $('#pmgChart').show();
 
-
-
-
     pmG.chart = echarts.init(el);
-    pmG.chart.setOption({
+    var pmgOption = {
         backgroundColor: 'transparent',
         animation: false,
         textStyle: { color: 'rgba(255,255,255,0.72)' },
@@ -3348,7 +3545,7 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
                 var vmap = {};
                 ps.forEach(function (p) { if (p.value && p.value[1] != null) vmap[p.seriesName] = p.value[1]; });
                 var html = '<div style="font-weight:700;color:var(--e7-accent, #22d3ee);margin-bottom:6px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding-bottom:4px;">' + dateStr + ' ' + t + '</div>';
-                PMG_IND_ORDER.forEach(function (id) {
+                _pmgIndIds().forEach(function (id) {
                     var nm = _pmgIndName(id);
                     if (vmap[nm] == null) return;   // legend-unselected/hidden → omit from tooltip
                     var val = Number(tlZeroFloor(vmap[nm])).toFixed(2);
@@ -3356,6 +3553,19 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
                         '<span style="width:9px;height:9px;border-radius:50%;background:' + PMG_IND_META[id].color + ';flex-shrink:0;"></span>' +
                         '<span style="flex:1;white-space:nowrap;">' + nm + '</span>' +
                         '<b style="margin-left:12px;">' + val + ' V</b></div>';
+                });
+                // Looked up by time: an axis tooltip only receives the series whose point is
+                // nearest the cursor, and relay points sit at their own timestamps.
+                var selected = (pmG.chart.getOption().legend[0] || {}).selected || {};
+                dlSeries.forEach(function (relay) {
+                    if (selected[relay.name] === false) return;
+                    var bit = _pmgDlBitAt(relay, ps[0].value[0]);
+                    if (bit === null) return;
+                    html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">' +
+                        '<span style="width:9px;height:9px;border-radius:50%;background:' + relay.color + ';flex-shrink:0;"></span>' +
+                        '<span style="flex:1;white-space:nowrap;">' + relay.name + '</span>' +
+                        '<span class="rdpms-dl-badge ' + (bit ? 'pickup' : 'drop') + '" style="margin-left:12px;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700;">' +
+                        (bit ? 'Pickup' : 'Drop') + '</span></div>';
                 });
                 return html;
             }
@@ -3413,7 +3623,9 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
         ],
 
         series: series
-    });
+    };
+    _pmgAddDlSeries(pmgOption, dlSeries);
+    pmG.chart.setOption(pmgOption);
 
     // Preserve the existing hover behaviour.
     pmG.chart.off('highlight');
@@ -4304,6 +4516,7 @@ function pmgRenderOpList() {
         var active = (i === pmG.opSel);
         var av = ['AC', 'AV', 'BC', 'BV'].filter(function (type) {
             return (
+                (type.charAt(0) === 'A' || _pmgHasB()) &&
                 ev.arrays &&
                 Array.isArray(ev.arrays[type]) &&
                 ev.arrays[type].length > 0

@@ -462,8 +462,14 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     ViewBag.Site = site;
                     ViewBag.Asset = mAsset;
                 }
-                ViewBag.CardLine = GetCardLine(assetTypeId, assetId);
-                var assetAttributes = _assetAttributeService.GetAllAssetAttributeBy(assetTypeId);
+                // assetTypeId is the diagram to draw. A Signal can open a shunt diagram (30 / 31),
+                // but its CardLine and derived attributes still belong to Signal. Ids 30 / 31 are
+                // also real asset types (Distant Signal, ELD), so go by the asset itself.
+                int metadataAssetTypeId = (mAsset != null && mAsset.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.SIGNAL)
+                    ? (int)E7FRSAdvance.Utility.Utility.AssetType.SIGNAL
+                    : assetTypeId;
+                ViewBag.CardLine = GetCardLine(metadataAssetTypeId, assetId);
+                var assetAttributes = _assetAttributeService.GetAllAssetAttributeBy(metadataAssetTypeId);
                 if (assetAttributes != null && assetAttributes.Count > 0)
                 {
                     ViewBag.AssetAttributes = assetAttributes.Where(x => x.IsDerived != null && x.IsDerived.Value);
@@ -1897,6 +1903,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     ViewBag.Datalogger = mDatalogger;
                 }
 
+                var mPeriodicDatalogger = PeriodicDataLoggerEvent(mSearchCriteria);
+                if (mPeriodicDatalogger != null && mPeriodicDatalogger.Count > 0)
+                {
+                    ViewBag.PeriodicDatalogger = mPeriodicDatalogger;
+                }
+
                 if (mAsset != null && mAsset.Id > 0)
                 {
 
@@ -1946,6 +1958,31 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
             return mDataloggers;
         }
+        private List<Domain.Datalogger> PeriodicDataLoggerEvent(Domain.SearchCriteria searchCriteria)
+        {
+            List<Domain.Datalogger> mPeriodicDataloggers = new List<Domain.Datalogger>();
+
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(searchCriteria);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("DataloggerAsset/GetPeriodicDataByAsset", str).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        mPeriodicDataloggers = JsonConvert.DeserializeObject<List<Domain.Datalogger>>(jsonString);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ViewBag.Error = ex.Message.ToString();
+            }
+            return mPeriodicDataloggers;
+        }
+
         private List<AssetInfo> GetAssetInfo(int assetId)
         {
             var mAssetInfos = new List<AssetInfo>();
@@ -2030,6 +2067,24 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         //        }, JsonRequestBehavior.AllowGet);
         //    }
         //}
+        /// <summary>
+        /// Shunt circuit diagram for one asset: 30 when it has a "PILOT mA" attribute with a
+        /// channel mapped (first non-empty of Title / AliasName), else 31.
+        /// </summary>
+        [HttpPost]
+        public JsonResult GetShuntDiagramType(int siteId, int assetId)
+        {
+            var mAssetAttributes = _assetAttributeService.GetAssetAttributes(siteId, assetId);
+            if (mAssetAttributes == null || mAssetAttributes.Count == 0)
+                return Json(new { success = false, typeId = 31 });
+
+            bool hasPilot = mAssetAttributes
+                .Where(a => a != null && a.AssetInfoChannel != null)
+                .Any(a => (!string.IsNullOrEmpty(a.Title) ? a.Title : (a.AliasName ?? ""))
+                    .Trim().ToLower() == "pilot ma");
+            return Json(new { success = true, typeId = hasPilot ? 30 : 31, hasPilotMa = hasPilot });
+        }
+
         [HttpPost]
         public JsonResult GetBulkAssetMetadata(AssetLister mAssetLister)
         {

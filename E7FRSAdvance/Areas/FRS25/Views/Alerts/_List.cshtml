@@ -226,13 +226,9 @@ else
                                 // Alert Feedback Time window; Energy7, Zonal/Divisional and Admin users only view.
                                 bool canGiveFeedback = isDisable;
 
-                                // ── Resolve badge state from FRSAlertRemark (latest entry for this alert) ──
+                                // 616: the feedback badge comes from the alert's own status
                                 var alertRemarks = mFRSAlertRemarks.Where(x => x.FRSAlertId == a.Id).ToList();
-                                var latestRemark = alertRemarks
-                                    .OrderByDescending(x => x.CreatedDate)
-                                    .ThenByDescending(x => x.Id)
-                                    .FirstOrDefault();
-                                var displayStatusId = latestRemark != null ? latestRemark.AcknowledgementStatusId : 0;
+                                var displayStatusId = a.AcknowledgemenStatusId;
                                 string displayFbText = "";
                                 string displayFbClass = "fb-none";
 
@@ -288,11 +284,11 @@ else
                                             x.FRSAlertId == a.Id &&
                                             (x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode()
                                           || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode()
-                                          || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode()));
+                                          || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode())
+                                          && (x.AcknowledgementStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()
+                                           || x.AcknowledgementStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()));
 
-                                        if (esmRemark != null &&
-                                           (esmRemark.AcknowledgementStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT.GetHashCode()
-                                         || esmRemark.AcknowledgementStatusId == E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False.GetHashCode()))
+                                        if (esmRemark != null)
                                         {
                                             <span class="fb-add-remark"
                                                   onclick="openFeedbackSlidePanel('@a.Id','remarkOnly','@esmRemark.AcknowledgementStatusId','@Html.AttributeEncode(assetDisp)','@Html.AttributeEncode(station)','@Html.AttributeEncode(cause)','@Html.AttributeEncode(incTime)','@Html.AttributeEncode(dur)','@Html.AttributeEncode(typeLbl)','@Html.AttributeEncode(a.DivisionName)','@Html.AttributeEncode(a.ZoneName)')">
@@ -424,9 +420,30 @@ else
 
                         @* MAINTAINER *@
                         <td>
-                            @* Blank until a feedback type is given; status 1 (Pending) never shows a maintainer *@
-                            @if (a.AcknowledgemenTimeStamp.HasValue && hasFeedback
-                                && a.AcknowledgemenStatusId != E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Pending.GetHashCode())
+                            @* 616: only once feedback is given, with a real acknowledgement time;
+                               alerts saved without one take the name from the field user's remark *@
+                            @{
+                                var fieldRemark = alertRemarks
+                                    .Where(x => x.AcknowledgementStatusId == a.AcknowledgemenStatusId
+                                             && (x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode()
+                                              || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode()
+                                              || x.MaintainerId == E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode()))
+                                    .OrderByDescending(x => x.CreatedDate)
+                                    .FirstOrDefault();
+                                bool hasAckTime = a.AcknowledgemenTimeStamp.HasValue && a.AcknowledgemenTimeStamp != DateTime.MinValue;
+                                if (!hasAckTime && fieldRemark != null)
+                                {
+                                    mName = fieldRemark.MaintainerName ?? "";
+                                    mDesig = fieldRemark.MaintainerDesignation ?? "";
+                                    mMob = "";
+                                    mParts = mName.Trim().Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                                    mIni = mParts.Length == 0 ? "?" : mParts.Length == 1
+                                                ? mParts[0][0].ToString().ToUpper()
+                                                : mParts[0][0].ToString().ToUpper() + mParts[1][0].ToString().ToUpper();
+                                }
+                            }
+                            @if (a.AcknowledgemenStatusId != E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Not_Given.GetHashCode()
+                                && (hasAckTime || fieldRemark != null))
                             {
                                 <div class="alrt-maintainer-cell">
                                     <div class="alrt-maint-avatar">@mIni</div>
@@ -1490,7 +1507,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
             document.getElementById('fbDrpCause').innerHTML = '<option value="">Select</option>';
             fbHideTypeError();
 
-            // Pre-select the feedback already given (only PT / T / F are valid selections — 0 = Not given)
+            // Pre-select the feedback already given (only PT / T / F / M are valid selections — 0 = Not given)
             fbApplyStatus(statusId);
 
             // Load the saved feedback so it can be edited (same GetBy call 616 makes on open)
@@ -1560,13 +1577,6 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
         }
     };
 
-    window.selectFbOptM = function (el) {
-        if (window._fbLocked) return;
-        var alertId = document.getElementById('fbHdnAlertId').value;
-        var sid     = el.getAttribute('data-sid');
-        window.closeFbPanel();
-        fnUpdateAckStatus(alertId, sid);
-    };
     // Convert a File to base64 string (async)
     function fileToBase64(file) {
         return new Promise((resolve, reject) => {
@@ -1784,10 +1794,10 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
         if (optSelClass[sid]) el.classList.add(optSelClass[sid]);
     }
 
-    /* Feedback types the form can submit (Maintenance goes through its own action) */
+    /* Feedback types the form can submit */
     function fbIsValidType(sid) {
         sid = String(sid || '');
-        return sid === ptId || sid === trueId || sid === falseId;
+        return sid === ptId || sid === trueId || sid === falseId || sid === maintId;
     }
 
     /* Select a saved status in the panel; anything else (0 = Not given, Pending) leaves it blank */
@@ -1899,13 +1909,13 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                       '<div class="fb-opt-ico fb-ico-f">F</div>' +
                       '<div class="fb-opt-lbl">False</div><div class="fb-opt-desc">No actual failure at site</div>' +
                     '</div>' +
-                    '<div class="fb-opt" data-sid="'+maintId+'" onclick="window.selectFbOptM(this)">' +
+                    '<div class="fb-opt" data-sid="'+maintId+'" onclick="window.selectFbOpt(this)">' +
                       '<div class="fb-opt-ico fb-ico-m">M</div>' +
                       '<div class="fb-opt-lbl">Maintenance</div><div class="fb-opt-desc">Alert during maintenance</div>' +
                     '</div>' +
                   '</div>' +
                   '<div id="fbLockNote" class="fb-lock-note" style="display:none;"><i class="fas fa-lock"></i>T / PT / M / F feedback is not available for your user, or the Alert Feedback Time for this alert has passed. View only.</div>' +
-                  '<div id="fbTypeError" class="fb-type-error" style="display:none;"><i class="fas fa-exclamation-circle"></i>Please select a feedback type (Partially True, True or False) before submitting.</div>' +
+                  '<div id="fbTypeError" class="fb-type-error" style="display:none;"><i class="fas fa-exclamation-circle"></i>Please select a feedback type (Partially True, True, False or Maintenance) before submitting.</div>' +
                   '<div id="fbCauseRow" class="fb-field" style="display:none;">' +
                     '<div class="fb-lbl fb-lbl-field">Cause Code <span class="fb-req">*</span></div>' +
                     '<select id="fbDrpCause" class="fb-input"></select>' +
@@ -1919,17 +1929,6 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                     '<textarea id="fbRemark" rows="4" placeholder="Describe action taken, root cause, observations..." class="fb-input fb-textarea"></textarea>' +
                   '</div>' +
 
-                  '<div class="fb-photo-section">' +
-                    '<div class="fb-lbl fb-lbl-field"><i class="fas fa-camera" style="margin-right:5px;"></i>Photo Evidence <span class="fb-lbl-note">(Optional — max 5 photos, 5MB each)</span></div>' +
-                    '<div class="fb-photo-zone" id="fbPhotoZone" onclick="document.getElementById(\'fbPhotoInput\').click()">' +
-                      '<i class="fas fa-cloud-upload-alt"></i>' +
-                      '<div class="fb-photo-zone-text"><span>Click to upload</span> or drag &amp; drop<br>JPG, PNG, PDF — up to 5MB each</div>' +
-                      '<input type="file" id="fbPhotoInput" accept="image/*,.pdf" multiple style="display:none;" onchange="fbHandlePhotos(this)" />' +
-                    '</div>' +
-                    '<div class="fb-photo-preview" id="fbPhotoPreview"></div>' +
-                    '<div class="fb-photo-count" id="fbPhotoCount"></div>' +
-                  '</div>' +
-
                   '<input type="hidden" id="fbHdnAlertId" />' +
                   '<input type="hidden" id="fbHdnStatusId" />' +
                 '</div>' +
@@ -1938,6 +1937,17 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                   '<textarea id="fbRemarkOnly" rows="4" placeholder="Enter your remark..." class="fb-input fb-textarea"></textarea>' +
                   '<input type="hidden" id="fbHdnROAlertId" />' +
                   '<input type="hidden" id="fbHdnROStatusId" />' +
+                '</div>' +
+
+                '<div class="fb-photo-section">' +
+                  '<div class="fb-lbl fb-lbl-field"><i class="fas fa-camera" style="margin-right:5px;"></i>Photo Evidence <span class="fb-lbl-note">(Optional — max 5 photos, 5MB each)</span></div>' +
+                  '<div class="fb-photo-zone" id="fbPhotoZone" onclick="document.getElementById(\'fbPhotoInput\').click()">' +
+                    '<i class="fas fa-cloud-upload-alt"></i>' +
+                    '<div class="fb-photo-zone-text"><span>Click to upload</span> or drag &amp; drop<br>JPG, PNG, PDF — up to 5MB each</div>' +
+                    '<input type="file" id="fbPhotoInput" accept="image/*,.pdf" multiple style="display:none;" onchange="fbHandlePhotos(this)" />' +
+                  '</div>' +
+                  '<div class="fb-photo-preview" id="fbPhotoPreview"></div>' +
+                  '<div class="fb-photo-count" id="fbPhotoCount"></div>' +
                 '</div>' +
               '</div>' +
               '<div class="fb-ftr">' +

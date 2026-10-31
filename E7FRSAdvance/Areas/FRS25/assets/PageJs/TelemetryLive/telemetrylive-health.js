@@ -289,6 +289,20 @@
         return /IIPS/i.test(String(key) + ' ' + String(label)) ? 'current' : 'voltage';
     }
     function pmNum(t) { var m = /-?\d+(\.\d+)?/.exec(String(t == null ? '' : t)); return m ? parseFloat(m[0]) : null; }
+    /* The attributes behind each PM_DEFS reading, as [Normal, Reverse] ids per end.
+       IPT and TPT both come from the end's current attribute. */
+    var PM_ATTR_IDS = {
+        A: { iptMax: [217, 219], iptAvg: [217, 219], tpt: [217, 219], vpt110Avg: [216, 218], locIndication: [576, 577], krIndication: [25, 26] },
+        B: { iptMax: [213, 215], iptAvg: [213, 215], tpt: [213, 215], vpt110Avg: [212, 214], locIndication: [578, 579], krIndication: [27, 28] }
+    };
+    /* Only what this asset has: the end must exist and either direction's attribute
+       must be mapped. Metadata not loaded yet leaves the reading in (pmAssetHasAttr). */
+    function pmHasReading(aid, E, key) {
+        if (typeof window.pmAssetHasEnd === 'function' && !window.pmAssetHasEnd(aid, E)) return false;
+        if (typeof window.pmAssetHasAttr !== 'function') return true;
+        var ids = PM_ATTR_IDS[E][key];
+        return window.pmAssetHasAttr(aid, ids[0]) || window.pmAssetHasAttr(aid, ids[1]);
+    }
     function readPmModel(aid) {
         if (!isPmType() || typeof window.buildPmTableRowModel !== 'function') return null;
         var m = null;
@@ -298,10 +312,11 @@
         ['A', 'B'].forEach(function (E) {
             var f = m[E];
             if (!f) return;
+            var defs = PM_DEFS.filter(function (d) { return pmHasReading(aid, E, d[0]); });
             var any = false;
-            for (var i = 0; i < PM_DEFS.length; i++) if (f[PM_DEFS[i][0]] && f[PM_DEFS[i][0]].present) any = true;
+            for (var i = 0; i < defs.length; i++) if (f[defs[i][0]] && f[defs[i][0]].present) any = true;
             if (!any) return;
-            PM_DEFS.forEach(function (d) {
+            defs.forEach(function (d) {
                 var en = f[d[0]] || {};
                 var label = E + ' End ' + d[1];
                 rows.push({
@@ -314,7 +329,7 @@
         var relays = [];
         ['NWKR', 'RWKR', 'NWCR', 'RWCR'].forEach(function (k) {
             var r = m.datalogger && m.datalogger[k];
-            if (r) relays.push({ name: k, up: !!r.isPickup });
+            if (r) relays.push({ name: k, up: !!r.isPickup, combined: /^combined/i.test(String(r.displayName || '')) });
         });
         return { rows: rows, relays: relays, dir: (m.operation && m.operation.direction) || '', when: m.operationDate || '' };
     }
@@ -1269,18 +1284,23 @@
             (dir ? '<rect x="' + (tx + tw - 92) + '" y="' + (ty - 22) + '" width="86" height="16" rx="8" fill="' + (dir === 'Reverse' ? P.drop : P.green) + '"></rect>' + txt2(tx + tw - 49, ty - 10, esc(dir), 10, '#FFFFFF', 800, 'middle') : '');
         var cx = tx;
         hd.forEach(function (h, i) { s += txt2(cx + 3, ty + 6, h[0], 8, P.muted, 700) + (h[1] ? txt2(cx + 3, ty + 16, h[1], 7.5, P.muted, 600) : ''); cx += cw[i]; });
+        /* A combined relay serves both ends: its cell spans rows A and B (rowspan). */
+        var combinedDl = (A.relays || []).some(function (r) { return r.combined; });
+        var dlX = tx + cw.slice(0, 6).reduce(function (a, b) { return a + b; }, 0);
         ['A', 'B'].forEach(function (E, j) {
             var y = ty + 40 + j * 26, vals = [E, v(E, 'IPT N/R(A) Max') + '/' + v(E, 'IPT N/R(A) Avg'), v(E, 'VPT 110 DC LOC N/R(V)'), v(E, 'TPT N/R(ms)'), v(E, 'VPT 24 DC LOC N/R(V)'), v(E, 'VPT N/R(V)')];
             var c2 = tx;
-            s += '<line x1="' + tx + '" y1="' + (y - 16) + '" x2="' + (tx + tw) + '" y2="' + (y - 16) + '" stroke="' + P.edge + '"></line>';
+            s += '<line x1="' + tx + '" y1="' + (y - 16) + '" x2="' + ((combinedDl && j) ? dlX : (tx + tw)) + '" y2="' + (y - 16) + '" stroke="' + P.edge + '"></line>';
             vals.forEach(function (t, i) { s += txt2(c2 + 3, y, t, 9.5, P.ink, i ? 600 : 800); c2 += cw[i]; });
+            var pillY = combinedDl ? y + 13 : y;
             if (!j) ['NWKR', 'RWKR', 'NWCR', 'RWCR'].forEach(function (k) {
                 var u = up(k), pc = stCol(P, u);
-                s += '<rect x="' + (c2 + 1) + '" y="' + (y - 10) + '" width="28" height="13" rx="6.5" fill="' + pc + '"></rect>' +
-                    txt2(c2 + 15, y, u === true ? 'Pickup' : u === false ? 'Drop' : '--', 7.5, '#FFFFFF', 800, 'middle');
+                s += '<rect x="' + (c2 + 1) + '" y="' + (pillY - 10) + '" width="28" height="13" rx="6.5" fill="' + pc + '"></rect>' +
+                    txt2(c2 + 15, pillY, u === true ? 'Pickup' : u === false ? 'Drop' : '--', 7.5, '#FFFFFF', 800, 'middle');
                 c2 += 30;
             });
         });
+        if (combinedDl) s += '<line x1="' + dlX + '" y1="' + (ty + 24) + '" x2="' + dlX + '" y2="' + (ty + 96) + '" stroke="' + P.edge + '"></line>';
         /* callouts from the table to the motors */
         s += arrowTo(P, tx + 90, ty - 26, 832, 294, P.blue, 1.4, '2 3') + arrowTo(P, tx, ty + 40, 614, 538, P.blue, 1.4, '2 3');
         return s + '</svg>';

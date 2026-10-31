@@ -1868,19 +1868,23 @@ x.Value.Timestamp.TimestampDevice.Second == timeStamp.Second)
             {
                 mFRSAlert.UserClassId = ClsHttpContent.LoginUser.UserClassId;
                 mFRSAlert.ResponsiblePersonId = ClsHttpContent.LoginUser.Id;
-                // Feedback type selected (PT / True / False / Maintenance) = acknowledged → stamp now;
-                // otherwise (Not_Given / Pending) leave it null so the alert stays unacknowledged.
-                bool isFeedbackGiven = mFRSAlert.AcknowledgemenStatusId == (int)AcknowledgemenStatus.PT
-                                    || mFRSAlert.AcknowledgemenStatusId == (int)AcknowledgemenStatus.True
-                                    || mFRSAlert.AcknowledgemenStatusId == (int)AcknowledgemenStatus.False
-                                    || mFRSAlert.AcknowledgemenStatusId == (int)AcknowledgemenStatus.Maintenace;
-                mFRSAlert.AcknowledgemenTimeStamp = isFeedbackGiven ? DateTime.Now : (DateTime?)null;
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
                 {
                     var jsonStr = JsonConvert.SerializeObject(mFRSAlert);
                     StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
                     var response = hcf.client.PutAsync(String.Format("FRSAlert/UpdateRemark"), str).Result;
                     string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.NoContent)
+                    {
+                        // UpdateRemark clears AcknowledgemenTimeStamp; PUT FRSAlert stamps it again.
+                        if (mFRSAlert.AcknowledgemenStatusId > 0
+                            && mFRSAlert.AcknowledgemenStatusId != (int)AcknowledgemenStatus.Acknowledge
+                            && mFRSAlert.UserClassId != (int)E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL)
+                        {
+                            var stamp = new Domain.FRSAlert { Id = mFRSAlert.Id, AcknowledgemenStatusId = mFRSAlert.AcknowledgemenStatusId, ResponsiblePersonId = mFRSAlert.ResponsiblePersonId };
+                            response = hcf.client.PutAsync("FRSAlert", new StringContent(JsonConvert.SerializeObject(stamp), Encoding.UTF8, "application/json")).Result;
+                        }
+                    }
                     if (response.StatusCode == HttpStatusCode.NoContent)
                     {
                         data = new { type = "success", result = "Remark has been Updated" };
@@ -1897,6 +1901,35 @@ x.Value.Timestamp.TimestampDevice.Second == timeStamp.Second)
             }
             return Json(data);
         }
+        public ActionResult UpdateAcknowledgementStatus(Domain.FRSAlert mFRSAlert)
+        {
+            dynamic data = new ExpandoObject();
+            try
+            {
+                mFRSAlert.ResponsiblePersonId = ClsHttpContent.LoginUser.Id;
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(mFRSAlert);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PutAsync(String.Format("FRSAlert"), str).Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.NoContent)
+                    {
+                        data = new { type = "success", result = "Status has been Updated" };
+                    }
+                    else
+                    {
+                        data = new { type = "error", result = "Internal server error." };
+                    }
+                }
+            }
+            catch
+            {
+                data = new { type = "error", result = "Internal server error." };
+            }
+            return Json(data);
+        }
+
         public ActionResult _FRSRemark(int id)
         {
             var mFRSAlertRemarks = new List<Domain.FRSAlertRemark>();

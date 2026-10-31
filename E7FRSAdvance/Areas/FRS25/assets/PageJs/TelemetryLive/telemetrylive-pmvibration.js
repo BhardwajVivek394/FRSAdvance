@@ -64,6 +64,13 @@ var pmVibrationTablePanelOpen = false;
 var pmVibrationBulkMetadata = {};
 var pmVibrationBulkLoadedSiteId = null;
 var pmVibrationBulkLoadingSiteId = null;
+// assetId -> attributeId -> { aliasName }. Every attribute of each Point Machine,
+// so the views can show only what that asset actually has.
+var pmAssetAttributeMetadata = {};
+// assetId -> [{ role, attrId, name }]. The asset's DataLogger relays.
+var pmAssetDataloggerMetadata = {};
+// assetId -> true when GetAssestBy says IsHalfPointMachine (A End only).
+var pmHalfMachineFlags = {};
 
 /*
  * Vibration end availability (A End / B End).
@@ -94,6 +101,7 @@ function pmVibrationFlagIsTrue(value) {
 
 function resetPmVibrationEndFlags() {
     pmVibrationEndFlags = {};
+    pmHalfMachineFlags = {};
 }
 
 /*
@@ -112,6 +120,8 @@ function setPmVibrationEndFlagsFromAssetList(assetList) {
 
         var rawA = (flagRow.VibrationA !== undefined) ? flagRow.VibrationA : flagRow.vibrationA;
         var rawB = (flagRow.VibrationB !== undefined) ? flagRow.VibrationB : flagRow.vibrationB;
+
+        pmHalfMachineFlags[String(flagRow.Id)] = pmVibrationFlagIsTrue(flagRow.IsHalfPointMachine);
 
         pmVibrationEndFlags[String(flagRow.Id)] = {
             known: (rawA !== undefined || rawB !== undefined),
@@ -1247,7 +1257,125 @@ function isPointMachineVibrationAttributeName(name) {
         .indexOf('vibration_sensor_') === 0;
 }
 
+function registerPointMachineAssetAttribute(
+    assetId,
+    attribute
+) {
+    if (!attribute || attribute.Id == null) return;
+
+    var aid =
+        String(assetId || '').trim();
+
+    if (!aid) return;
+
+    if (!pmAssetAttributeMetadata[aid]) {
+        pmAssetAttributeMetadata[aid] = {};
+    }
+
+    pmAssetAttributeMetadata[aid][String(attribute.Id)] = {
+        aliasName:
+            String(attribute.AliasName || '').trim()
+    };
+}
+
+/*
+ * True when the asset has this attribute. Metadata not loaded yet (or
+ * failed) stays true, so nothing is hidden by mistake.
+ */
+function pmAssetHasAttr(
+    assetId,
+    attributeId
+) {
+    var attributes =
+        pmAssetAttributeMetadata[String(assetId || '').trim()];
+
+    if (!attributes) return true;
+
+    return !!attributes[String(attributeId)];
+}
+
+function pmAssetAttrAlias(
+    assetId,
+    attributeId
+) {
+    var attributes =
+        pmAssetAttributeMetadata[String(assetId || '').trim()];
+
+    var attribute =
+        attributes && attributes[String(attributeId)];
+
+    return attribute ? attribute.aliasName : '';
+}
+
+/*
+ * IsHalfPointMachine true -> A End only; false / null -> both ends.
+ * GetPMAssetMeta carries the same flag, so either source can mark it.
+ */
+function pmAssetHasEnd(
+    assetId,
+    endName
+) {
+    if (endName !== 'B') return true;
+
+    var aid =
+        String(assetId || '').trim();
+
+    if (pmHalfMachineFlags[aid] === true) return false;
+
+    var pmMeta =
+        (typeof pmAssetMetaCache !== 'undefined')
+            ? pmAssetMetaCache[aid]
+            : null;
+
+    return !(pmMeta && pmMeta.isHalf === true);
+}
+
+window.pmAssetHasEnd = pmAssetHasEnd;
+window.pmAssetHasAttr = pmAssetHasAttr;
+window.pmAssetAttrAlias = pmAssetAttrAlias;
+
+function registerPointMachineAssetDatalogger(
+    assetId,
+    datalogger
+) {
+    if (!datalogger) return;
+
+    var aid =
+        String(assetId || '').trim();
+
+    var name =
+        String(
+            datalogger.DataloggerAttribute ||
+            datalogger.DataloggerAssetName ||
+            ''
+        ).trim();
+
+    if (!aid || !name) return;
+
+    if (!pmAssetDataloggerMetadata[aid]) {
+        pmAssetDataloggerMetadata[aid] = [];
+    }
+
+    pmAssetDataloggerMetadata[aid].push({
+        role:
+            String(datalogger.Value == null ? '' : datalogger.Value).trim(),
+        attrId:
+            String(datalogger.DataloggerAttributeId == null ? '' : datalogger.DataloggerAttributeId).trim(),
+        name: name,
+        assetName:
+            String(datalogger.DataloggerAssetName || '').trim()
+    });
+}
+
+function pmAssetDataloggers(assetId) {
+    return pmAssetDataloggerMetadata[String(assetId || '').trim()] || [];
+}
+
+window.pmAssetDataloggers = pmAssetDataloggers;
+
 function resetPointMachineVibrationBulkMetadata() {
+    pmAssetDataloggerMetadata = {};
+    pmAssetAttributeMetadata = {};
     pmVibrationBulkMetadata = {};
     pmVibrationBulkLoadedSiteId = null;
     pmVibrationBulkLoadingSiteId = null;
@@ -1487,6 +1615,8 @@ function loadPointMachineVibrationBulkMetadata(
              * No existing Point Machine map is touched.
              */
             pmVibrationBulkMetadata = {};
+            pmAssetAttributeMetadata = {};
+            pmAssetDataloggerMetadata = {};
 
             var assets = [];
 
@@ -1514,6 +1644,10 @@ function loadPointMachineVibrationBulkMetadata(
                     continue;
                 }
 
+                (asset.mAssetInfoDataloggers || []).forEach(function (datalogger) {
+                    registerPointMachineAssetDatalogger(asset.Id, datalogger);
+                });
+
                 var attributes =
                     Array.isArray(
                         asset.assetAttributes
@@ -1527,11 +1661,22 @@ function loadPointMachineVibrationBulkMetadata(
                     attributes.length;
                     attrIndex++
                 ) {
+                    registerPointMachineAssetAttribute(
+                        asset.Id,
+                        attributes[attrIndex]
+                    );
+
                     registerPointMachineVibrationBulkAttribute(
                         asset.Id,
                         attributes[attrIndex]
                     );
                 }
+            }
+
+            // A graph opened before this arrived showed the full list.
+            if (typeof window.pmgRefreshForAssetMetadata === 'function') {
+                try { window.pmgRefreshForAssetMetadata(); }
+                catch (e) { console.warn('[PM Vibration Bulk] graph refresh failed', e); }
             }
 
             pmVibrationBulkLoadedSiteId =
