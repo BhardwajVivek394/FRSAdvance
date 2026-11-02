@@ -247,10 +247,14 @@
         '.tld-col{display:flex;flex-direction:column;gap:12px;min-width:0;}' +
         '.tld-sec{border:1px solid var(--e7-border,#e7ebf1);border-radius:14px;background:var(--e7-surface,#fff);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0;}' +
         '.tld-sec.fill{flex:1;min-height:0;}' +
+        '.tld-sec{transition:transform .2s ease,box-shadow .2s ease;}' +
+        /* selected section: lifted card with an accent top edge */
+        '.tld-sec.tld-sec-on:not(.full){transform:translateY(-2px);box-shadow:inset 0 3px 0 var(--e7-accent,#0A7C86),inset 0 4px 6px -4px rgba(255,255,255,.6),0 2px 4px rgba(15,23,42,.08),0 10px 24px -6px rgba(15,23,42,.18);}' +
         '.tld-sh{display:flex;align-items:center;gap:8px;}' +
         '.tld-sh h3{margin:0;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--e7-text-2,#415064);flex:1;}' +
         '.tld-note{font-size:11px;color:var(--e7-text-3,#8b98a8);}' +
         '.tld-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}' +
+        '.tld-tiles.sig{grid-template-columns:repeat(2,minmax(0,1fr));}' +   /* signal: I / V of one aspect per row */
         '.tld-tile{display:block;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;border:1px solid var(--e7-border,#e7ebf1);border-radius:10px;padding:8px 10px 6px;background:var(--e7-surface,#fff);}' +
         '.tld-tile:hover{border-color:var(--e7-accent,#2f9ec4);} .tld-tile.sel{box-shadow:0 0 0 2px var(--e7-accent,#2f9ec4);}' +
         '.tld-calc button{display:flex;justify-content:space-between;gap:6px;width:100%;padding:3px 2px;border:none;border-bottom:1px dashed var(--e7-border,#e7ebf1);background:transparent;font:inherit;color:inherit;text-align:left;cursor:pointer;}' +
@@ -395,9 +399,30 @@
             '<div class="vl">' + fmt(r.v) + '<small>' + esc(unitOf(lab)) + '</small></div>' +
             '<div class="sl">' + esc(statusLine(r, st)) + '</div>' + gauge + '</button>';
     }
+    /* Signal tiles in the Telemetry Live table's column order (_signalColSeq via
+       _compareSignalColumns, on the raw attribute name), I / V of an aspect side by side.
+       Aliases the sequence does not know (ISHSIG OFF, VSIG RG) map to its names. */
+    var SH_ASPECT = { OFF: 'Off Aspect', ON: 'On Aspect', PILOT: 'PILOT' };
+    function sigColName(r) {
+        var ord = typeof W._getSignalColOrder === 'function' ? W._getSignalColOrder : function () { return 999; };
+        var t = String(r.title || r.label || '').trim();
+        if (ord(t) !== 999) return t;
+        var al = String(r.alias || r.label || '').toUpperCase().replace(/\s+/g, ' ').trim(), m, c = '';
+        if ((m = /^([IV])SHSIG ([A-Z]+)$/.exec(al))) c = m[2] === 'HPR' ? 'Sh-HPR' : SH_ASPECT[m[2]] ? SH_ASPECT[m[2]] + (m[1] === 'I' ? ' mA' : ' V') : '';
+        else if ((m = /^([IV])SIG ([A-Z]+)$/.exec(al))) c = /PR$/.test(m[2]) ? m[2] : m[2] + (m[1] === 'I' ? ' mA' : ' V');
+        return c && ord(c) !== 999 ? c : t;
+    }
+    function signalTilesHtml(rows) {
+        var cmp = typeof W._compareSignalColumns === 'function' ? W._compareSignalColumns
+            : function (a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true }); };
+        var list = rows.map(function (r, i) { return { r: r, c: sigColName(r), i: i }; });
+        list.sort(function (x, y) { return cmp(x.c, y.c) || x.i - y.i; });
+        return list.map(function (x) { return tileHtml(x.r); }).join('');
+    }
     function valuesHtml(A) {
         if (!A || !A.rows.length) return '<div class="tld-empty">Waiting for live values...</div>';
-        var h = '<div class="tld-tiles">' + A.rows.map(tileHtml).join('') + '</div>';
+        var h = kind() === 'signal' ? '<div class="tld-tiles sig">' + signalTilesHtml(A.rows) + '</div>'
+            : '<div class="tld-tiles">' + A.rows.map(tileHtml).join('') + '</div>';
         if (kind() === 'track' && A.derived && A.derived.length) {   /* calculated values exist for track circuits only */
             h += '<div class="tld-calc">' + A.derived.map(function (r) {
                 var sel = D.sel && D.sel.key === r.key;
@@ -1733,6 +1758,7 @@
             error: function (x) { if (D.aid === aid) { D.graph = { err: 'History could not be loaded (HTTP ' + (x && x.status) + ').' }; paintGraph(); } }
         });
     }
+    var RL_UP = '#1F9D55', RL_DN = '#CA8A04';   /* relay Pickup / Drop, same as the relay chips */
     function graphHtml() {
         var G = D.graph;
         if (!G || G.loading) return '<div class="tld-empty">Loading history...</div>';
@@ -1757,8 +1783,8 @@
             var cr = {};
             if (cls && last !== null && !c.dl) { cr = cls(D.aid, c.name, last, c.attrId) || {}; if (!cr.range && name !== c.name) cr = cls(D.aid, name, last, c.attrId) || cr; }
             var rg = cr.range || null;
-            var st = cr.st || 'ok';
-            var vcol = st === 'high' ? '#C8323A' : st === 'low' ? '#B47B00' : 'currentColor';
+            /* only relays are coloured (Pickup green / Drop amber); readings stay in the normal text colour */
+            var vcol = c.dl && last !== null ? (last >= 0.5 ? RL_UP : RL_DN) : 'currentColor';
             out += '<text x="0" y="' + (y0 + 15) + '" font-size="11" fill="var(--e7-text-2,#4A5868)"><title>' + esc(name + (name !== c.name ? ' (' + c.name + ')' : '')) + '</title>' + esc(name.length > 30 ? name.slice(0, 29) + '…' : name) + '</text>' +
                 '<text x="0" y="' + (y0 + 32) + '" font-size="13" font-weight="800" fill="' + vcol + '" font-family="JetBrains Mono, monospace">' +
                 (c.dl ? (last === null ? '--' : last >= 0.5 ? 'Pickup' : 'Drop') : fmt(last)) + '</text>';
@@ -1771,12 +1797,25 @@
             var Y = function (v) { return y0 + LH - ((v - lo) / (hi - lo)) * LH; };
             lanes[k].Y = Y;
             if (rg && rg.min !== null && rg.max !== null) out += '<rect x="' + lab + '" y="' + Y(rg.max).toFixed(1) + '" width="' + gw + '" height="' + (Y(rg.min) - Y(rg.max)).toFixed(1) + '" fill="rgba(31,157,85,.12)"></rect>';
-            var d = 'M' + X(pts[0][0]).toFixed(1) + ' ' + Y(pts[0][1]).toFixed(1);
-            for (var i = 1; i < pts.length; i++) d += 'L' + X(pts[i][0]).toFixed(1) + ' ' + Y(pts[i - 1][1]).toFixed(1) + 'L' + X(pts[i][0]).toFixed(1) + ' ' + Y(pts[i][1]).toFixed(1);
-            d += 'L' + X(G.t1).toFixed(1) + ' ' + Y(pts[pts.length - 1][1]).toFixed(1);
-            out += '<path d="' + d + '" fill="none" stroke="' + (c.dl ? '#7C3AED' : '#0A7C86') + '" stroke-width="1.4"></path>' +
-                '<text x="' + (lab - 4) + '" y="' + (y0 + 9) + '" text-anchor="end" font-size="8.5" fill="var(--e7-text-3,#8492A6)">' + (c.dl ? 'P' : fmt(hi - pad)) + '</text>' +
-                '<text x="' + (lab - 4) + '" y="' + (y0 + LH) + '" text-anchor="end" font-size="8.5" fill="var(--e7-text-3,#8492A6)">' + (c.dl ? 'D' : fmt(lo + pad)) + '</text>';
+            if (c.dl) {
+                /* relay: green while picked up, amber while dropped; the edge takes the new state's colour */
+                var seg = { up: '', dn: '' };
+                for (var i = 0; i < pts.length; i++) {
+                    var sx0 = X(pts[i][0]).toFixed(1), sx1 = X(i + 1 < pts.length ? pts[i + 1][0] : G.t1).toFixed(1), sy = Y(pts[i][1]).toFixed(1);
+                    var sk = pts[i][1] >= 0.5 ? 'up' : 'dn';
+                    if (i > 0) seg[sk] += 'M' + sx0 + ' ' + Y(pts[i - 1][1]).toFixed(1) + 'L' + sx0 + ' ' + sy;
+                    seg[sk] += 'M' + sx0 + ' ' + sy + 'L' + sx1 + ' ' + sy;
+                }
+                if (seg.up) out += '<path d="' + seg.up + '" fill="none" stroke="' + RL_UP + '" stroke-width="1.6"></path>';
+                if (seg.dn) out += '<path d="' + seg.dn + '" fill="none" stroke="' + RL_DN + '" stroke-width="1.6"></path>';
+            } else {
+                var d = 'M' + X(pts[0][0]).toFixed(1) + ' ' + Y(pts[0][1]).toFixed(1);
+                for (var j = 1; j < pts.length; j++) d += 'L' + X(pts[j][0]).toFixed(1) + ' ' + Y(pts[j - 1][1]).toFixed(1) + 'L' + X(pts[j][0]).toFixed(1) + ' ' + Y(pts[j][1]).toFixed(1);
+                d += 'L' + X(G.t1).toFixed(1) + ' ' + Y(pts[pts.length - 1][1]).toFixed(1);
+                out += '<path d="' + d + '" fill="none" stroke="#0A7C86" stroke-width="1.4"></path>';
+            }
+            out += '<text x="' + (lab - 4) + '" y="' + (y0 + 9) + '" text-anchor="end" font-size="8.5" fill="' + (c.dl ? RL_UP : 'var(--e7-text-3,#8492A6)') + '">' + (c.dl ? 'P' : fmt(hi - pad)) + '</text>' +
+                '<text x="' + (lab - 4) + '" y="' + (y0 + LH) + '" text-anchor="end" font-size="8.5" fill="' + (c.dl ? RL_DN : 'var(--e7-text-3,#8492A6)') + '">' + (c.dl ? 'D' : fmt(lo + pad)) + '</text>';
         });
         for (var t = 0; t <= 8; t++) {
             var tx = lab + t * gw / 8, dt = new Date(G.t0 + span * t / 8);
@@ -1795,7 +1834,7 @@
                 '<text font-size="10" font-weight="700" fill="var(--e7-text,#1d2733)" font-family="JetBrains Mono, monospace"></text></g>';
         });
         out += '</g>';
-        return out + '</svg><div class="tld-note">Hover the graph to read every value at that time and when it last changed. Own scale per reading, green band = safe range, purple = relay (P = Pickup, D = Drop), time axis shared by all lanes.</div>';
+        return out + '</svg><div class="tld-note">Hover the graph to read every value at that time and when it last changed. Own scale per reading, green band = safe range, relay: green = Pickup, amber = Drop, time axis shared by all lanes.</div>';
     }
     function paintGraph() { var el = document.getElementById('tldGraph'); if (el) el.innerHTML = graphHtml(); }
     function hhmmss(ms) { var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
@@ -1854,6 +1893,10 @@
             var bx = right ? x - 6 - tw2 : x + 6, by = Math.max(ln.y0, Math.min(ln.y0 + ln.LH - 15, cy - 7.5));
             var c = g.firstChild, r = c.nextSibling, s = r.nextSibling;
             c.setAttribute('cx', xs); c.setAttribute('cy', cy.toFixed(1));
+            if (ln.dl) {   /* relay tag in its state colour */
+                var rc = v >= 0.5 ? RL_UP : RL_DN;
+                c.setAttribute('fill', rc); r.setAttribute('stroke', rc); s.setAttribute('fill', rc);
+            }
             r.setAttribute('x', bx.toFixed(1)); r.setAttribute('y', by.toFixed(1)); r.setAttribute('width', tw2.toFixed(1));
             s.setAttribute('x', (bx + 4).toFixed(1)); s.setAttribute('y', (by + 11).toFixed(1));
             s.textContent = txt;
@@ -2214,13 +2257,14 @@
             '<button type="button" class="tld-ib" data-tld-chatclear="1" aria-label="New chat" title="New chat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>' +
             '<button type="button" class="tld-ib" data-tld-chatfull="1" aria-pressed="' + !!D.chatFull + '" aria-label="' + (D.chatFull ? 'Exit full screen' : 'Expand to full screen') + '" title="Full screen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button></div>' +
             '<div id="tldChat" style="display:flex;flex-direction:column;flex:1;min-height:0">' + chatHtml() + '</div></section></div></div>' +
-            (showCircuit ? sec('Circuit &#183; live', '<div id="tldCircuit">' + circuitSvg(A) + '</div>' + circuitLegend(), kind() === 'signal' ? '<span id="tldSigTabs">' + sigTabsHtml(A) + '</span>' : '<span class="tld-chip ok">Live</span>', null, false, 'tldSecCircuit') : '') +
+            /* sections in the nav order: Alerts, Circuit, Track shorting / Pattern, Roster, Graph */
             sec('Past alerts &#183; 30 days', alertsHtml(), '', 'tldAlerts', false, 'tldSecAlerts') +
-            sec('Maintenance roster &#183; today', rosterHtml(), '<button type="button" class="tld-btn sm" data-tld-rrefresh="1">&#8635; Refresh</button>', 'tldRoster', false, 'tldSecRoster') +
+            (showCircuit ? sec('Circuit &#183; live', '<div id="tldCircuit">' + circuitSvg(A) + '</div>' + circuitLegend(), kind() === 'signal' ? '<span id="tldSigTabs">' + sigTabsHtml(A) + '</span>' : '<span class="tld-chip ok">Live</span>', null, false, 'tldSecCircuit') : '') +
             (kind() === 'signal' ? '' : kind() === 'pm' ? sec('Operation pattern analysis', '<div class="tld-pend"><b>Pattern analysis API pending.</b> This section will run the point-machine pattern checks on the recent operations and show the result: ' +
                 'overall verdict (normal / watch / fault, confidence), each pattern checked (e.g. obstruction, friction / slagging, creeping, A / B end mismatch, slow throw, detection or indication low) with its status and the evidence (operations, current curve, values), and the operations that matched.</div>', '', null, false, 'tldSecPattern') :
             sec('Track shorting (leakage) report', '<div id="tldShort" style="display:flex;flex-direction:column;gap:8px">' + shortHtml() + '</div><div id="tldShortPlots" style="margin-top:8px">' + shortPlotsHtml() + '</div>',
                 '<div style="display:flex;gap:4px">' + shortDaysHtml() + '</div>', null, false, 'tldSecShort')) +
+            sec('Maintenance roster &#183; today', rosterHtml(), '<button type="button" class="tld-btn sm" data-tld-rrefresh="1">&#8635; Refresh</button>', 'tldRoster', false, 'tldSecRoster') +
             sec('Graph &#183; every reading', graphHtml(), '<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">' +
                 '<span class="tld-note" style="margin:0 2px 0 0">Hover</span>' +
                 [['one', 'Single', 'Show the value of the reading under the mouse only'], ['all', 'All', 'Show the value of every reading at the mouse time']].map(function (m) {
@@ -2231,7 +2275,14 @@
     }
     function setActiveNav(active) {
         var btns = document.querySelectorAll('[data-tld-nav]');
-        for (var i = 0; i < btns.length; i++) btns[i].setAttribute('aria-pressed', String(btns[i] === active));
+        for (var i = 0; i < btns.length; i++) {
+            var on = btns[i] === active;
+            btns[i].setAttribute('aria-pressed', String(on));
+            /* the selected section gets an accent border (Live values sits in a .tld-col wrapper) */
+            var el = document.getElementById(btns[i].getAttribute('data-tld-nav'));
+            if (el && !el.classList.contains('tld-sec')) el = el.querySelector('.tld-sec');
+            if (el) el.classList.toggle('tld-sec-on', on);
+        }
     }
     /* v618.38 scroll-spy: highlight the nav item for the section nearest the top of the body.
        v618.39: rAF-throttled; paused while a nav click is scrolling (it used to flip the

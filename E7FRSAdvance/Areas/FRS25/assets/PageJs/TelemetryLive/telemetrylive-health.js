@@ -340,8 +340,15 @@
         var byName = window.assetAttributeByName || {};
         var pmm = readPmModel(aid);
         var rows = pmm ? pmm.rows : [];
+        /* one row per attribute: the SIP mirror (sip-telemetry.js mirrorToShared) and the
+           bulk seed store the same attribute object under its raw name AND its alias */
+        var seenObj = [];
         for (var k in (pmm ? {} : attrs)) {
             if (!attrs.hasOwnProperty(k)) continue;
+            if (attrs[k] && typeof attrs[k] === 'object') {
+                if (seenObj.indexOf(attrs[k]) !== -1) continue;
+                seenObj.push(attrs[k]);
+            }
             var a = attrs[k] || {};
             var attrId = String(a.AttrId || a.AssetAttributeId || '');
             /* userAssetSimpleMap holds only the page's selected type; the SIP's
