@@ -2643,13 +2643,6 @@ function _pmgShell() {
             '.pmg-relays .rdpms-dl-badge.pickup{background:rgba(16,185,129,.15) !important;color:#059669 !important;}' +
             '.pmg-relays .rdpms-dl-badge.drop{background:rgba(245,158,11,.20) !important;color:#d97706 !important;}' +
             '.pmg-relays .rdpms-dl-badge.null{background:rgba(148,163,184,.16) !important;color:var(--e7-text-3,#64748b) !important;}' +
-            '.pmg-pop{display:none;position:absolute;left:0;top:100%;z-index:30;margin-top:6px;box-sizing:border-box;width:min(520px,100%);overflow-x:auto;padding:10px 12px;border:1px solid var(--e7-border,rgba(255,255,255,.12));border-radius:10px;background:var(--e7-surface,#0e1530);box-shadow:0 8px 24px rgba(0,0,0,.20);}' +
-            '.pmg-relays:hover .pmg-pop,.pmg-relays:focus-within .pmg-pop{display:block;}' +
-            '.pmg-pop-title{margin-bottom:6px;font-size:11px;font-weight:700;color:var(--e7-heading,#0f172a);}' +
-            '.pmg-pop table{width:100%;border-collapse:collapse;font-size:11px;color:var(--e7-text-2,rgba(255,255,255,.65));}' +
-            '.pmg-pop th{padding:3px 8px 3px 0;text-align:left;font-weight:600;color:var(--e7-text-3,rgba(255,255,255,.50));white-space:nowrap;}' +
-            '.pmg-pop td{padding:4px 8px 4px 0;border-top:1px solid var(--e7-border,rgba(255,255,255,.10));white-space:nowrap;}' +
-            '.pmg-pop td:first-child{font-weight:600;color:var(--e7-heading,#0f172a);}' +
             '.pmg-tabs{border-bottom:2px solid var(--e7-border,rgba(255,255,255,.10));}' +
             '.pmg-tab-btn{border:none;background:none;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:-2px;' +
             'color:var(--e7-text-3,rgba(255,255,255,.50));border-bottom:3px solid transparent;}' +
@@ -2981,25 +2974,17 @@ function pmgUpdateLiveStrip() {
     // Relay state uses the shared badge: its colour and arrow come from the CSS.
     var relays = (typeof pmAssetDataloggers === 'function') ? pmAssetDataloggers(pmG.assetId) : [];
     if (relays.length) {
-        var pills = '', rows = '';
+        var pills = '';
         relays.forEach(function (dl) {
             var relay = _pmgLiveRelay(asset, dl);
             var cls = !relay ? 'null' : (relay.isPickup ? 'pickup' : 'drop');
             var text = !relay ? '—' : (relay.isPickup ? 'Pickup' : 'Drop');
             var badge = '<span class="rdpms-dl-badge ' + cls + '">' + text + '</span>';
-            var name = escapeHtml(dl.name);
-            pills += '<div class="pmg-relay"><span class="pmg-relay-name">' + name + '</span>' + badge + '</div>';
-            rows += '<tr><td>' + name + '</td><td>' + (escapeHtml(dl.assetName) || '—') + '</td><td>' + badge + '</td>' +
-                '<td>' + (relay && relay.value !== undefined ? escapeHtml(String(relay.value)) : '—') + '</td>' +
-                '<td>' + (relay && relay.timestamp ? fmtTimestampDevice(relay.timestamp) : '—') + '</td></tr>';
+            pills += '<div class="pmg-relay"><span class="pmg-relay-name">' + escapeHtml(dl.name) + '</span>' + badge + '</div>';
         });
-        // tabindex: keyboard and touch can open the popup too.
-        html += '<div class="pmg-relays" tabindex="0">' + pills +
-            '<div class="pmg-pop"><div class="pmg-pop-title">Datalogger attributes</div>' +
-            '<table><thead><tr><th>Attribute</th><th>Asset</th><th>State</th><th>Value</th><th>Updated</th></tr></thead>' +
-            '<tbody>' + rows + '</tbody></table></div></div>';
+        html += '<div class="pmg-relays">' + pills + '</div>';
     }
-    // Rebuilt only on a change: replacing the DOM under the cursor would flicker the popup.
+    // Rebuilt only on a change, to avoid needless DOM churn.
     if (host._pmgHtml === html) return;
     host._pmgHtml = html;
     host.innerHTML = html;
