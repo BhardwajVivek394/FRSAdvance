@@ -1,4 +1,4 @@
-﻿@{ ViewBag.Title = "Dashboard";
+@{ ViewBag.Title = "Dashboard";
     Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml"; }
 
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css">
@@ -3719,22 +3719,7 @@
                         foreach (var assettype in ViewBag.FRSAssetType as List<Domain.AssetType>)
                         {
                             var key = System.Text.RegularExpressions.Regex.Replace(assettype.Name ?? "", "[^A-Za-z0-9_-]", "");
-                            var nm = (assettype.Name ?? "").ToLowerInvariant();
-                            var icon = "fa-cube";
-                            if (nm.Contains("track")) { icon = "fa-grip-lines"; }
-                            else if (nm.Contains("signal") && !nm.Contains("current")) { icon = "fa-traffic-light"; }
-                            else if (nm.Contains("point")) { icon = "fa-code-branch"; }
-                            else if (nm.Contains("axle")) { icon = "fa-circle-dot"; }
-                            else if (nm.Contains("gate")) { icon = "fa-road-barrier"; }
-                            else if (nm.Contains("charger") || nm.Contains("ips")) { icon = "fa-car-battery"; }
-                            else if (nm.Contains("eld") || nm.Contains("earth")) { icon = "fa-bolt"; }
-                            else if (nm.Contains("relay")) { icon = "fa-toggle-on"; }
-                            else if (nm.Contains("bus bar")) { icon = "fa-grip-lines-vertical"; }
-                            else if (nm.Contains("voltage") || nm.Contains("current")) { icon = "fa-wave-square"; }
-                            else if (nm.Contains("ufsbi")) { icon = "fa-tower-broadcast"; }
-                            else if (nm.Contains("server")) { icon = "fa-server"; }
-                            else if (nm.Contains("time")) { icon = "fa-clock"; }
-                            else if (nm.Contains("ftu")) { icon = "fa-microchip"; }
+                            var icon = AssetTypeIcon(assettype.Name);
                             <div class="ov-tr ov-row asset-type-card" role="row" tabindex="0" data-asset-type-id="@assettype.Id" data-asset-type-name="@key">
                                 <span class="ov-name" role="cell">
                                     <span class="ov-ic"><i class="fa-solid @icon" aria-hidden="true"></i></span>
@@ -3823,6 +3808,37 @@
     </aside>
 </div>
 
+@functions {
+    // Font Awesome 6 icon per asset type, shared by the health table and the donut cards.
+    // Order matters: the more specific names ("relay room bus bar", "signal current") come first.
+    static string AssetTypeIcon(string name)
+    {
+        var nm = (name ?? "").ToLowerInvariant();
+        if (nm.Contains("track")) { return "fa-train"; }
+        if (nm.Contains("bus bar")) { return "fa-diagram-project"; }
+        if (nm.Contains("mast")) { return "fa-tower-cell"; }
+        if (nm.Contains("signal") && !nm.Contains("current")) { return "fa-traffic-light"; }
+        if (nm.Contains("point")) { return "fa-code-branch"; }
+        if (nm.Contains("axle")) { return "fa-circle-dot"; }
+        if (nm.Contains("gate") && !nm.Contains("relay")) { return "fa-road-barrier"; }
+        if (nm.Contains("charger") || nm.Contains("ips")) { return "fa-car-battery"; }
+        if (nm.Contains("earth")) { return "fa-plug-circle-exclamation"; }
+        if (nm.Contains("eld")) { return "fa-plug-circle-bolt"; }
+        if (nm.Contains("relay")) { return "fa-toggle-on"; }
+        if (nm.Contains("voltage")) { return "fa-bolt"; }
+        if (nm.Contains("current")) { return "fa-wave-square"; }
+        if (nm.Contains("ufsbi")) { return "fa-microchip"; }
+        if (nm.Contains("server")) { return "fa-database"; }
+        if (nm.Contains("time")) { return "fa-clock"; }
+        if (nm.Contains("ftu")) { return "fa-gear"; }
+        if (nm.Contains("bridge")) { return "fa-bridge"; }
+        if (nm.Contains("bhms")) { return "fa-chart-line"; }
+        if (nm.Contains("genset")) { return "fa-charging-station"; }
+        if (nm.StartsWith("pg")) { return "fa-gauge-high"; }
+        return "fa-cube";
+    }
+}
+
 <!-- ==================== MORE: per-asset-type donuts (folded, unchanged ids) ==================== -->
 <details class="ov-more" id="ovDonutsMore">
     <summary><span><i class="fa fa-adjust" aria-hidden="true"></i>Today's report by asset type</span><small>Healthy / predictive / failure donut per asset type</small></summary>
@@ -3840,7 +3856,9 @@
             {
                 var key = System.Text.RegularExpressions.Regex.Replace(assettype.Name ?? "", "[^A-Za-z0-9_-]", "");
                 <div class="report pie-chart-box" data-asset-type-id="@assettype.Id" data-asset-type-name="@key">
-                    <div class="report-title @tones[counter % tones.Length]">&#9612; @assettype.Name</div>
+                    <div class="report-title @tones[counter % tones.Length]">
+                        <span class="rpt-ic"><i class="fa-solid @AssetTypeIcon(assettype.Name)" aria-hidden="true"></i></span>@assettype.Name
+                    </div>
                     <div class="rbody">
                         @* ECharts donut (sized like the mockup's 120px .donut) *@
                         <div class="gaph-assetType" id="Main-@key"></div>
