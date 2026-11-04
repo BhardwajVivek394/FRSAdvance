@@ -1839,15 +1839,9 @@ function loadUserAssetInfo(siteId, callback) {
         return;
     }
 
-    // IMPORTANT: Point Machine uses old working flow and must not call GetBulkAssetMetadata/getbulkassetdata.
-    if (isPointMachineAssetTypeForBulkSkip(assetTypeId)) {
-        seedPointMachineAttributeFallbacks();
-        markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
-        console.log('[UserAssetInfo] Skipped GetBulkAssetMetadata for Point Machine');
-        if (callback) callback();
-        return;
-    }
-
+    // Point Machine now binds site attributes through GetBulkAssetMetadata like
+    // Track/Signal. loadBulkAssetMetadata falls back to GetUserAssetInfo (and
+    // the fixed PM names) when the bulk response is incomplete for the site.
     loadBulkAssetMetadata(siteId, assetTypeId, function () {
         markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
         console.log('[UserAssetInfo] Loaded via GetBulkAssetMetadata (site=' + siteId + ', type=' + assetTypeId + ') — ' +
@@ -2157,13 +2151,21 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
     }
 
 
-    // Hard guard: Point Machine must never call /FRS25/Telemetry/GetBulkAssetMetadata.
-    if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip(assetTypeId)) {
+    // Point Machine: use GetBulkAssetMetadata when it carries the site's data
+    // (every asset with attributes); otherwise fall back to GetUserAssetInfo.
+    var _isPmBulk = (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip(assetTypeId));
+    function _pmBulkFallback(reason) {
+        console.warn('[BulkMeta] Point Machine bulk metadata incomplete (' + reason + ') — using GetUserAssetInfo');
         if (typeof seedPointMachineAttributeFallbacks === 'function') seedPointMachineAttributeFallbacks();
-        if (typeof markUserAssetInfoLoadedForAssetType === 'function') markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
-        console.log('[BulkMeta] Skipped GetBulkAssetMetadata for Point Machine');
-        if (callback) callback();
-        return;
+        var _done = function () {
+            if (typeof markUserAssetInfoLoadedForAssetType === 'function') markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
+            bulkMetadataLoaded = true;
+            bulkMetadataSiteId = String(siteId);
+            bulkMetadataAssetTypeId = String(assetTypeId);
+            if (callback) callback();
+        };
+        if (typeof window.loadPointMachineUserAssetInfo === 'function') window.loadPointMachineUserAssetInfo(siteId, _done);
+        else _done();
     }
 
     if (bulkMetadataLoaded &&
@@ -2192,11 +2194,26 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
         success: function (response) {
             if (!response || !response.success || !response.mAssets) {
                 console.warn('[BulkMeta] Error: ' + (response && response.errorMessage));
+                if (_isPmBulk) { _pmBulkFallback('no response'); return; }
                 _fallbackToLegacyLoad(siteId, assetTypeId, callback);
                 return;
             }
 
             var assets = response.mAssets || [];
+
+            // Point Machine: accept bulk only when every asset has attributes.
+            if (_isPmBulk) {
+                var _pmMissing = 0;
+                for (var _pi = 0; _pi < assets.length; _pi++) {
+                    var _pa = assets[_pi];
+                    var _pAttrs = _pa && (_pa.assetAttributes || _pa.AssetAttributes);
+                    if (!_pa || !_pa.Id || !_pAttrs || !_pAttrs.length) _pmMissing++;
+                }
+                if (!assets.length || _pmMissing > 0) {
+                    _pmBulkFallback(assets.length ? (_pmMissing + ' of ' + assets.length + ' assets without attributes') : 'no assets');
+                    return;
+                }
+            }
             var zeroCount = 0;
             var attrCount = 0;
             var dlCount = 0;
@@ -2486,7 +2503,8 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
             rebuildWsValidAssetIdsFromBulk();
 
             // Remove any WS-only/scrap assets that entered before bulk metadata completed.
-            Object.keys(wsLiveData || {}).forEach(function (id) {
+            // Point Machine rows come from GetAssestBy, so they are not pruned here.
+            if (!_isPmBulk) Object.keys(wsLiveData || {}).forEach(function (id) {
                 if (wsValidAssetIds.indexOf(String(id)) === -1) {
                     console.warn('[BulkMeta] Removing WS-only asset not present in API response:', {
                         assetId: id,
@@ -2521,10 +2539,14 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                 dlCount + ' datalogger | ' +
                 sigCacheCount + ' signal groups — 1 API call');
 
+            // Point Machine: fixed PM names only fill ids the site did not send.
+            if (_isPmBulk && typeof seedPointMachineAttributeFallbacks === 'function') seedPointMachineAttributeFallbacks();
+
             if (callback) callback();
         },
         error: function (xhr, status, err) {
             console.error('[BulkMeta] AJAX error (' + status + '): ' + err);
+            if (_isPmBulk) { _pmBulkFallback('AJAX ' + status); return; }
             _fallbackToLegacyLoad(siteId, assetTypeId, callback);
         }
     });
@@ -14912,16 +14934,18 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
         h += '<span class="d-flex align-items-center pm-volt-row">';
         //h += '<span>V <small>PT NWKR</small> <strong id="pmVnwkrA_' + assetId + '">--</strong> V</span>';
         //h += '<span class="ms-auto">V <small>PT 24 DC LOC N/R</small> <strong id="pmVdcA_' + assetId + '">--</strong> V</span>';
-        h += '<span>V <small>PT <span id="pmKrLabelA_' + assetId + '">NWKR</span></small> <strong id="pmVnwkrA_' + assetId + '">--</strong> V</span>';
-        h += '<span class="ms-auto">V <small>PT 24 DC LOC <span id="pmDirLocLabelA_' + assetId + '">N/R</span></small> <strong id="pmVdcA_' + assetId + '">--</strong> V</span>';
+        // Label is replaced with the bound site attribute's name (telemetrylive-ext.js bindPmVoltRow).
+        h += '<span><span class="pm-volt-name" id="pmKrNameA_' + assetId + '">V <small>PT <span id="pmKrLabelA_' + assetId + '">NWKR</span></small></span> <strong id="pmVnwkrA_' + assetId + '">--</strong> V</span>';
+        h += '<span class="ms-auto"><span class="pm-volt-name" id="pmLocNameA_' + assetId + '">V <small>PT 24 DC LOC <span id="pmDirLocLabelA_' + assetId + '">N/R</span></small></span> <strong id="pmVdcA_' + assetId + '">--</strong> V</span>';
         h += '</span></td>';
     }
     // B-end voltages (only if B has data)
     if (showB) {
         h += '<td colspan="3" class="pm-voltage-subheader col-b" id="pmVoltHeaderB_' + assetId + '">';
         h += '<span class="d-flex align-items-center pm-volt-row">';
-        h += '<span>V <small>PT <span id="pmKrLabelB_' + assetId + '">NWKR</span></small> <strong id="pmVnwkrB_' + assetId + '">--</strong> V</span>';
-        h += '<span class="ms-auto">V <small>PT 24 DC LOC <span id="pmDirLocLabelB_' + assetId + '">N/R</span></small> <strong id="pmVdcB_' + assetId + '">--</strong> V</span>';
+        // Label is replaced with the bound site attribute's name (telemetrylive-ext.js bindPmVoltRow).
+        h += '<span><span class="pm-volt-name" id="pmKrNameB_' + assetId + '">V <small>PT <span id="pmKrLabelB_' + assetId + '">NWKR</span></small></span> <strong id="pmVnwkrB_' + assetId + '">--</strong> V</span>';
+        h += '<span class="ms-auto"><span class="pm-volt-name" id="pmLocNameB_' + assetId + '">V <small>PT 24 DC LOC <span id="pmDirLocLabelB_' + assetId + '">N/R</span></small></span> <strong id="pmVdcB_' + assetId + '">--</strong> V</span>';
         h += '</span></td>';
     }
     h += '</tr>';
