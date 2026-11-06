@@ -211,6 +211,35 @@ else
                                             isShowbtn = false;
                                         }
 
+                                        // Feedback hierarchy ESM → JE → SSE/CSI (field feedback only; Acknowledge does not count)
+                                        int clsESM = E7FRSAdvance.Utility.Utility.UserClass.ESM.GetHashCode();
+                                        int clsJE = E7FRSAdvance.Utility.Utility.UserClass.JE.GetHashCode();
+                                        int clsSSE = E7FRSAdvance.Utility.Utility.UserClass.SSECSI.GetHashCode();
+                                        int clsVendor = E7FRSAdvance.Utility.Utility.UserClass.ENERGY7CONTROL.GetHashCode();
+                                        var fieldFeedbacks = mFRSAlertRemarks
+                                            .Where(x => x.FRSAlertId == a.Id
+                                                     && (x.MaintainerId == clsESM || x.MaintainerId == clsJE || x.MaintainerId == clsSSE)
+                                                     && x.AcknowledgementStatusId != E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Acknowledge.GetHashCode())
+                                            .OrderBy(x => x.CreatedDate).ThenBy(x => x.Id)
+                                            .ToList();
+
+                                        // 1. ESM gave feedback and JE gave feedback + remark → SSE/CSI cannot give T/PT/M/F
+                                        if (userClassId == clsSSE
+                                            && fieldFeedbacks.Any(x => x.MaintainerId == clsESM)
+                                            && fieldFeedbacks.Any(x => x.MaintainerId == clsJE))
+                                        {
+                                            isShowbtn = false;
+                                        }
+
+                                        // 2. JE or SSE/CSI gave feedback first → ESM / JE / Vendor cannot give T/PT/M/F (or + Remark)
+                                        var firstFeedback = fieldFeedbacks.FirstOrDefault();
+                                        if (firstFeedback != null
+                                            && (firstFeedback.MaintainerId == clsJE || firstFeedback.MaintainerId == clsSSE)
+                                            && (userClassId == clsESM || userClassId == clsJE || userClassId == clsVendor))
+                                        {
+                                            isShowbtn = false;
+                                        }
+
                                         // Determine role action
                                         if (isShowbtn)
                                         {

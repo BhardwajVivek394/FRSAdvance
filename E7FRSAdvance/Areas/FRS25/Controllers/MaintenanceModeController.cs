@@ -77,6 +77,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult UpdateMaintenanceActiveMode(Domain.MaintenanceMode mMaintenanceMode)
         {
+            if (!E7FRSAdvance.Utility.Utility.CanManageMaintenanceMode(ClsHttpContent.LoginUser))
+                return Json(new { type = "error", result = "You are not allowed to create Maintenance Mode." });
             dynamic data = new ExpandoObject();
             try
             {
@@ -140,6 +142,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult UpdateMaintenanceInActiveMode(Domain.MaintenanceMode mMaintenanceMode)
         {
+            if (!E7FRSAdvance.Utility.Utility.CanManageMaintenanceMode(ClsHttpContent.LoginUser))
+                return Json(new { type = "error", result = "You are not allowed to clear Maintenance Mode." });
             dynamic data = new ExpandoObject();
             try
             {

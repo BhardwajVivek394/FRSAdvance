@@ -175,9 +175,30 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             return Json(_assetService.GetAssestBy(siteId, assetTypeId), JsonRequestBehavior.AllowGet);
         }
+        // Only Station Level Users (ESM / SSE-CSI / JE) may add, edit or delete
+        // manual Actual Failure entries; every other user class is view-only.
+        public static bool IsStationLevelUser(Domain.User user)
+        {
+            if (user == null) return false;
+            int stationType = (int)E7FRSAdvance.Utility.Utility.UserClassType.StationLevelUser;
+            if (user.UserClassTypeId == stationType) return true;
+            if ((user.UserClassTypeName ?? "").Trim().Equals("Station Level User", StringComparison.OrdinalIgnoreCase)) return true;
+            return E7FRSAdvance.MenuBuilder.FRS25.GetUserClassTypeId(user.UserClassId ?? 0) == stationType;
+        }
+
+        private ActionResult ManualEntryDenied()
+        {
+            return Json(new APIResponse
+            {
+                IsSuccess = false,
+                Message = "Only Station Level users can do manual entry of alerts."
+            }, JsonRequestBehavior.AllowGet);
+        }
+
         [HttpPost]
         public ActionResult SaveActualFailures(SaveActualFailuresRequest model)
         {
+            if (!IsStationLevelUser(ClsHttpContent.LoginUser)) return ManualEntryDenied();
             var responseModel = new APIResponse();
             try
             {
@@ -312,6 +333,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         [HttpPost]
         public ActionResult UpdateActualFailure(ActualFailureRow model)
         {
+            if (!IsStationLevelUser(ClsHttpContent.LoginUser)) return ManualEntryDenied();
             var responseModel = new APIResponse();
             try
             {
@@ -343,6 +365,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         [HttpPost]
         public ActionResult DeleteActualFailure(int id)
         {
+            if (!IsStationLevelUser(ClsHttpContent.LoginUser)) return ManualEntryDenied();
             var responseModel = new APIResponse();
             try
             {

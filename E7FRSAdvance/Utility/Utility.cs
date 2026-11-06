@@ -647,5 +647,22 @@ namespace E7FRSAdvance.Utility
             GuestUser = 4,
             VendorUser = 5
         }
+
+        /// <summary>
+        /// Who may create (Add / Edit) and clear Maintenance Mode.
+        /// 616: not Guest, Headquarter-level or Division-level users.
+        /// Also blocked: Admin role, ENERGY7 Control users and Vendor users.
+        /// </summary>
+        public static bool CanManageMaintenanceMode(Domain.User user)
+        {
+            if (user == null) return false;
+            if (user.RoleId == (int)Role.Admin) return false;
+            if (user.UserClassId == (int)UserClass.Guest) return false;
+            if (user.UserClassId == (int)UserClass.ENERGY7CONTROL) return false;
+            if (user.UserClassTypeId == (int)UserClassType.HeadquarterLevelUser
+                || user.UserClassTypeId == (int)UserClassType.DivisionLevelUser
+                || user.UserClassTypeId == (int)UserClassType.VendorUser) return false;
+            return true;
+        }
     }
 }

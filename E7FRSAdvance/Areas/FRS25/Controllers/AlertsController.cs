@@ -403,6 +403,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // the API updates that asset's maintenance window.
         public ActionResult UpdateMaintenanceEndTime(Domain.MaintenanceMode mMaintenanceMode)
         {
+            if (!E7FRSAdvance.Utility.Utility.CanManageMaintenanceMode(ClsHttpContent.LoginUser))
+                return Json(new { type = "error", result = "You are not allowed to change Maintenance Mode." });
             try
             {
                 if (mMaintenanceMode == null || mMaintenanceMode.AssetId <= 0)
@@ -718,6 +720,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult UpdateMaintenanceInActiveMode(Domain.MaintenanceMode mMaintenanceMode)
         {
+            if (!E7FRSAdvance.Utility.Utility.CanManageMaintenanceMode(ClsHttpContent.LoginUser))
+                return Json(new { type = "error", result = "You are not allowed to clear Maintenance Mode." });
             dynamic data = new ExpandoObject();
             try
             {
@@ -762,6 +766,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult UpdateMaintenanceActiveMode(Domain.MaintenanceMode mMaintenanceMode)
         {
+            if (!E7FRSAdvance.Utility.Utility.CanManageMaintenanceMode(ClsHttpContent.LoginUser))
+                return Json(new { type = "error", result = "You are not allowed to create Maintenance Mode." });
             dynamic data = new ExpandoObject();
             try
             {
@@ -2061,11 +2067,11 @@ x.Value.Timestamp.TimestampDevice.Second == timeStamp.Second)
                                  ?? new List<NotificationDetail>();
 
                         // Enrich each item with resolved user name
-                        foreach (var item in result)
-                        {
-                            if (item.UserId > 0)
-                                item.PersonName = GetUserNameById(item.UserId);
-                        }
+                        //foreach (var item in result)
+                        //{
+                        //    if (item.UserId > 0)
+                        //        item.PersonName = GetUserNameById(item.UserId);
+                        //}
                     }
                 }
             }
