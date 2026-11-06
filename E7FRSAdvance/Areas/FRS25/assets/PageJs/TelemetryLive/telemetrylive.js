@@ -1839,15 +1839,9 @@ function loadUserAssetInfo(siteId, callback) {
         return;
     }
 
-    // IMPORTANT: Point Machine uses old working flow and must not call GetBulkAssetMetadata/getbulkassetdata.
-    if (isPointMachineAssetTypeForBulkSkip(assetTypeId)) {
-        seedPointMachineAttributeFallbacks();
-        markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
-        console.log('[UserAssetInfo] Skipped GetBulkAssetMetadata for Point Machine');
-        if (callback) callback();
-        return;
-    }
-
+    // Point Machine now binds site attributes through GetBulkAssetMetadata like
+    // Track/Signal. loadBulkAssetMetadata falls back to GetUserAssetInfo (and
+    // the fixed PM names) when the bulk response is incomplete for the site.
     loadBulkAssetMetadata(siteId, assetTypeId, function () {
         markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
         console.log('[UserAssetInfo] Loaded via GetBulkAssetMetadata (site=' + siteId + ', type=' + assetTypeId + ') — ' +
@@ -2157,13 +2151,21 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
     }
 
 
-    // Hard guard: Point Machine must never call /FRS25/Telemetry/GetBulkAssetMetadata.
-    if (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip(assetTypeId)) {
+    // Point Machine: use GetBulkAssetMetadata when it carries the site's data
+    // (every asset with attributes); otherwise fall back to GetUserAssetInfo.
+    var _isPmBulk = (typeof isPointMachineAssetTypeForBulkSkip === 'function' && isPointMachineAssetTypeForBulkSkip(assetTypeId));
+    function _pmBulkFallback(reason) {
+        console.warn('[BulkMeta] Point Machine bulk metadata incomplete (' + reason + ') — using GetUserAssetInfo');
         if (typeof seedPointMachineAttributeFallbacks === 'function') seedPointMachineAttributeFallbacks();
-        if (typeof markUserAssetInfoLoadedForAssetType === 'function') markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
-        console.log('[BulkMeta] Skipped GetBulkAssetMetadata for Point Machine');
-        if (callback) callback();
-        return;
+        var _done = function () {
+            if (typeof markUserAssetInfoLoadedForAssetType === 'function') markUserAssetInfoLoadedForAssetType(siteId, assetTypeId);
+            bulkMetadataLoaded = true;
+            bulkMetadataSiteId = String(siteId);
+            bulkMetadataAssetTypeId = String(assetTypeId);
+            if (callback) callback();
+        };
+        if (typeof window.loadPointMachineUserAssetInfo === 'function') window.loadPointMachineUserAssetInfo(siteId, _done);
+        else _done();
     }
 
     if (bulkMetadataLoaded &&
@@ -2192,11 +2194,26 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
         success: function (response) {
             if (!response || !response.success || !response.mAssets) {
                 console.warn('[BulkMeta] Error: ' + (response && response.errorMessage));
+                if (_isPmBulk) { _pmBulkFallback('no response'); return; }
                 _fallbackToLegacyLoad(siteId, assetTypeId, callback);
                 return;
             }
 
             var assets = response.mAssets || [];
+
+            // Point Machine: accept bulk only when every asset has attributes.
+            if (_isPmBulk) {
+                var _pmMissing = 0;
+                for (var _pi = 0; _pi < assets.length; _pi++) {
+                    var _pa = assets[_pi];
+                    var _pAttrs = _pa && (_pa.assetAttributes || _pa.AssetAttributes);
+                    if (!_pa || !_pa.Id || !_pAttrs || !_pAttrs.length) _pmMissing++;
+                }
+                if (!assets.length || _pmMissing > 0) {
+                    _pmBulkFallback(assets.length ? (_pmMissing + ' of ' + assets.length + ' assets without attributes') : 'no assets');
+                    return;
+                }
+            }
             var zeroCount = 0;
             var attrCount = 0;
             var dlCount = 0;
@@ -2486,7 +2503,8 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
             rebuildWsValidAssetIdsFromBulk();
 
             // Remove any WS-only/scrap assets that entered before bulk metadata completed.
-            Object.keys(wsLiveData || {}).forEach(function (id) {
+            // Point Machine rows come from GetAssestBy, so they are not pruned here.
+            if (!_isPmBulk) Object.keys(wsLiveData || {}).forEach(function (id) {
                 if (wsValidAssetIds.indexOf(String(id)) === -1) {
                     console.warn('[BulkMeta] Removing WS-only asset not present in API response:', {
                         assetId: id,
@@ -2521,10 +2539,14 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                 dlCount + ' datalogger | ' +
                 sigCacheCount + ' signal groups — 1 API call');
 
+            // Point Machine: fixed PM names only fill ids the site did not send.
+            if (_isPmBulk && typeof seedPointMachineAttributeFallbacks === 'function') seedPointMachineAttributeFallbacks();
+
             if (callback) callback();
         },
         error: function (xhr, status, err) {
             console.error('[BulkMeta] AJAX error (' + status + '): ' + err);
+            if (_isPmBulk) { _pmBulkFallback('AJAX ' + status); return; }
             _fallbackToLegacyLoad(siteId, assetTypeId, callback);
         }
     });
@@ -14611,9 +14633,6 @@ function renderPointMachineView() {
 
     $('#wsWaiting').remove();
 
-    // Load the site's attribute config (GetUserAssetInfo) once per site.
-    pmEnsureSiteConfig();
-
     ids.sort(function (a, b) {
         return (wsLiveData[a].AssetName || '').localeCompare(
             wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' }
@@ -14641,9 +14660,6 @@ function renderPointMachineView() {
             pmCardsBuilt[aid] = false;
             buildPmCard(aid);
             pmCardsBuilt[aid] = true;
-        } else {
-            // Site config arrived or a new field went live -> re-lay the card out.
-            pmRebuildCardIfLayoutChanged(aid);
         }
 
         updatePmCard(aid);
@@ -14764,143 +14780,6 @@ function fetchAssetSeriesOperation(assetId, callback) {
 // Track cards currently being built (to prevent race conditions)
 var pmCardsBuilding = {};
 
-// ================================================================
-// SITE-CONFIGURED PM FIELDS
-// Not every site wires every Point Machine attribute (24 DC LOC, KR relay
-// voltages, B end, voltage channel ...). Which ones an asset has comes from
-// the site's GetUserAssetInfo rows -> userAssetSimpleMap["<assetId>_<attrId>"].
-// A field is shown when the site configures it OR live data has arrived for
-// it. An asset with no GetUserAssetInfo rows at all shows everything (old
-// behaviour), so a missing/failed config call never blanks a card.
-// ================================================================
-var PM_SITE_FIELD_IDS = {
-    A: { kr: [25, 26], loc: [576, 577], cur: [217, 219], volt: [216, 218] },
-    B: { kr: [27, 28], loc: [578, 579], cur: [213, 215], volt: [212, 214] }
-};
-var PM_SITE_FIELDS = ['kr', 'loc', 'cur', 'volt'];
-
-function pmNormFieldName(v) { return (v === null || v === undefined) ? '' : String(v).toLowerCase().replace(/\s+/g, ''); }
-
-// Name fallback for sites whose attribute ids differ: "A End - NWKR (Loc)" -> "aend-nwkr(loc)"
-function pmFieldNameMatches(end, field, name) {
-    if (!name) return false;
-    var e = end.toLowerCase() + 'end-?';
-    var rx = {
-        kr: e + '[nr]wkr',
-        loc: e + '[nr]wkr\\(loc\\)',
-        cur: e + '[nr]w-?c',
-        volt: e + '[nr]w-?v'
-    }[field];
-    return new RegExp('^' + rx + '$').test(name);
-}
-
-// { A:{kr,loc,cur,volt}, B:{...} } from the site's config, or null when the
-// asset has no config rows.
-// Cached per asset; cleared when the site config (re)loads.
-var pmSiteCfgCache = {};
-function pmSiteFieldConfig(assetId) {
-    var key = String(assetId);
-    if (pmSiteCfgCache.hasOwnProperty(key)) return pmSiteCfgCache[key];
-    return (pmSiteCfgCache[key] = pmSiteFieldConfigScan(assetId));
-}
-
-function pmSiteFieldConfigScan(assetId) {
-    var map = window.userAssetSimpleMap;
-    if (!map) return null;
-    var prefix = String(assetId) + '_';
-    var cfg = { A: {}, B: {} }, any = false;
-    for (var k in map) {
-        if (!map.hasOwnProperty(k) || k.indexOf(prefix) !== 0) continue;
-        any = true;
-        var id = parseInt(k.substring(prefix.length), 10);
-        var e = map[k] || {};
-        var names = [pmNormFieldName(e.attributeName || e.AttributeName), pmNormFieldName(e.aliasName || e.AliasName)];
-        for (var ei = 0; ei < 2; ei++) {
-            var E = ei === 0 ? 'A' : 'B';
-            for (var fi = 0; fi < PM_SITE_FIELDS.length; fi++) {
-                var f = PM_SITE_FIELDS[fi];
-                if (cfg[E][f]) continue;
-                if (PM_SITE_FIELD_IDS[E][f].indexOf(id) !== -1 ||
-                    pmFieldNameMatches(E, f, names[0]) || pmFieldNameMatches(E, f, names[1])) {
-                    cfg[E][f] = true;
-                }
-            }
-        }
-    }
-    return any ? cfg : null;
-}
-
-function pmRdpmsHasId(pm, ids) {
-    if (!pm || !pm.RDPMS) return false;
-    for (var k in pm.RDPMS) {
-        if (!pm.RDPMS.hasOwnProperty(k)) continue;
-        var r = pm.RDPMS[k];
-        var id = parseInt(r.AssetAttributeId || r.AttrId || 0, 10);
-        if (ids.indexOf(id) !== -1 && r.value !== null && r.value !== undefined && r.value !== '') return true;
-    }
-    return false;
-}
-
-function pmGroupHasData(pm, grp) {
-    if (!pm) return false;
-    return (pm.Normal[grp] && Object.keys(pm.Normal[grp]).length > 0) ||
-        (pm.Reverse[grp] && Object.keys(pm.Reverse[grp]).length > 0);
-}
-
-// Which ends / fields the card shows for this asset, plus a signature so the
-// card is rebuilt when the layout changes (config arrives, new field goes live).
-function pmCardLayout(assetId) {
-    var cfg = pmSiteFieldConfig(assetId);
-    var pm = getPmStructuredData(assetId);
-    var L = { configured: !!cfg, A: {}, B: {} };
-    var sig = cfg ? 'c' : 'n';
-    ['A', 'B'].forEach(function (E) {
-        var live = {
-            kr: pmRdpmsHasId(pm, PM_SITE_FIELD_IDS[E].kr),
-            loc: pmRdpmsHasId(pm, PM_SITE_FIELD_IDS[E].loc),
-            cur: pmGroupHasData(pm, E + 'C'),
-            volt: pmGroupHasData(pm, E + 'V')
-        };
-        PM_SITE_FIELDS.forEach(function (f) { L[E][f] = !cfg || !!cfg[E][f] || live[f]; });
-        L[E].any = L[E].kr || L[E].loc || L[E].cur || L[E].volt;
-        // An end that is shown always keeps at least its current/time columns,
-        // otherwise its direction header would have no column to sit on.
-        if (L[E].any && !L[E].cur && !L[E].volt) L[E].cur = true;
-        L[E].time = L[E].cur;
-        sig += '|' + E + (L[E].any ? 1 : 0) + (L[E].kr ? 1 : 0) + (L[E].loc ? 1 : 0) + (L[E].cur ? 1 : 0) + (L[E].volt ? 1 : 0);
-    });
-    L.sig = sig;
-    return L;
-}
-
-// Fetch the site's GetUserAssetInfo once per site (telemetrylive-ext.js
-// loader), then re-render so cards pick up the configured fields.
-var pmSiteCfgRequested = null;
-function pmEnsureSiteConfig() {
-    if (typeof window.loadPointMachineUserAssetInfo !== 'function') return;
-    var siteId = $('#drpSite').val();
-    if (!siteId || siteId === '0') return;
-    if (pmSiteCfgRequested === String(siteId)) return;
-    pmSiteCfgRequested = String(siteId);
-    pmSiteCfgCache = {};
-    window.loadPointMachineUserAssetInfo(siteId, function () {
-        if (pmSiteCfgRequested !== String(siteId)) return;
-        pmSiteCfgCache = {};
-        if ($('#pmMainContainer').length && typeof renderPointMachineView === 'function') renderPointMachineView();
-    });
-}
-
-// Rebuild a card in place when its layout no longer matches.
-function pmRebuildCardIfLayoutChanged(assetId) {
-    var $c = $('#pmCard_' + assetId);
-    if (!$c.length || pmCardsBuilding[assetId]) return false;
-    if ($c.attr('data-layout') === pmCardLayout(assetId).sig) return false;
-    $('#pmCardOld_' + assetId).remove();
-    $c.attr('id', 'pmCardOld_' + assetId);
-    buildPmCardWithSeriesInfo(assetId, !!(window.pmCombineColumnStatus && window.pmCombineColumnStatus[assetId]));
-    return true;
-}
-
 function buildPmCard(assetId) {
     var asset = wsLiveData[assetId];
     if (!asset) return;
@@ -14949,12 +14828,6 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
     var pm = getPmStructuredData(assetId);
     var ends = pm ? pmGetAvailableEnds(pm) : { hasA: true, hasB: true, hasBoth: true };
 
-    // Site config decides which ends / fields exist for this asset.
-    var lay = pmCardLayout(assetId);
-    if (lay.configured && (lay.A.any || lay.B.any)) {
-        ends = { hasA: lay.A.any, hasB: lay.B.any, hasBoth: lay.A.any && lay.B.any, onlyA: lay.A.any && !lay.B.any, onlyB: lay.B.any && !lay.A.any };
-    }
-
     // Store ends info for later updates
     if (!window.pmEndInfo) window.pmEndInfo = {};
     window.pmEndInfo[assetId] = ends;
@@ -14962,7 +14835,7 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
     var h = '';
 
     // ── CARD WRAPPER ──
-    h += '<div class="pm-card-wrapper" id="pmCard_' + assetId + '" data-layout="' + lay.sig + '">';
+    h += '<div class="pm-card-wrapper" id="pmCard_' + assetId + '">';
 
     // ── HEADER BAR (dark teal) ──
     h += '<div class="pm-card-header">';
@@ -14992,7 +14865,7 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
         'background:' + _pmMetaA.dotColor + ';box-shadow:0 0 6px ' + _pmMetaA.dotColor + '80;"></span>' +
         '<span class="pm-irs-badge">' + pmEsc(_pmMetaA.label) + '</span></span>';
 
-    if (!_pmIsHalf && !(lay.configured && !lay.B.any)) {
+    if (!_pmIsHalf) {
         h += '<span class="pm-irs-badge" style="display:inline-flex;align-items:center;' +
             'gap:5px;margin-right:10px;padding:3px 8px;background:var(--e7-surface-2, rgba(255,255,255,0.06));' +
             'border:1px solid var(--e7-border, rgba(255,255,255,0.12));border-radius:14px;">' +
@@ -15024,16 +14897,6 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
 
     var showA = ends.hasA || (!ends.hasA && !ends.hasB); // Show A if it has data or if neither has data yet
     var showB = ends.hasB || (!ends.hasA && !ends.hasB); // Show B if it has data or if neither has data yet
-
-    // Column visibility from site config. <col visibility:collapse> hides a
-    // column in every row, so the many row renderers stay unchanged.
-    var colHide = function (on) { return on ? '' : ' style="visibility:collapse"'; };
-    var hideStyle = function (on) { return on ? '' : ' style="display:none"'; };
-    h += '<colgroup>';
-    for (var lc = 0; lc < (showCombineColumn ? 4 : 3); lc++) h += '<col>';
-    if (showA) h += '<col' + colHide(lay.A.cur) + '><col' + colHide(lay.A.volt) + '><col' + colHide(lay.A.time) + '>';
-    if (showB) h += '<col' + colHide(lay.B.cur) + '><col' + colHide(lay.B.volt) + '><col' + colHide(lay.B.time) + '>';
-    h += '</colgroup>';
 
     // THEAD ROW 1: Name merged cell + Direction headers
     h += '<thead>';
@@ -15071,16 +14934,18 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
         h += '<span class="d-flex align-items-center pm-volt-row">';
         //h += '<span>V <small>PT NWKR</small> <strong id="pmVnwkrA_' + assetId + '">--</strong> V</span>';
         //h += '<span class="ms-auto">V <small>PT 24 DC LOC N/R</small> <strong id="pmVdcA_' + assetId + '">--</strong> V</span>';
-        h += '<span' + hideStyle(lay.A.kr) + '>V <small>PT <span id="pmKrLabelA_' + assetId + '">NWKR</span></small> <strong id="pmVnwkrA_' + assetId + '">--</strong> V</span>';
-        h += '<span class="ms-auto"' + hideStyle(lay.A.loc) + '>V <small>PT 24 DC LOC <span id="pmDirLocLabelA_' + assetId + '">N/R</span></small> <strong id="pmVdcA_' + assetId + '">--</strong> V</span>';
+        // Label is replaced with the bound site attribute's name (telemetrylive-ext.js bindPmVoltRow).
+        h += '<span><span class="pm-volt-name" id="pmKrNameA_' + assetId + '">V <small>PT <span id="pmKrLabelA_' + assetId + '">NWKR</span></small></span> <strong id="pmVnwkrA_' + assetId + '">--</strong> V</span>';
+        h += '<span class="ms-auto"><span class="pm-volt-name" id="pmLocNameA_' + assetId + '">V <small>PT 24 DC LOC <span id="pmDirLocLabelA_' + assetId + '">N/R</span></small></span> <strong id="pmVdcA_' + assetId + '">--</strong> V</span>';
         h += '</span></td>';
     }
     // B-end voltages (only if B has data)
     if (showB) {
         h += '<td colspan="3" class="pm-voltage-subheader col-b" id="pmVoltHeaderB_' + assetId + '">';
         h += '<span class="d-flex align-items-center pm-volt-row">';
-        h += '<span' + hideStyle(lay.B.kr) + '>V <small>PT <span id="pmKrLabelB_' + assetId + '">NWKR</span></small> <strong id="pmVnwkrB_' + assetId + '">--</strong> V</span>';
-        h += '<span class="ms-auto"' + hideStyle(lay.B.loc) + '>V <small>PT 24 DC LOC <span id="pmDirLocLabelB_' + assetId + '">N/R</span></small> <strong id="pmVdcB_' + assetId + '">--</strong> V</span>';
+        // Label is replaced with the bound site attribute's name (telemetrylive-ext.js bindPmVoltRow).
+        h += '<span><span class="pm-volt-name" id="pmKrNameB_' + assetId + '">V <small>PT <span id="pmKrLabelB_' + assetId + '">NWKR</span></small></span> <strong id="pmVnwkrB_' + assetId + '">--</strong> V</span>';
+        h += '<span class="ms-auto"><span class="pm-volt-name" id="pmLocNameB_' + assetId + '">V <small>PT 24 DC LOC <span id="pmDirLocLabelB_' + assetId + '">N/R</span></small></span> <strong id="pmVdcB_' + assetId + '">--</strong> V</span>';
         h += '</span></td>';
     }
     h += '</tr>';
@@ -15157,12 +15022,6 @@ function buildPmCardWithSeriesInfo(assetId, showCombineColumn) {
 
     h += '</div>'; // pm-card-wrapper
 
-    // Layout rebuild (pmRebuildCardIfLayoutChanged): swap in place, keep position.
-    var $oldCard = $('#pmCardOld_' + assetId);
-    if ($oldCard.length) {
-        $oldCard.replaceWith(h);
-        return;
-    }
     $('#pmMainContainer').append(h);
     $('#pmCard_' + assetId).hide().fadeIn(400);
 }

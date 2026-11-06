@@ -217,10 +217,46 @@ function abortPmIndicationRequest() {
     function injectStyles() {
         if (document.getElementById('pm616-styles')) return;
         var T = '#wsLiveTable.pm616-table';
+        // PM card header selector, also doubled-#e7Body to outrank e7-theme-compat.css.
+        function PMH(thExtra, tail) {
+            var th = 'table.pm-data-table > thead > tr > th.pm-th.pm-th' + (thExtra || '') + (tail || '');
+            return '.pm-card-wrapper ' + th + ',#e7Body#e7Body .pm-card-wrapper ' + th;
+        }
         var css = [
             /* --- PM table (G1) --- */
-            T + '{border-collapse:separate;border-spacing:0;}',
-            T + ' thead tr th{font-size:11px !important;letter-spacing:.06em !important;padding:9px 10px !important;text-align:center !important;vertical-align:middle !important;}',
+            /* Index.cshtml forces border-collapse:collapse !important on #wsLiveTable,
+               which breaks the two-row sticky header; keep separate here. */
+            T + '{border-collapse:separate !important;border-spacing:0 !important;}',
+            T + ' thead tr th{font-size:11px !important;letter-spacing:.05em !important;line-height:1.3 !important;padding:9px 10px !important;text-align:center !important;vertical-align:middle !important;white-space:normal !important;background:var(--e7-surface-2,#111a36) !important;border-bottom:1px solid var(--at-edge,rgba(255,255,255,.10)) !important;}',
+            T + ' thead tr:nth-child(2) th{font-size:10px !important;font-weight:600 !important;letter-spacing:.03em !important;text-transform:none !important;min-width:96px;max-width:150px;padding:7px 8px !important;}',
+            T + ' thead tr th.pm616-s1{text-align:left !important;min-width:150px;}',
+            T + ' thead tr th.pm616-s2{min-width:140px;}',
+            T + ' thead tr th.pm616-last{min-width:96px;}',
+            T + ' thead tr th.pm616-site-h{min-width:88px;max-width:140px;color:var(--e7-heading,#e2e8f0) !important;}',
+            T + ' thead tr th.pm616-dl-h{min-width:170px;}',
+            T + ' tbody tr td.pm616-dlcell{white-space:normal !important;text-align:left;min-width:170px;}',
+            T + ' tbody tr td.pm616-dlcell .pm616-dl-badge{margin:1px 2px;padding:2px 8px;font-size:10px;white-space:nowrap;}',
+            T + ' .pm616-gstart{border-left:1px solid var(--at-edge-strong,rgba(255,255,255,.16)) !important;}',
+            'body[data-aurora="light"] ' + T + ' thead tr th{background:#eef3fc !important;border-bottom-color:rgba(15,23,42,.10) !important;}',
+            'body[data-aurora="light"] ' + T + ' .pm616-gstart{border-left-color:rgba(15,23,42,.14) !important;}',
+            /* --- PM card column header (.pm-data-table .pm-th) ---
+               e7-theme-compat.css paints every <th> with a navy band using
+               #e7Body#e7Body and forces #fff on th/small/a/i, which hid the
+               (Avg) captions. PMH() doubles #e7Body as well so these win,
+               keeping the header in the card's light/dark theme tokens. --- */
+            PMH('') + '{background:var(--e7-surface-2,#f1f5fb) !important;background-image:none !important;color:var(--e7-heading,#0f172a) !important;font-size:11px !important;font-weight:700 !important;letter-spacing:.05em !important;text-transform:uppercase !important;line-height:1.35 !important;padding:8px 12px 10px !important;vertical-align:bottom !important;text-align:center !important;white-space:nowrap;border:0 !important;border-top:3px solid var(--e7-border,rgba(15,23,42,.12)) !important;border-bottom:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;border-left:1px solid var(--e7-border,rgba(15,23,42,.08)) !important;}',
+            PMH(':first-child') + '{border-left:0 !important;}',
+            PMH('.col-a') + '{background:var(--e7-accent-soft,rgba(37,157,171,.10)) !important;color:var(--e7-accent-ink,#0e7490) !important;border-top-color:var(--e7-accent,#259dab) !important;}',
+            PMH('.col-b') + '{background:var(--e7-violet-soft,rgba(139,92,246,.10)) !important;color:var(--e7-violet,#7c3aed) !important;border-top-color:var(--e7-violet,#8b5cf6) !important;}',
+            PMH('', ' sub') + '{font-size:.78em;text-transform:none;letter-spacing:0;color:inherit !important;}',
+            /* (Avg) caption: a quiet chip above the column title */
+            PMH('', ' .pm-avg-label') + '{display:inline-flex !important;align-items:baseline;gap:4px;margin:0 auto 6px !important;padding:2px 10px !important;border-radius:6px;background:var(--e7-surface,#fff) !important;border:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;color:var(--e7-text-3,#64748b) !important;font-size:10px !important;font-weight:500 !important;letter-spacing:0 !important;text-transform:none !important;white-space:nowrap;box-shadow:0 1px 1px rgba(15,23,42,.04);}',
+            PMH('', ' .pm-avg-label small') + '{font-size:1em !important;color:var(--e7-text-3,#64748b) !important;font-weight:500 !important;}',
+            PMH('', ' .pm-avg-label > span[id]') + '{font-weight:700 !important;color:var(--e7-heading,#0f172a) !important;font-family:var(--at-font-mono,monospace);margin-left:2px;}',
+            PMH('.col-a', ' .pm-avg-label > span[id]') + '{color:var(--e7-accent-ink,#0e7490) !important;}',
+            PMH('.col-b', ' .pm-avg-label > span[id]') + '{color:var(--e7-violet,#7c3aed) !important;}',
+            /* voltage-row label when it shows the site attribute name */
+            '.pm-volt-row .pm-volt-name[title]:not([title=""]){font-size:11px;font-weight:500;color:var(--e7-text-3,#64748b);margin-right:4px;}',
             T + ' thead tr th.pm616-grp-a{color:var(--e7-accent,#22d3ee) !important;box-shadow:inset 0 -2px 0 var(--e7-accent,#22d3ee);}',
             T + ' thead tr th.pm616-grp-b{color:var(--e7-violet,#a78bfa) !important;box-shadow:inset 0 -2px 0 var(--e7-violet,#a78bfa);}',
             T + ' thead tr th.pm616-sub-a{color:var(--e7-accent,#22d3ee) !important;opacity:.9;}',
@@ -641,25 +677,60 @@ function abortPmIndicationRequest() {
             var e = m[E];
             var iptInner = valSpan('pm-ipt-max', e.iptMax) + ' / ' + valSpan('pm-ipt-avg', e.iptAvg);
             if ((e.iptMax.present || e.iptAvg.present) && opTs) iptInner = arrayLink(iptInner, aid, dirPrefix, cType, opTs);
-            specs.push({ field: E + '.ipt', cls: colCls, html: iptInner });
+            specs.push({ field: E + '.ipt', cls: colCls + ' pm616-gstart', html: iptInner });
 
             var vInner = esc(e.vpt110Avg.text);
             if (e.vpt110Avg.present && opTs) vInner = arrayLink(vInner, aid, dirPrefix, vType, opTs);
             specs.push({ field: E + '.vpt110', cls: colCls, source: e.vpt110Avg.source, html: vInner });
 
             specs.push({ field: E + '.tpt', cls: colCls, source: e.tpt.source, html: esc(e.tpt.text) });
-            specs.push({ field: E + '.loc', cls: colCls + (e.locIndication.present ? indCls : ''), source: e.locIndication.source, html: esc(e.locIndication.text) });
-            specs.push({ field: E + '.kr', cls: colCls + (e.krIndication.present ? indCls : ''), source: e.krIndication.source, html: esc(e.krIndication.text) });
         }
         if (ends.hasA) end('A', 'col-a', 'AC', 'AV');
         if (ends.hasB) end('B', 'col-b', 'BC', 'BV');
 
-        ['NWKR', 'RWKR', 'NWCR', 'RWCR'].forEach(function (k) {
-            var c = dlCell(m.datalogger[k]);
-            specs.push({ field: 'dl.' + k, cls: c.cls, html: c.html });
+        /* Site attribute columns — bound like the generic Table view
+           (buildTableRow): value read from asset.attrs[name]. */
+        var asset = live()[aid] || {};
+        var attrs = asset.attrs || {};
+        var colorCls = fn('getValueColorClass');
+        (ends.cols || []).forEach(function (c, i) {
+            var ad = attrs[c.name];
+            if (ad && !isConfiguredForAsset(aid, c.name, ad)) ad = null;
+            var raw = ad ? ad.Value : null;
+            var cls = 'pm616-site' + (i === 0 ? ' pm616-gstart' : '');
+            var text = DASH;
+            if (raw === null || raw === undefined || raw === '') {
+                cls += ' val-na';
+            } else {
+                var n = parseFloat(raw);
+                if (isNaN(n)) text = String(raw);
+                else {
+                    n = Number(zf(n));
+                    text = n.toFixed(2);
+                    if (colorCls) { try { var cc = colorCls(ad.AssetAttributeId || ad.AttrId, n); if (cc) cls += ' ' + cc; } catch (x) { } }
+                }
+            }
+            specs.push({ field: 'site.' + i, cls: cls, source: ad || null, html: esc(text) });
         });
+
+        /* DataLogger — every relay of the asset by its site name, Pickup
+           first (same as the generic Table view). */
+        var dl = asset.dlRelays || {};
+        var dlKeys = Object.keys(dl).filter(function (k) { return !!dl[k]; });
+        dlKeys.sort(function (a, b) {
+            var ra = dl[a], rb = dl[b];
+            if (ra.isPickup && !rb.isPickup) return -1;
+            if (!ra.isPickup && rb.isPickup) return 1;
+            return String(ra.displayName || a).localeCompare(String(rb.displayName || b));
+        });
+        var dlHtml = dlKeys.map(function (k) {
+            var r = dl[k];
+            return '<span class="rdpms-dl-badge pm616-dl-badge ' + (r.isPickup ? 'pickup' : 'drop') + '">' +
+                esc(r.displayName || k) + ': ' + (r.isPickup ? 'Pickup' : 'Drop') + '</span>';
+        }).join(' ');
+        specs.push({ field: 'dl', cls: 'dl-cell pm616-dlcell pm616-gstart', html: dlHtml || '<span class="pm616-na">' + DASH + '</span>' });
         specs.push({
-            field: 'lastTelemetry', cls: 'time-cell', noFlash: true,
+            field: 'lastTelemetry', cls: 'time-cell pm616-gstart', noFlash: true,
             html: esc(m.lastTelemetryTimestamp ? fmtClock(m.lastTelemetryTimestamp) : DASH)
         });
 
@@ -715,7 +786,70 @@ function abortPmIndicationRequest() {
             if (e.hasB) hasB = true;
         }
         if (!hasA && !hasB) { hasA = true; hasB = true; }
-        return { hasA: hasA, hasB: hasB, sig: (hasA ? 'A' : '') + (hasB ? 'B' : '') };
+        var cols = tableSiteCols(ids);
+        return {
+            hasA: hasA, hasB: hasB, cols: cols,
+            sig: (hasA ? 'A' : '') + (hasB ? 'B' : '') + '|' + cols.map(function (c) { return c.name; }).join('\u0001')
+        };
+    }
+
+    /* Site attribute columns, the generic Table view way: every attribute the
+       site's PM assets report (operation readings and vibration excluded),
+       ordered like wsAttributeNames, header = bulk AliasName. */
+    function isSiteAttr(an, ad) {
+        if (!ad) return false;
+        var parseName = fn('parsePmAttrName');
+        if (parseName) { try { if (parseName(an)) return false; } catch (x) { } }
+        if (/vibration/i.test(an)) return false;
+        var vs = fn('pmVibrationIsScalarAttribute');
+        if (vs) { try { if (vs(an, ad)) return false; } catch (x) { } }
+        return true;
+    }
+    /* Only attributes configured for THIS asset in the site metadata
+       (GetBulkAssetMetadata alias maps, or userAssetSimpleMap from the
+       GetUserAssetInfo fallback). Live-only attributes the site did not
+       configure, and the fixed PM fallback names, are not shown. */
+    function isConfiguredForAsset(aid, an, ad) {
+        var a = String(aid);
+        var id = String((ad && (ad.AssetAttributeId || ad.AttrId)) || '').trim();
+        var norm = fn('_tlNormAttrKey');
+        var nk = norm ? norm(an) : String(an || '').trim().toLowerCase();
+        var byName = window.bulkAliasByAssetAttrName || {};
+        var byId = window.bulkAliasByAssetAttrId || {};
+        var simple = window.userAssetSimpleMap || {};
+        if (nk && byName[a + '_' + nk]) return true;
+        if (id && (byId[a + '_' + id] || simple[a + '_' + id])) return true;
+        return false;
+    }
+    function tableSiteCols(ids) {
+        var data = live();
+        var seen = {}, cols = [];
+        for (var i = 0; i < ids.length; i++) {
+            var a = data[ids[i]];
+            if (!a || !a.attrs) continue;
+            for (var an in a.attrs) {
+                if (!Object.prototype.hasOwnProperty.call(a.attrs, an) || seen[an]) continue;
+                var ad = a.attrs[an];
+                if (!isSiteAttr(an, ad)) continue;
+                if (!isConfiguredForAsset(ids[i], an, ad)) continue;
+                seen[an] = true;
+                cols.push({ name: an, id: ad.AssetAttributeId || ad.AttrId || null, assetId: ids[i] });
+            }
+        }
+        var order = window.wsAttributeNames || [];
+        cols.sort(function (x, y) {
+            var ix = order.indexOf(x.name), iy = order.indexOf(y.name);
+            if (ix === -1) ix = 1e6; if (iy === -1) iy = 1e6;
+            if (ix !== iy) return ix - iy;
+            return (parseInt(x.id, 10) || 0) - (parseInt(y.id, 10) || 0);
+        });
+        var disp = fn('getAttrDisplayName');
+        cols.forEach(function (c) {
+            var label = '';
+            if (disp) { try { label = disp(c.name, c.id, c.assetId); } catch (x) { } }
+            c.label = String(label || c.name).replace(/<[^>]*>/g, '');
+        });
+        return cols;
     }
 
     /* ---- Full table HTML (also used by the export staging path) ---- */
@@ -723,21 +857,27 @@ function abortPmIndicationRequest() {
         var ids = tableAssetIds();
         if (!ids.length) return '';
         var ends = tableEnds(ids);
-        var subs = ['IPT N/R(A)<br>(Max/Avg)', 'VPT 110 DC LOC N/R(V)', 'TPT N/R(ms)', 'VPT 24 DC LOC N/R(V)', 'VPT N/R(V)'];
+        var subs = ['IPT N/R(A)<br>(Max/Avg)', 'VPT 110 DC LOC N/R(V)', 'TPT N/R(ms)'];
+        var fmtAlias = fn('formatAliasName');
 
         var h = '<div class="table-responsive pm616-wrap" style="max-height:72vh;overflow-y:auto;overflow-x:auto;">';
-        h += '<table class="table mb-0 ' + TABLE_CLASS + '" id="wsLiveTable" data-pm616-ends="' + ends.sig + '">';
+        h += '<table class="table mb-0 ' + TABLE_CLASS + '" id="wsLiveTable" data-pm616-ends="' + esc(ends.sig) + '">';
         h += '<thead><tr>';
         h += '<th rowspan="2" class="pm616-s1">Asset Name</th>';
         h += '<th rowspan="2" class="pm616-s2">Date &amp; Time</th>';
         h += '<th rowspan="2" class="pm616-s3">Direction</th>';
-        if (ends.hasA) h += '<th colspan="5" class="col-a pm616-grp-a">A End</th>';
-        if (ends.hasB) h += '<th colspan="5" class="col-b pm616-grp-b">B End</th>';
-        ['NWKR', 'RWKR', 'NWCR', 'RWCR'].forEach(function (k) { h += '<th rowspan="2" class="pm616-dl-h">' + k + '</th>'; });
-        h += '<th rowspan="2">Last Update</th>';
+        if (ends.hasA) h += '<th colspan="' + subs.length + '" class="col-a pm616-grp-a pm616-gstart">A End</th>';
+        if (ends.hasB) h += '<th colspan="' + subs.length + '" class="col-b pm616-grp-b pm616-gstart">B End</th>';
+        (ends.cols || []).forEach(function (c, i) {
+            var lbl = esc(c.label);
+            h += '<th rowspan="2" class="pm616-site-h' + (i === 0 ? ' pm616-gstart' : '') + '" data-col="' + esc(c.name) + '" title="' + lbl + '">' +
+                (fmtAlias ? fmtAlias(lbl) : lbl) + '</th>';
+        });
+        h += '<th rowspan="2" class="pm616-dl-h pm616-gstart">DataLogger</th>';
+        h += '<th rowspan="2" class="pm616-last pm616-gstart">Last Update</th>';
         h += '</tr><tr>';
-        if (ends.hasA) subs.forEach(function (s) { h += '<th class="col-a pm616-sub-a">' + s + '</th>'; });
-        if (ends.hasB) subs.forEach(function (s) { h += '<th class="col-b pm616-sub-b">' + s + '</th>'; });
+        if (ends.hasA) subs.forEach(function (s, i) { h += '<th class="col-a pm616-sub-a' + (i === 0 ? ' pm616-gstart' : '') + '">' + s + '</th>'; });
+        if (ends.hasB) subs.forEach(function (s, i) { h += '<th class="col-b pm616-sub-b' + (i === 0 ? ' pm616-gstart' : '') + '">' + s + '</th>'; });
         h += '</tr></thead><tbody>';
 
         for (var i = 0; i < ids.length; i++) {
@@ -805,7 +945,9 @@ function abortPmIndicationRequest() {
         if (!tbl || !live()[assetId]) return false;
         var row = tbl.querySelector('tbody tr[data-id="' + String(assetId).replace(/"/g, '') + '"]');
         if (!row) return false;
-        var ends = { hasA: tbl.getAttribute('data-pm616-ends').indexOf('A') > -1, hasB: tbl.getAttribute('data-pm616-ends').indexOf('B') > -1 };
+        // Same layout (ends + site columns) as the rendered table, or rebuild.
+        var ends = tableEnds(tableAssetIds());
+        if (ends.sig !== tbl.getAttribute('data-pm616-ends')) { scheduleFullRender(200); return true; }
         var specs = rowCellSpecs(buildPmTableRowModel616(assetId), ends);
         for (var i = 0; i < specs.length; i++) {
             var s = specs[i];
@@ -1538,29 +1680,17 @@ function abortPmIndicationRequest() {
     /* ======================================================================
      * B3 — header KR/LOC voltages follow the operation direction
      * ==================================================================== */
-    window.updatePmVoltageDisplay = function (assetId, attrName, value) {
-        var n = parseFloat(value);
-        if (isNaN(n)) return;
-        var val = Number(zf(n)).toFixed(2);
-        var low = String(attrName || '').toLowerCase();
-        var endKey = (low.indexOf('a end') > -1 || low.indexOf('a-end') > -1) ? 'A'
-            : ((low.indexOf('b end') > -1 || low.indexOf('b-end') > -1) ? 'B' : null);
-        if (!endKey) return;
-        var attrDir = low.indexOf('rwkr') > -1 ? 'REVERSE' : (low.indexOf('nwkr') > -1 ? 'NORMAL' : null);
-        if (!attrDir) return;
-        // Match what the card header currently says for this end; otherwise use
-        // the shared v617 resolver.
-        var shown = $.trim($('#pmKrLabel' + endKey + '_' + assetId).text()).toUpperCase();
-        var opDir = shown === 'RWKR' ? 'REVERSE' : (shown === 'NWKR' ? 'NORMAL' : null);
-        if (!opDir) {
-            var asset = live()[assetId];
-            var pm = getPmStructuredData616(assetId);
-            var r = fn('determinePmDirection') ? window.determinePmDirection(asset, pm) : null;
-            opDir = (r && r.direction === 'REVERSE') ? 'REVERSE' : 'NORMAL';
-        }
-        if (attrDir !== opDir) return;
-        var isLoc = low.indexOf('loc') > -1;
-        $((isLoc ? '#pmVdc' : '#pmVnwkr') + endKey + '_' + assetId).text(val);
+    window.updatePmVoltageDisplay = function (assetId /*, attrName, value */) {
+        // Any live RDPMS update re-binds the whole voltage row from the site
+        // attributes, in the direction the card header currently shows — so
+        // the live path and the full card refresh always pick the same attribute.
+        if (!$('#pmCard_' + assetId).length) return;
+        var pm = getPmStructuredData616(assetId);
+        if (!pm) return;
+        // Direction the card currently shows (set by bindPmVoltRow / updatePmCard616).
+        var shown = $('#pmCard_' + assetId).attr('data-pm-rev');
+        var isRev = (shown === '1') ? true : (shown === '0') ? false : (resolveDirection(assetId, pm) === 'Reverse');
+        bindPmVoltRow(assetId, pm, isRev);
     };
 
     /* ======================================================================
@@ -1870,7 +2000,10 @@ function abortPmIndicationRequest() {
         window.loadUserAssetInfo = function (siteId, callback) {
             var atId = $('#drpAssetType').val() || window.wsCurrentAssetTypeId || '0';
             var isPm = fn('isPointMachineAssetTypeForBulkSkip') ? window.isPointMachineAssetTypeForBulkSkip(atId) : String(atId) === '3';
-            if (!siteId || siteId === '0' || !isPm) return _origLoadUai.apply(this, arguments);
+            // Point Machine goes through the same site-based bulk path as the
+            // other views; loadBulkAssetMetadata itself falls back to
+            // loadPointMachineUserAssetInfo when the bulk data is incomplete.
+            if (!siteId || siteId === '0' || !isPm || fn('loadBulkAssetMetadata')) return _origLoadUai.apply(this, arguments);
             if (window.userAssetInfoLoaded && window.userAssetInfoSiteId === String(siteId) &&
                 window.userAssetInfoAssetTypeId === String(atId)) {
                 if (typeof callback === 'function') callback();
@@ -1910,6 +2043,110 @@ function abortPmIndicationRequest() {
     }
     PM616.indicationValueById = indicationValueById;
     window.pmIndicationValueById = indicationValueById;
+
+    /* Site-bound KR / LOC indication for the card's .pm-volt-row.
+       Picks, from this asset's live RDPMS attributes that are CONFIGURED for
+       it in the site metadata (isConfiguredForAsset), the one whose site name
+       (AliasName / AttributeName / live key) has the end (A/B), the relay
+       (NWKR/RWKR) and — for LOC — "loc". Falls back to the fixed v616 id
+       (A KR 25/26, A LOC 576/577, B KR 27/28, B LOC 578/579) only when the
+       site has no matching attribute. Returns { value, name } — name is the
+       site's display name of the bound attribute (null on the fixed fallback). */
+    function pmNormName(s) { return String(s || '').toLowerCase().replace(/[\s_\-]+/g, ''); }
+    /* Score one site name for (end, relay, loc): 2 = names this end,
+       1 = names no end at all (e.g. half point machine "NWKR (Loc)"),
+       0 = no match (wrong relay / loc / the other end). */
+    function pmIndScore(name, end, relay, isLoc) {
+        var nm = pmNormName(name);
+        if (!nm || nm.indexOf(relay) === -1) return 0;
+        if ((nm.indexOf('loc') !== -1) !== !!isLoc) return 0;
+        var hasA = nm.indexOf('aend') !== -1, hasB = nm.indexOf('bend') !== -1;
+        if (end === 'A' ? hasA : hasB) return 2;
+        if (!hasA && !hasB) return 1;
+        return 0;
+    }
+    function siteIndicationValue(assetId, pm, end, isRev, isLoc) {
+        var aid = String(assetId);
+        var relay = isRev ? 'rwkr' : 'nwkr';
+        var disp = fn('getAttrDisplayName');
+        var simple = window.userAssetSimpleMap || {};
+        var best = null;
+        function consider(id, names, liveKey) {
+            var sc = 0;
+            for (var i = 0; i < names.length; i++) sc = Math.max(sc, pmIndScore(names[i], end, relay, isLoc));
+            if (!sc) return;
+            var idn = parseInt(id, 10) || 0;
+            if (best && (best.score > sc || (best.score === sc && best.idn && idn && best.idn <= idn))) return;
+            best = { score: sc, id: id, idn: idn, names: names, liveKey: liveKey || null };
+        }
+        // 1) Site metadata for THIS asset (GetBulkAssetMetadata / GetUserAssetInfo),
+        //    so the label binds even before a live value arrives.
+        var pre = aid + '_';
+        for (var mk in simple) {
+            if (!Object.prototype.hasOwnProperty.call(simple, mk) || mk.indexOf(pre) !== 0) continue;
+            var me = simple[mk];
+            if (!me) continue;
+            consider(mk.substring(pre.length), [me.name, me.aliasName, me.attributeName]);
+        }
+        // 2) Live attributes configured for this asset (covers alias-map-only metadata).
+        if (pm && pm.RDPMS) {
+            for (var k in pm.RDPMS) {
+                if (!Object.prototype.hasOwnProperty.call(pm.RDPMS, k)) continue;
+                var rv = pm.RDPMS[k];
+                var src = rv.source || rv;
+                var lid = String(src.AssetAttributeId || src.AttrId || rv.AttrId || rv.AssetAttributeId || '').trim();
+                if (!isConfiguredForAsset(aid, k, src)) continue;
+                var nmList = [k];
+                if (disp) { try { nmList.push(disp(k, lid, aid)); } catch (x) { } }
+                consider(lid, nmList, k);
+            }
+        }
+        if (best) {
+            // Value: live reading by attribute id, else by live key / site names.
+            var val = best.id ? indicationValueById(pm, best.id) : null;
+            if (val === null && pm && pm.RDPMS) {
+                var keys = [best.liveKey].concat(best.names);
+                for (var j = 0; j < keys.length && val === null; j++) {
+                    var e = keys[j] && pm.RDPMS[keys[j]];
+                    if (e) { var n = parseFloat(e.value); if (!isNaN(n)) val = n; }
+                }
+            }
+            var label = '';
+            if (disp) { try { label = disp(best.liveKey || best.names[2] || best.names[0], best.id, aid); } catch (x) { } }
+            label = String(label || best.names[0] || best.names[1] || '').replace(/<[^>]*>/g, '').trim();
+            return { value: val, name: label || null, id: best.id };
+        }
+        var fixed = (end === 'A')
+            ? (isLoc ? (isRev ? 577 : 576) : (isRev ? 26 : 25))
+            : (isLoc ? (isRev ? 579 : 578) : (isRev ? 28 : 27));
+        return { value: indicationValueById(pm, fixed), name: null, id: null };
+    }
+    /* Writes the four voltage-row values AND their labels of one card from
+       the site binding. Label = the bound attribute's site name; when the
+       site has no matching attribute the original v616 label is kept
+       (V PT NWKR/RWKR, V PT 24 DC LOC Normal/Reverse). */
+    function pmVoltLabelHtml(assetId, E, isRev, isLoc) {
+        return isLoc
+            ? 'V <small>PT 24 DC LOC <span id="pmDirLocLabel' + E + '_' + esc(assetId) + '">' + (isRev ? 'Reverse' : 'Normal') + '</span></small>'
+            : 'V <small>PT <span id="pmKrLabel' + E + '_' + esc(assetId) + '">' + (isRev ? 'RWKR' : 'NWKR') + '</span></small>';
+    }
+    function bindPmVoltRow(assetId, pm, isRev) {
+        $('#pmCard_' + assetId).attr('data-pm-rev', isRev ? '1' : '0');
+        ['A', 'B'].forEach(function (E) {
+            [[false, '#pmVnwkr', '#pmKrName'], [true, '#pmVdc', '#pmLocName']].forEach(function (cfg) {
+                var r = siteIndicationValue(assetId, pm, E, isRev, cfg[0]);
+                $(cfg[1] + E + '_' + assetId).text(r.value === null ? DASH : Number(zf(r.value)).toFixed(2));
+                var $lbl = $(cfg[2] + E + '_' + assetId);
+                if (!$lbl.length) return;
+                var html = r.name ? esc(r.name) : pmVoltLabelHtml(assetId, E, isRev, cfg[0]);
+                if ($lbl.attr('data-pm-lbl') !== html) {
+                    $lbl.html(html).attr('data-pm-lbl', html).attr('title', r.name || '');
+                }
+            });
+        });
+    }
+    PM616.siteIndicationValue = siteIndicationValue;
+    PM616.bindPmVoltRow = bindPmVoltRow;
 
     // v616 parity names, all built on the shared resolver.
     window.pmEnergisedDirection = energisedDirection;
@@ -2118,14 +2355,9 @@ function abortPmIndicationRequest() {
         // Indications BY ATTRIBUTE ID, same ids as the table's endFields
         // (A KR 25/26, A LOC 576/577, B KR 27/28, B LOC 578/579).
         // No cross-direction fallback: absent -> em-dash (v616 27190-27210).
-        function indText(id) {
-            var v = indicationValueById(pm, id);
-            return (v === null) ? DASH : Number(zf(v)).toFixed(2);
-        }
-        $('#pmVnwkrA_' + assetId).text(indText(isRev ? 26 : 25));
-        $('#pmVdcA_' + assetId).text(indText(isRev ? 577 : 576));
-        $('#pmVnwkrB_' + assetId).text(indText(isRev ? 28 : 27));
-        $('#pmVdcB_' + assetId).text(indText(isRev ? 579 : 578));
+        // Site-bound: attribute picked from this asset's configured site
+        // attributes by name; fixed ids only when the site has no match.
+        bindPmVoltRow(assetId, pm, isRev);
 
         // Header averages from the ONE resolved direction (v616 31491-31498).
         var d = pm[dir] || { AC: {}, AV: {}, BC: {}, BV: {} };
