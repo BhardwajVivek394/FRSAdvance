@@ -1506,4 +1506,38 @@
 @* Page logic: a verbatim port of the web project's (E7MRIV2Web) Telemetry
    History script, so every API call, table, graph and export matches it.
    Kept as a static file to stay clear of the Razor/csc CS1647 literal limit. *@
+<script>
+    // ===== PER-SITE PROXY ROUTING (Server A / Server B, from 616) =====
+    // The controller picks ProxyBaseUrlServerA / ProxyBaseUrlServerB from
+    // dbo.Site.ServerType, so every history proxy call must carry siteId.
+    // Appended here once instead of at each call site.
+    //
+    // Two jQuery copies are on this page: this view loads 3.5.1, then
+    // _Layout.cshtml loads another AFTER RenderBody(), replacing window.$.
+    // Every $.ajax fired after page load (Search, paging, tabs) therefore
+    // runs on the layout's copy, so the prefilter is registered on that one too.
+    (function () {
+        var SITE_ROUTED = /\/FRS25\/TelemetryHistory\/(GetHistoryData|GetHistoryDataDashboard|GetPMHistoryOperation|GetPMHistoryOperationArray|GetPMHistoryIntegration|GetPMHistoryVibration)(\?|$)/i;
+
+        function siteIdPrefilter(options) {
+            if (!options.url || !SITE_ROUTED.test(options.url)) return;
+            if (/[?&]siteId=/i.test(options.url) || (typeof options.data === 'string' && /(^|&)siteId=/i.test(options.data))) return;
+            var el = document.getElementById('drpSite');
+            var siteId = el ? el.value : '';
+            if (!siteId) return;
+            options.url += (options.url.indexOf('?') >= 0 ? '&' : '?') + 'siteId=' + encodeURIComponent(siteId);
+        }
+
+        function register(jq) {
+            if (!jq || !jq.ajaxPrefilter || jq.__thSiteIdPrefilter) return;
+            jq.ajaxPrefilter(siteIdPrefilter);
+            jq.__thSiteIdPrefilter = true;
+        }
+
+        register(window.jQuery);                       // view's copy (calls made during parse)
+        document.addEventListener('DOMContentLoaded', function () {
+            register(window.jQuery);                   // layout's copy (all later calls)
+        });
+    })();
+</script>
 <script src="@Url.Content(_thMainJs)?v=@_thMainVer"></script>

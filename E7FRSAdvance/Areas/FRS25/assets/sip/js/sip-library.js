@@ -1227,33 +1227,18 @@
         return svg;
     }
 
-    function renderSignalShunt(cell) {
+    /* Geometry of the combined Signal + Shunt (main head box, shunt box and
+       content box). Shared by the renderer and by the attachable Route /
+       Calling pieces, which snap onto the MAIN head box. */
+    function signalShuntLayout(cell) {
         const x = cell.position.x;
         const y = cell.position.y;
         const w = cell.size.width || 200;
         const h = cell.size.height || 80;
-
         const sigProps = (cell.attrs && cell.attrs.signal) || {};
         const lampsStr = (typeof sigProps.lamps === 'string' && sigProps.lamps.length) ? sigProps.lamps : 'RYG';
-        const lampsClean = String(lampsStr).toUpperCase().replace(/[^BRYGX]/g, '') || 'B';
-        const lamps = lampsClean.split('');
-        const n = Math.max(1, lamps.length);
-        const litAttr = String((sigProps.lit != null ? sigProps.lit : ((cell.attrs && cell.attrs.lit) || '')) || '').toUpperCase();
-        const litSet = {};
-        for (let i = 0; i < litAttr.length; i++) litSet[litAttr[i]] = 1;
+        const n = Math.max(1, (String(lampsStr).toUpperCase().replace(/[^BRYGX]/g, '') || 'B').length);
 
-        const labelAttrs = (cell.attrs && cell.attrs.label) || {};
-        const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
-        const labelFill = (labelAttrs.fill && labelAttrs.fill !== 'transparent')
-            ? normaliseLabelFill(labelAttrs.fill) : T.labelHot;
-        const labelSize = +labelAttrs.fontSize || 14;
-
-        /* Main + shunt are now fully combinable:
-           - main signal supports any 1..8 lamp code through attrs.signal.lamps
-           - shunt can be placed left/right/top/bottom/none
-           - shunt dot state supports every practical 3-dot combination through
-             attrs.signal.shuntState: OFF, PROCEED, DIVERGE_RIGHT,
-             DIVERGE_LEFT, TOP, BL, BR, ALL, or a custom T,BL,BR code. */
         const sigH = Math.max(24, Math.min(42, h * 0.46));
         const lampD = Math.max(12, sigH - 10);
         const lampGap = Math.max(4, +sigProps.lampGap || 7);
@@ -1261,8 +1246,17 @@
         const shuntSide = normaliseCombinedShuntSide(sigProps.shuntSide);
         const hasShunt = shuntSide !== 'none';
         const defaultShW = Math.max(36, Math.min(50, sigH * 1.22));
-        const shW = Math.max(24, Math.min(110, +sigProps.shuntSize || defaultShW));
-        const shH = shW * (23 / 25);
+        const symW = Math.max(24, Math.min(110, +sigProps.shuntSize || defaultShW));
+        const symH = symW * (23 / 25);
+        /* Independent shunt rotation (degrees) — rotates only the shunt symbol
+           around its own centre; the main signal head is not affected. The
+           layout box uses the rotated bounding size so spacing stays correct. */
+        let shuntRot = parseFloat(sigProps.shuntRotate);
+        shuntRot = isNaN(shuntRot) ? 0 : ((shuntRot % 360) + 360) % 360;
+        const rotRad = shuntRot * Math.PI / 180;
+        const rc = Math.abs(Math.cos(rotRad)), rs = Math.abs(Math.sin(rotRad));
+        const shW = symW * rc + symH * rs;
+        const shH = symW * rs + symH * rc;
         const shuntGap = Math.max(0, +sigProps.shuntGap || 2);
         const maxH = Math.max(sigH, shH);
 
@@ -1301,8 +1295,49 @@
             sigX = contentX + (totalW - sigW) / 2;
             shX = contentX + (totalW - shW) / 2;
         }
+        return { sigX, sigY, sigW, sigH, lampD, lampGap, shX, shY, shW, shH, symW, symH, shuntRot, hasShunt,
+            totalW, totalH, contentX, contentY };
+    }
+
+    function renderSignalShunt(cell) {
+        const x = cell.position.x;
+        const y = cell.position.y;
+        const w = cell.size.width || 200;
+        const h = cell.size.height || 80;
+
+        const sigProps = (cell.attrs && cell.attrs.signal) || {};
+        const lampsStr = (typeof sigProps.lamps === 'string' && sigProps.lamps.length) ? sigProps.lamps : 'RYG';
+        const lampsClean = String(lampsStr).toUpperCase().replace(/[^BRYGX]/g, '') || 'B';
+        const lamps = lampsClean.split('');
+        const n = Math.max(1, lamps.length);
+        const litAttr = String((sigProps.lit != null ? sigProps.lit : ((cell.attrs && cell.attrs.lit) || '')) || '').toUpperCase();
+        const litSet = {};
+        for (let i = 0; i < litAttr.length; i++) litSet[litAttr[i]] = 1;
+
+        const labelAttrs = (cell.attrs && cell.attrs.label) || {};
+        const labelTxt = labelAttrs.text != null ? String(labelAttrs.text) : '';
+        const labelFill = (labelAttrs.fill && labelAttrs.fill !== 'transparent')
+            ? normaliseLabelFill(labelAttrs.fill) : T.labelHot;
+        const labelSize = +labelAttrs.fontSize || 14;
+
+        /* Main + shunt are now fully combinable:
+           - main signal supports any 1..8 lamp code through attrs.signal.lamps
+           - shunt can be placed left/right/top/bottom/none
+           - shunt dot state supports every practical 3-dot combination through
+             attrs.signal.shuntState: OFF, PROCEED, DIVERGE_RIGHT,
+             DIVERGE_LEFT, TOP, BL, BR, ALL, or a custom T,BL,BR code. */
+        const { sigX, sigY, sigW, sigH, lampD, lampGap, shX, shY, shW, shH, symW, symH, shuntRot, hasShunt,
+            totalW, totalH, contentX, contentY } = signalShuntLayout(cell);
 
         let svg = `<g class="sip-asset sip-sigshunt" data-id="${cell.id}" data-type="${cell.type}">`;
+
+        // ── Optional Route / Calling on the MAIN head (independent of the shunt) ──
+        // Drawn before the head so the arms come out from behind it. Route and
+        // calling are each optional (labels '' = no routes, calling:false = no C).
+        const routeProps = (cell.attrs && cell.attrs.route) || null;
+        if (routeProps && boolRouteProp(routeProps.enabled, false)) {
+            svg += renderAttachedRouteCallingToSignal({ x: sigX, y: sigY, w: sigW, h: sigH }, normaliseRouteCallingConfig(cell, true));
+        }
 
         // ── Variable-aspect main signal head ──
         svg += `<rect x="${sigX}" y="${sigY}" width="${sigW}" height="${sigH}" rx="5" fill="#3a3a3a"/>`;
@@ -1345,7 +1380,11 @@
             // Own group + hit area so a click on the shunt can be told apart from the main head (live SIP: SH-x drawer)
             svg += `<g class="sip-sigshunt-shunt">`;
             svg += `<rect x="${shX}" y="${shY}" width="${shW}" height="${shH}" fill="transparent"/>`;
-            svg += renderCombinedShuntSymbol(shX, shY, shW, shH, dotSet, '#5B6168');
+            const shCx = shX + shW / 2, shCy = shY + shH / 2;
+            const symX = shCx - symW / 2, symY = shCy - symH / 2;
+            if (shuntRot) svg += `<g class="sip-sigshunt-shunt-rot" transform="rotate(${shuntRot} ${shCx} ${shCy})">`;
+            svg += renderCombinedShuntSymbol(symX, symY, symW, symH, dotSet, '#5B6168');
+            if (shuntRot) svg += `</g>`;
             svg += `</g>`;
         }
 
@@ -1440,7 +1479,11 @@
 
     function normaliseRouteCallingConfig(cell, forceEnabled) {
         const route = (cell.attrs && cell.attrs.route) || {};
-        const labels = parseRouteLabels(route.labels || route.routes || route.routeLabels);
+        /* An explicit empty labels string means "no route aspects" (all routes
+           removed) — calling stays independent and is still drawn. Only a missing
+           labels property falls back to the default AUG..DUG set. */
+        const noRoutes = typeof route.labels === 'string' && route.labels.trim() === '';
+        const labels = noRoutes ? [] : parseRouteLabels(route.labels || route.routes || route.routeLabels);
         const side = String(route.routeSide || 'top').toLowerCase();
         const safeSide = /^(top|bottom|left|right)$/.test(side) ? side : 'top';
         let callingSide = String(route.callingSide || 'bottom').toLowerCase();
@@ -1515,7 +1558,7 @@
     }
 
     function renderRouteArmsOnBox(box, cfg, sideName, origin) {
-        const labels = cfg.labels.length ? cfg.labels : ['AUG'];
+        const labels = cfg.labels;
         const n = labels.length;
         const activeSet = parseRouteActiveSet(cfg.active);
         const allRoutesActive = !!(activeSet.ALL || activeSet.ROUTE || activeSet.ROUTES || activeSet['*']);
@@ -1591,7 +1634,7 @@
         /* Standalone Route/Calling stencil uses the same simple SIP model as the
            main-signal attachment. A small notional centre line is used only for
            geometry; nothing fan-shaped or multi-dot is drawn. */
-        const labels = cfg.labels.length ? cfg.labels : ['AUG'];
+        const labels = cfg.labels;
         const span = Math.max(54, (labels.length - 1) * Math.max(10, +cfg.armSpacing || 22) + 24);
         const box = { x: cx - span / 2, y: cy - 3, w: span, h: 6 };
         let svg = `<g class="sip-route-call-module sip-route-simple sip-route-railway-style">`;
@@ -1637,7 +1680,7 @@
         const cx = box.x + box.w / 2;
         const cy = box.y + box.h / 2;
 
-        const labels = cfg.labels.length ? cfg.labels : ['AUG'];
+        const labels = cfg.labels;
         const n = labels.length;
         const activeSet = parseRouteActiveSet(cfg.active);
         const allRoutesActive = !!(activeSet.ALL || activeSet.ROUTE || activeSet.ROUTES || activeSet['*']);
@@ -1754,6 +1797,131 @@
                 `font-family="${T.labelFont}" font-size="${size}" font-weight="800" ` +
                 `text-anchor="middle">${escapeXml(labelTxt)}</text>`;
         }
+        svg += `</g>`;
+        return svg;
+    }
+
+    /* --- Attachable Route / Calling pieces ---------------------------------- *
+     *  examples.RouteIndicator   → route arms only (AUG, BUG …)
+     *  examples.CallingIndicator → calling "C" lamp only
+     *  Each is its own cell: drag it from the palette, drop it near a main
+     *  signal (Signal or Signal+Shunt) and it snaps on. attrs.route.attachTo
+     *  holds the parent signal id; linkDx/linkDy is the world-space vector from
+     *  the piece centre to the attach point on the parent's MAIN head edge, so
+     *  the connector line is drawn without needing the parent at render time.
+     *  The editor keeps the piece moving with its signal; live telemetry
+     *  drives it from the parent signal's asset.
+     * ------------------------------------------------------------------------ */
+    const ROUTE_PIECE_TYPES = { 'examples.RouteIndicator': 1, 'examples.CallingIndicator': 1 };
+    const ROUTE_PARENT_TYPES = {
+        'examples.Signal': 1, 'examples.SignalShunt': 1,
+        'examples.Shaunt': 1, 'examples.Shaunt2': 1, 'examples.Shaunt3': 1
+    };
+    const ROUTE_SHUNT_TYPES = { 'examples.Shaunt': 1, 'examples.Shaunt2': 1, 'examples.Shaunt3': 1 };
+
+    /* Parts a piece can attach to: Signal → main; standalone shunt → shunt;
+       Signal + Shunt → main AND shunt (when the shunt is shown). */
+    function routeParts(cell) {
+        if (ROUTE_SHUNT_TYPES[cell.type]) return ['shunt'];
+        if (cell.type === 'examples.SignalShunt' && signalShuntLayout(cell).hasShunt) return ['main', 'shunt'];
+        return ['main'];
+    }
+
+    /* Box of one part (main head or shunt body) in the cell's UN-rotated frame,
+       plus the cell's rotation pivot. */
+    function routeHeadBox(cell, part) {
+        const x = cell.position.x, y = cell.position.y;
+        const w = (cell.size && cell.size.width) || 60, h = (cell.size && cell.size.height) || 24;
+        let box = { x: x, y: y, w: w, h: h };
+        if (ROUTE_SHUNT_TYPES[cell.type]) {
+            // same body geometry as renderShunt
+            const bw = Math.max(44, Math.min(w * 1.5, 64)), bh = bw * (23 / 25);
+            box = { x: x + (w - bw) / 2, y: y + (h - bh) / 2, w: bw, h: bh };
+        } else if (cell.type === 'examples.SignalShunt') {
+            const L = signalShuntLayout(cell);
+            box = (part === 'shunt' && L.hasShunt)
+                ? { x: L.shX, y: L.shY, w: L.shW, h: L.shH }
+                : { x: L.sigX, y: L.sigY, w: L.sigW, h: L.sigH };
+        }
+        box.pcx = x + w / 2; box.pcy = y + h / 2; box.angle = +cell.angle || 0;
+        return box;
+    }
+
+    function _rotPt(px, py, cx, cy, deg) {
+        if (!deg) return { x: px, y: py };
+        const r = deg * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+        const dx = px - cx, dy = py - cy;
+        return { x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
+    }
+
+    /* Nearest point on a part's edge to world point (px,py), honouring the
+       parent's rotation. dist = 0 when the point is inside. With no part given,
+       the nearest of the parent's parts wins; result.part says which. */
+    function routeAttachPoint(parent, px, py, part) {
+        if (!part) {
+            let best = null;
+            for (const p of routeParts(parent)) {
+                const r = routeAttachPointPart(parent, px, py, p);
+                if (!best || r.dist < best.dist) best = r;
+            }
+            return best;
+        }
+        if (routeParts(parent).indexOf(part) === -1) part = routeParts(parent)[0];
+        return routeAttachPointPart(parent, px, py, part);
+    }
+    function routeAttachPointPart(parent, px, py, part) {
+        const b = routeHeadBox(parent, part);
+        const lp = _rotPt(px, py, b.pcx, b.pcy, -b.angle);
+        const inside = lp.x >= b.x && lp.x <= b.x + b.w && lp.y >= b.y && lp.y <= b.y + b.h;
+        let qx = Math.max(b.x, Math.min(b.x + b.w, lp.x));
+        let qy = Math.max(b.y, Math.min(b.y + b.h, lp.y));
+        if (inside) {
+            // project to the closest edge so the connector never crosses the lamps
+            const dl = lp.x - b.x, dr = b.x + b.w - lp.x, dt = lp.y - b.y, db = b.y + b.h - lp.y;
+            const m = Math.min(dl, dr, dt, db);
+            if (m === dl) qx = b.x; else if (m === dr) qx = b.x + b.w; else if (m === dt) qy = b.y; else qy = b.y + b.h;
+        }
+        const dist = inside ? 0 : Math.hypot(lp.x - qx, lp.y - qy);
+        const wp = _rotPt(qx, qy, b.pcx, b.pcy, b.angle);
+        return { x: wp.x, y: wp.y, dist: dist, part: part };
+    }
+
+    /* Connector from the piece centre to its parent head (counter-rotated so it
+       stays correct when the piece itself is rotated by renderCell). */
+    function renderRoutePieceLink(cell, cx, cy) {
+        const rp = (cell.attrs && cell.attrs.route) || {};
+        if (!rp.attachTo) return '';
+        const ldx = +rp.linkDx, ldy = +rp.linkDy;
+        if (!isFinite(ldx) || !isFinite(ldy) || (ldx === 0 && ldy === 0)) return '';
+        const l = _rotPt(cx + ldx, cy + ldy, cx, cy, -(+cell.angle || 0));
+        return `<line class="sip-route-piece-link" x1="${cx}" y1="${cy}" x2="${l.x}" y2="${l.y}" ` +
+            `stroke="${T.post}" stroke-width="1.4" stroke-linecap="round"/>`;
+    }
+
+    function renderRouteIndicator(cell) {
+        const w = (cell.size && cell.size.width) || 60, h = (cell.size && cell.size.height) || 60;
+        const x = cell.position.x, y = cell.position.y;
+        const cx = x + w / 2, cy = y + h / 2;
+        const cfg = normaliseRouteCallingConfig(cell, true);
+        cfg.calling = false;
+        let svg = `<g class="sip-asset sip-route-piece sip-route-only" data-id="${cell.id}" data-type="${cell.type}">`;
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="transparent"/>`;
+        svg += renderRoutePieceLink(cell, cx, cy);
+        svg += renderAttachedRouteCallingToSignal({ x: cx, y: cy, w: 0, h: 0 }, cfg);
+        svg += `<circle cx="${cx}" cy="${cy}" r="2.4" fill="${T.post}"/>`;
+        svg += `</g>`;
+        return svg;
+    }
+
+    function renderCallingIndicator(cell) {
+        const w = (cell.size && cell.size.width) || 30, h = (cell.size && cell.size.height) || 30;
+        const x = cell.position.x, y = cell.position.y;
+        const cx = x + w / 2, cy = y + h / 2;
+        const cfg = normaliseRouteCallingConfig(cell, true);
+        let svg = `<g class="sip-asset sip-route-piece sip-calling-only" data-id="${cell.id}" data-type="${cell.type}">`;
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="transparent"/>`;
+        svg += renderRoutePieceLink(cell, cx, cy);
+        svg += renderCallingAttachment(cx, cy, cfg, 'bottom');
         svg += `</g>`;
         return svg;
     }
@@ -2075,6 +2243,49 @@
                     `<text x="56" y="6" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">CUG</text>` +
                     `<line x1="40" y1="30" x2="40" y2="45" stroke="#9aa8c4" stroke-width="1.1"/>` +
                     `<circle cx="40" cy="45" r="5" fill="${T.canvas}" stroke="#fff"/><text x="40" y="46" font-family="${T.labelFont}" font-size="7" fill="#fff" font-weight="900" text-anchor="middle">C</text>` +
+                    `</svg>`;
+            }
+        },
+        'examples.RouteIndicator': {
+            label: 'Route (attach to signal)', group: 'signal',
+            size: { width: 60, height: 60 },
+            attrs: {
+                route: {
+                    attachTo: '', linkDx: 0, linkDy: 0,
+                    labels: 'AUG', active: '', routeSide: 'top', calling: false,
+                    dotSize: 3.8, labelSize: 8.5, labelGap: 8, armSpacing: 22, armLength: 22
+                },
+                label: { text: '', fill: 'transparent', fontSize: 12, fontWeight: 'bold' }
+            },
+            render: renderRouteIndicator,
+            icon: function () {
+                return `<svg viewBox="0 0 60 40" xmlns="http://www.w3.org/2000/svg">` +
+                    `<line x1="30" y1="36" x2="30" y2="26" stroke="#9aa8c4" stroke-width="1.2" stroke-dasharray="2,2"/>` +
+                    `<line x1="30" y1="26" x2="18" y2="12" stroke="#9aa8c4" stroke-width="1.3"/>` +
+                    `<line x1="30" y1="26" x2="42" y2="12" stroke="#9aa8c4" stroke-width="1.3"/>` +
+                    `<circle cx="18" cy="12" r="3.2" fill="#fff"/><circle cx="42" cy="12" r="3.2" fill="${T.canvas}" stroke="#fff"/>` +
+                    `<text x="18" y="5" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">AUG</text>` +
+                    `<text x="42" y="5" font-family="${T.labelFont}" font-size="6" fill="#d7d7d7" text-anchor="middle" font-weight="800">BUG</text>` +
+                    `<circle cx="30" cy="26" r="2" fill="#9aa8c4"/>` +
+                    `</svg>`;
+            }
+        },
+        'examples.CallingIndicator': {
+            label: 'Calling (attach to signal)', group: 'signal',
+            size: { width: 30, height: 30 },
+            attrs: {
+                route: {
+                    attachTo: '', linkDx: 0, linkDy: 0,
+                    labels: '', active: '', calling: true, callingLabel: 'C', dotSize: 3.8
+                },
+                label: { text: '', fill: 'transparent', fontSize: 12, fontWeight: 'bold' }
+            },
+            render: renderCallingIndicator,
+            icon: function () {
+                return `<svg viewBox="0 0 60 40" xmlns="http://www.w3.org/2000/svg">` +
+                    `<line x1="30" y1="4" x2="30" y2="16" stroke="#9aa8c4" stroke-width="1.2" stroke-dasharray="2,2"/>` +
+                    `<circle cx="30" cy="25" r="8" fill="${T.canvas}" stroke="#fff" stroke-width="1.2"/>` +
+                    `<text x="30" y="28.5" font-family="${T.labelFont}" font-size="10" fill="#fff" font-weight="900" text-anchor="middle">C</text>` +
                     `</svg>`;
             }
         },
@@ -3194,7 +3405,8 @@
         spec, makeCell, renderCell, renderIcon, renderYard,
         renderRailLayer, prepareRailContext, renderStandLayer, renderBreakerLayer, renderPMConnectorLayer,
         renderPointGapLayer, renderPointGap, renderBackground, setTheme, themeName, themeList, setPointGaps,
-        isLit, _uid: uid, _theme: T
+        isLit, _uid: uid, _theme: T,
+        ROUTE_PIECE_TYPES, ROUTE_PARENT_TYPES, ROUTE_SHUNT_TYPES, routeParts, routeHeadBox, routeAttachPoint
     };
 
     if (typeof module !== 'undefined' && module.exports) module.exports = { SIP };

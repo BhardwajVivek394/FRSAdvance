@@ -10921,6 +10921,15 @@
                 };
             }
     </script>*@
+@{
+    // Live WebSocket base URL per server (dbo.Site.ServerType 2 = B, else A).
+    // Missing key -> the existing WebSocketBaseUrlSSL. (616)
+    var _wsSsl = System.Configuration.ConfigurationManager.AppSettings["WebSocketBaseUrlSSL"];
+    var _wsServerA = System.Configuration.ConfigurationManager.AppSettings["WebSocketBaseUrlServerA"] ?? _wsSsl;
+    var _wsServerB = System.Configuration.ConfigurationManager.AppSettings["WebSocketBaseUrlServerB"] ?? _wsSsl;
+    var _siteServerTypes = ViewBag.SiteServerTypes as System.Collections.Generic.Dictionary<int, int>
+        ?? new System.Collections.Generic.Dictionary<int, int>();
+}
 <script>
     var isSecure = window.location.protocol === 'https:';
     var APP_CONFIG = {};
@@ -10966,6 +10975,15 @@
             API_BASE_URL = APP_CONFIG.ProxyBaseUrl + '/api/liveValue';
         }
     }
+
+    // HTTPS only: Server A / Server B live WebSocket per dbo.Site.ServerType
+    // (2 = B, else A), read by getWsBaseUrlForSite() in telemetrylive.js. (616)
+    // Own global, NOT on APP_CONFIG (_Layout.cshtml re-declares APP_CONFIG after the body).
+    window.TELEMETRY_WS_SERVERS = isSecure ? {
+        A: '@System.Web.HttpUtility.JavaScriptStringEncode(_wsServerA)' + '/subscribe/liveValue',
+        B: '@System.Web.HttpUtility.JavaScriptStringEncode(_wsServerB)' + '/subscribe/liveValue',
+        siteServerTypes: @Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(_siteServerTypes))
+    } : null;
     /* ════════════════════════════════════════════════════════════════
        Asset Number multi-select dropdown — wiring + filter application
        ════════════════════════════════════════════════════════════════
@@ -11651,16 +11669,16 @@
 
 </script>
 
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive.js?v=618.49"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive.js?v=618.57"></script>
 <!-- IPS + Point Machine graph panels. Must load after telemetrylive.js:
      it wraps fnSearchView / _tlApplyViewMode to add the Graph view. -->
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-graphs.js?v=618.52"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-graphs.js?v=618.57"></script>
 <!-- Point Machine vibration table, per-end resolution and event graph.
      Must load after telemetrylive.js: it replaces fnUpdateVibrationModal. -->
 <link href="~/Areas/FRS25/assets/css/telemetrylive-pmvibration.css?v=618.27" rel="stylesheet" />
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-pmvibration.js?v=618.47"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-pmvibration.js?v=618.57"></script>
 <!-- Telemetry Live extensions (v616 ports, IPS card v2, interactive graph views). Must load after the scripts above. -->
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-ext.js?v=618.53"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-ext.js?v=618.57"></script>
 <!-- v618.7 Health view (separate view in Live Asset Data; reads wsLiveData only) -->
 <script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-health.js?v=618.51"></script>
 <script>
@@ -11670,10 +11688,10 @@
     window.E7_ENGINES = @Html.Raw(E7FRSAdvance.AiCore.AiModelConfig.EngineListJson());
 </script>
 <script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-drawer.js?v=618.56"></script>
-<script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=618.19"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=618.21"></script>
 <script src="~/Areas/FRS25/assets/sip/js/sip-asset-popup.js?v=618.25"></script>
 
-<script src="~/Areas/FRS25/assets/sip/js/sip-telemetry.js?v=618.44"></script>
+<script src="~/Areas/FRS25/assets/sip/js/sip-telemetry.js?v=618.46"></script>
 <script src="~/Areas/FRS25/assets/sip/js/sip-replay.js?v=618.44"></script>
 <script>
     // ═══════════════════════════════════════════════════════════════

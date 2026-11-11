@@ -222,6 +222,11 @@ function abortPmIndicationRequest() {
             var th = 'table.pm-data-table > thead > tr > th.pm-th.pm-th' + (thExtra || '') + (tail || '');
             return '.pm-card-wrapper ' + th + ',#e7Body#e7Body .pm-card-wrapper ' + th;
         }
+        // PM card selector (wrapper + optional state + descendant), same #e7Body doubling.
+        function CW(state, tail) {
+            var s = '.pm-card-wrapper' + (state || '') + (tail || '');
+            return s + ',#e7Body#e7Body ' + s;
+        }
         var css = [
             /* --- PM table (G1) --- */
             /* Index.cshtml forces border-collapse:collapse !important on #wsLiveTable,
@@ -244,10 +249,13 @@ function abortPmIndicationRequest() {
                #e7Body#e7Body and forces #fff on th/small/a/i, which hid the
                (Avg) captions. PMH() doubles #e7Body as well so these win,
                keeping the header in the card's light/dark theme tokens. --- */
-            PMH('') + '{background:var(--e7-surface-2,#f1f5fb) !important;background-image:none !important;color:var(--e7-heading,#0f172a) !important;font-size:11px !important;font-weight:700 !important;letter-spacing:.05em !important;text-transform:uppercase !important;line-height:1.35 !important;padding:8px 12px 10px !important;vertical-align:bottom !important;text-align:center !important;white-space:nowrap;border:0 !important;border-top:3px solid var(--e7-border,rgba(15,23,42,.12)) !important;border-bottom:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;border-left:1px solid var(--e7-border,rgba(15,23,42,.08)) !important;}',
+            PMH('') + '{background:var(--e7-surface-2,#f1f5fb) !important;background-image:none !important;color:var(--e7-heading,#0f172a) !important;font-size:11px !important;font-weight:700 !important;letter-spacing:.05em !important;text-transform:uppercase !important;line-height:1.35 !important;padding:8px 12px 10px !important;vertical-align:bottom !important;text-align:center !important;white-space:nowrap;border:0 !important;border-right:1px solid var(--pm-grid) !important;border-bottom:1px solid var(--pm-grid) !important;}',
             PMH(':first-child') + '{border-left:0 !important;}',
-            PMH('.col-a') + '{background:var(--e7-accent-soft,rgba(37,157,171,.10)) !important;color:var(--e7-accent-ink,#0e7490) !important;border-top-color:var(--e7-accent,#259dab) !important;}',
-            PMH('.col-b') + '{background:var(--e7-violet-soft,rgba(139,92,246,.10)) !important;color:var(--e7-violet,#7c3aed) !important;border-top-color:var(--e7-violet,#8b5cf6) !important;}',
+            PMH(':last-child') + '{border-right:0 !important;}',
+            PMH('.col-a:not(.col-a + .col-a)') + '{border-left:2px solid var(--e7-accent,#259dab) !important;}',
+            PMH('.col-b:not(.col-b + .col-b)') + '{border-left:2px solid var(--e7-violet,#8b5cf6) !important;}',
+            PMH('.col-a') + '{background:var(--e7-accent-soft,rgba(37,157,171,.10)) !important;color:var(--e7-accent-ink,#0e7490) !important;box-shadow:inset 0 2px 0 var(--e7-accent,#259dab) !important;}',
+            PMH('.col-b') + '{background:var(--e7-violet-soft,rgba(139,92,246,.10)) !important;color:var(--e7-violet,#7c3aed) !important;box-shadow:inset 0 2px 0 var(--e7-violet,#8b5cf6) !important;}',
             PMH('', ' sub') + '{font-size:.78em;text-transform:none;letter-spacing:0;color:inherit !important;}',
             /* (Avg) caption: a quiet chip above the column title */
             PMH('', ' .pm-avg-label') + '{display:inline-flex !important;align-items:baseline;gap:4px;margin:0 auto 6px !important;padding:2px 10px !important;border-radius:6px;background:var(--e7-surface,#fff) !important;border:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;color:var(--e7-text-3,#64748b) !important;font-size:10px !important;font-weight:500 !important;letter-spacing:0 !important;text-transform:none !important;white-space:nowrap;box-shadow:0 1px 1px rgba(15,23,42,.04);}',
@@ -255,6 +263,26 @@ function abortPmIndicationRequest() {
             PMH('', ' .pm-avg-label > span[id]') + '{font-weight:700 !important;color:var(--e7-heading,#0f172a) !important;font-family:var(--at-font-mono,monospace);margin-left:2px;}',
             PMH('.col-a', ' .pm-avg-label > span[id]') + '{color:var(--e7-accent-ink,#0e7490) !important;}',
             PMH('.col-b', ' .pm-avg-label > span[id]') + '{color:var(--e7-violet,#7c3aed) !important;}',
+            /* --- PM card outline: framed card, framed table, A/B group rails --- */
+            CW('') + '{--pm-grid:var(--e7-border,rgba(15,23,42,.12));border:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;border-radius:12px !important;box-shadow:0 1px 3px rgba(15,23,42,.06) !important;overflow:hidden;margin-bottom:16px !important;min-height:0 !important;}',
+            CW('', ' > .table-responsive') + '{margin:0 !important;border:0 !important;border-top:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;border-radius:0 !important;overflow-x:auto !important;background:var(--e7-surface,#fff);}',
+            CW('', ' table.pm-data-table') + '{border-collapse:separate !important;border-spacing:0 !important;width:100%;margin:0 !important;border:0 !important;}',
+            [CW('', ' table.pm-data-table > thead > tr > td'), CW('', ' table.pm-data-table > thead > tr > th'), CW('', ' table.pm-data-table > tbody > tr > td')].join(',') +
+                '{border-top:0 !important;border-left:0 !important;border-right:1px solid var(--pm-grid) !important;border-bottom:1px solid var(--pm-grid) !important;}',
+            CW('', ' table.pm-data-table tr > :last-child') + '{border-right:0 !important;}',
+            CW('', ' table.pm-data-table > tbody > tr:last-child > td') + '{border-bottom:0 !important;}',
+            /* A / B group rails: coloured left edge on the first cell of each end */
+            CW('', ' table.pm-data-table tr > :not(.col-a) + .col-a') + ',' + CW('', ' table.pm-data-table tr > .col-a:first-child') + '{border-left:2px solid var(--e7-accent,#259dab) !important;}',
+            CW('', ' table.pm-data-table tr > :not(.col-b) + .col-b') + ',' + CW('', ' table.pm-data-table tr > .col-b:first-child') + '{border-left:2px solid var(--e7-violet,#8b5cf6) !important;}',
+            CW('', ' .pm-name-merged-cell') + '{font-weight:700 !important;font-size:15px !important;letter-spacing:.02em;background:var(--e7-surface,#fff) !important;}',
+            /* header strip keeps its accent bar inside the rounded corner */
+            CW('', ' > .pm-card-header') + '{border-radius:0 !important;}',
+            CW('', ' .pm-dir-header-cell') + '{padding:10px 14px !important;}',
+            CW('', ' .pm-voltage-subheader') + '{padding:6px 14px !important;font-size:12px;}',
+            /* body rows: tabular figures, soft zebra, hover */
+            CW('', ' table.pm-data-table > tbody > tr > td') + '{font-variant-numeric:tabular-nums;padding:9px 12px !important;vertical-align:middle !important;transition:background-color .15s ease;}',
+            CW('', ' table.pm-data-table > tbody > tr:nth-child(even) > td:not(.col-a):not(.col-b)') + '{background:var(--e7-surface-2,rgba(15,23,42,.025)) !important;}',
+            CW('', ' table.pm-data-table > tbody > tr:hover > td') + '{background-image:linear-gradient(rgba(37,157,171,.07),rgba(37,157,171,.07)) !important;}',
             /* voltage-row label when it shows the site attribute name */
             '.pm-volt-row .pm-volt-name[title]:not([title=""]){font-size:11px;font-weight:500;color:var(--e7-text-3,#64748b);margin-right:4px;}',
             T + ' thead tr th.pm616-grp-a{color:var(--e7-accent,#22d3ee) !important;box-shadow:inset 0 -2px 0 var(--e7-accent,#22d3ee);}',
@@ -2144,7 +2172,64 @@ function abortPmIndicationRequest() {
                 }
             });
         });
+        bindPmColumnHeaders(assetId, isRev);
     }
+    /* Column headers "A Current(Max/Avg)" / "A V PT110 DC LOC" (and B):
+       text replaced in place with the site's AliasName of the current /
+       voltage channel of that end for the shown direction (NW / RW), taken
+       from userAssetSimpleMap (GetBulkAssetMetadata / GetUserAssetInfo).
+       No match -> the original static header text is kept. */
+    var PM_COL_IDS = {
+        A: { C: [217, 219], V: [216, 218] },
+        B: { C: [213, 215], V: [212, 214] }
+    };
+    function pmColScore(name, end, relay, kind) {
+        var nm = pmNormName(name);
+        if (!nm || nm.indexOf('loc') !== -1 || nm.indexOf('kr') !== -1) return 0;
+        var hasA = nm.indexOf('aend') !== -1, hasB = nm.indexOf('bend') !== -1;
+        var endSc = (end === 'A' ? hasA : hasB) ? 2 : ((!hasA && !hasB) ? 1 : 0);
+        if (!endSc) return 0;
+        var body = nm.replace(/^.*?[ab]end/, '');
+        var kindOk = kind === 'C'
+            ? (new RegExp('^' + relay + '(c|curr|current)').test(body) || /current/.test(body))
+            : (new RegExp('^' + relay + '(v|volt|voltage)').test(body) || /volt/.test(body));
+        if (!kindOk) return 0;
+        // Name carries the other relay -> not this direction.
+        var other = relay === 'nw' ? 'rw' : 'nw';
+        if (body.indexOf(relay) === -1 && body.indexOf(other) !== -1) return 0;
+        return endSc + (body.indexOf(relay) !== -1 ? 2 : 0);
+    }
+    function sitePmColumnAlias(assetId, end, isRev, kind) {
+        var simple = window.userAssetSimpleMap || {};
+        var pre = String(assetId) + '_';
+        var relay = isRev ? 'rw' : 'nw';
+        var best = null;
+        for (var mk in simple) {
+            if (!Object.prototype.hasOwnProperty.call(simple, mk) || mk.indexOf(pre) !== 0) continue;
+            var me = simple[mk];
+            if (!me) continue;
+            var alias = String(me.aliasName || me.AliasName || me.name || '').replace(/<[^>]*>/g, '').trim();
+            if (!alias) continue;
+            var sc = Math.max(pmColScore(alias, end, relay, kind), pmColScore(me.attributeName || me.AttributeName, end, relay, kind));
+            // Fixed channel id configured for this site, name gives no hint.
+            if (!sc && PM_COL_IDS[end][kind].indexOf(parseInt(mk.substring(pre.length), 10)) !== -1) sc = 0.5;
+            if (sc && (!best || sc > best.sc)) best = { sc: sc, alias: alias };
+        }
+        return best ? best.alias : null;
+    }
+    function bindPmColumnHeaders(assetId, isRev) {
+        ['A', 'B'].forEach(function (E) {
+            ['C', 'V'].forEach(function (K) {
+                var $th = $('#pmTh' + E + K + '_' + assetId);
+                if (!$th.length) return;
+                if ($th.attr('data-pm-orig') === undefined) $th.attr('data-pm-orig', $th.html());
+                var alias = sitePmColumnAlias(assetId, E, isRev, K);
+                var html = alias ? esc(alias) + (K === 'C' ? ' (Max/Avg)' : '') : $th.attr('data-pm-orig');
+                if ($th.attr('data-pm-lbl') !== html) $th.html(html).attr('data-pm-lbl', html).attr('title', alias || '');
+            });
+        });
+    }
+    PM616.bindPmColumnHeaders = bindPmColumnHeaders;
     PM616.siteIndicationValue = siteIndicationValue;
     PM616.bindPmVoltRow = bindPmVoltRow;
 
@@ -3371,6 +3456,8 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
             both('.sigv2 .rdpms-sizeShuntDiv') + '{flex-direction:column!important;align-items:stretch!important;justify-content:space-between!important;gap:10px;' +
             'background:none!important;border:0!important;padding:0!important;min-height:0!important;}' +
             both('.sigv2 .rdpms-sizeShuntDiv > .rdpms-shunt') + '{align-self:center;margin:18px auto 22px!important;}' +
+            // shunt body (shunt.png) drawn dark; lamps are separate divs and keep their colour
+            both('.sigv2 .rdpms-shunt > .trianglePng') + '{filter:brightness(.4) contrast(1.15);}' +
             both('.sigv2 .rdpms-route-table') + '{width:100%;margin:0!important;}' +
             both('.sigv2 .rdpms-route-table table') + '{width:100%;border-radius:10px;overflow:hidden;}' +
             // relay strip
@@ -5915,6 +6002,8 @@ try {
             : ((typeof WS_BASE_URL !== 'undefined') ? WS_BASE_URL : ''); // eslint-disable-line no-undef
         siteId = trim(siteId);
         assetTypeId = trim(assetTypeId);
+        // Server A / Server B by the site's dbo.Site.ServerType (616 getWsBaseUrlForSite).
+        if (typeof W.getWsBaseUrlForSite === 'function') base = W.getWsBaseUrlForSite(siteId);
         if (siteId && siteId !== '0' && assetTypeId && assetTypeId !== '0') {
             return base + '/' + encodeURIComponent(siteId) + '/' + encodeURIComponent(assetTypeId) + '/all';
         }

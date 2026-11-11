@@ -3125,12 +3125,54 @@ var PMG_IND_META = {
 };
 var PMG_IND_ORDER = [25, 576, 26, 577, 27, 578, 28, 579];
 
-// Indications the selected asset actually has, per its bulk metadata.
+// Indications the selected asset actually has, per its bulk metadata AND the
+// site's own attribute config (GetUserAssetInfo -> userAssetSimpleMap), the same
+// source the PM card uses. An attribute the site does not take (e.g. NWKR/RWKR
+// (Loc) at a site without LOC) is not plotted, listed in the legend or tooltip.
 function _pmgIndIds() {
     return PMG_IND_ORDER.filter(function (id) {
         if (PMG_IND_META[id].end === 'B' && !_pmgHasB()) return false;
-        return typeof pmAssetHasAttr !== 'function' || pmAssetHasAttr(pmG.assetId, id);
+        if (typeof pmAssetHasAttr === 'function' && !pmAssetHasAttr(pmG.assetId, id)) return false;
+        return _pmgSiteHasInd(pmG.assetId, id);
     });
+}
+
+function _pmgNormName(s) { return String(s == null ? '' : s).toLowerCase().replace(/[\s_\-]+/g, ''); }
+
+// True when the site configures this indication for the asset: by attribute id,
+// else by its known names. An asset with no site config rows shows everything.
+function _pmgSiteHasInd(assetId, id) {
+    var map = window.userAssetSimpleMap;
+    if (!map) return true;
+    var prefix = String(assetId) + '_';
+    var names = (PMG_LIVE_NAMES[id] || []).map(_pmgNormName);
+    var any = false;
+    for (var k in map) {
+        if (!map.hasOwnProperty(k) || k.indexOf(prefix) !== 0) continue;
+        any = true;
+        if (k === prefix + id) return true;
+        var e = map[k] || {};
+        if (names.indexOf(_pmgNormName(e.attributeName || e.AttributeName)) !== -1 ||
+            names.indexOf(_pmgNormName(e.aliasName || e.AliasName)) !== -1) return true;
+    }
+    return !any;
+}
+
+// Theme-aware chart colours (canvas charts cannot read CSS var()).
+function _pmgPalette() {
+    var P = (typeof tlThemePalette === 'function') ? tlThemePalette() : null;
+    var L = P ? P.light : false;
+    return {
+        light: L,
+        tipBg: P ? P.surface : 'rgba(5,9,24,0.97)',
+        tipBorder: P ? P.border : 'rgba(34,211,238,0.30)',
+        text: P ? P.text : 'rgba(255,255,255,0.86)',
+        text2: P ? P.text2 : 'rgba(255,255,255,0.72)',
+        text3: P ? P.text3 : 'rgba(255,255,255,0.50)',
+        accent: P ? P.accent : '#22d3ee',
+        axis: P ? P.axis : 'rgba(255,255,255,0.16)',
+        grid: P ? P.grid : 'rgba(255,255,255,0.06)'
+    };
 }
 
 // A half point machine (IsHalfPointMachine) has no B End.
@@ -3306,19 +3348,22 @@ function _pmgAddDlSeries(opt, relays) {
     opt.grid.right = 64;
     // Relays lengthen the legend: on a narrow chart it would wrap into the plot.
     if (pmG.chart && pmG.chart.getWidth() < 640) opt.legend.type = 'scroll';
+    var PAL = _pmgPalette();
     opt.yAxis = [opt.yAxis, {
         type: 'value', name: 'Relay', min: 0, max: 1.4, interval: 1, position: 'right',
-        nameTextStyle: { color: 'rgba(255,255,255,0.50)' },
-        axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.16)' } },
+        nameTextStyle: { color: PAL.text3 },
+        axisLine: { show: true, lineStyle: { color: PAL.axis } },
         axisTick: { show: false },
         axisPointer: { show: false },
         axisLabel: {
-            color: 'rgba(255,255,255,0.50)',
+            color: PAL.text3,
             formatter: function (v) { return v === 1 ? 'Pickup' : (v === 0 ? 'Drop' : ''); }
         },
         splitLine: { show: false }
     }];
     relays.forEach(function (relay) {
+        // A relay already in the legend (same name) is not added twice.
+        if (opt.legend.data.indexOf(relay.name) !== -1) return;
         opt.legend.data.push(relay.name);
         opt.series.push({
             name: relay.name, type: 'line', step: 'end', smooth: false, showSymbol: false, clip: false,
@@ -3434,6 +3479,9 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
             var lp = points[points.length - 1].value[0];
             if (lp < endMs) points.push({ value: [endMs, last], symbol: 'none', symbolSize: 0 });
         }
+        // One legend entry per name: two attributes resolving to the same
+        // site name would otherwise list "A End …" twice.
+        if (colorByName[label]) return;
         legends.push(label); colorByName[label] = meta.color;
         series.push({
             name: label, type: 'line', step: 'end', smooth: false,
@@ -3510,18 +3558,23 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
     $('#pmgChart').show();
 
     pmG.chart = echarts.init(el);
+    var PAL = _pmgPalette();
+    // Tooltip rows carry their own colour (with !important) so page/theme CSS
+    // that recolours div/span text can't hide them in light or dark mode.
+    var TC = 'color:' + PAL.text + ' !important;';
     var pmgOption = {
         backgroundColor: 'transparent',
         animation: false,
-        textStyle: { color: 'rgba(255,255,255,0.72)' },
+        textStyle: { color: PAL.text2 },
         stateAnimation: { duration: 0 },
         tooltip: {
             trigger: 'axis',
-            axisPointer: { type: 'cross', label: { backgroundColor: 'rgba(34,211,238,0.80)' } },
-            backgroundColor: 'rgba(5,9,24,0.97)',
-            borderColor: 'rgba(34,211,238,0.30)',
+            axisPointer: { type: 'cross', label: { backgroundColor: PAL.accent, color: '#fff' } },
+            backgroundColor: PAL.tipBg,
+            borderColor: PAL.tipBorder,
             borderWidth: 1,
-            textStyle: { color: 'rgba(255,255,255,0.86)' },
+            textStyle: { color: PAL.text },
+            extraCssText: 'box-shadow:0 6px 18px rgba(0,0,0,.25);' + TC,
             formatter: function (ps) {
                 if (!ps || !ps.length) return '';
                 var d = new Date(ps[0].value[0]);
@@ -3529,15 +3582,17 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
                 var dateStr = String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
                 var vmap = {};
                 ps.forEach(function (p) { if (p.value && p.value[1] != null) vmap[p.seriesName] = p.value[1]; });
-                var html = '<div style="font-weight:700;color:var(--e7-accent, #22d3ee);margin-bottom:6px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding-bottom:4px;">' + dateStr + ' ' + t + '</div>';
+                var html = '<div style="font-weight:700;color:' + PAL.accent + ' !important;margin-bottom:6px;border-bottom:1px solid ' + PAL.tipBorder + ';padding-bottom:4px;">' + dateStr + ' ' + t + '</div>';
+                var shown = {};
                 _pmgIndIds().forEach(function (id) {
                     var nm = _pmgIndName(id);
-                    if (vmap[nm] == null) return;   // legend-unselected/hidden → omit from tooltip
+                    if (vmap[nm] == null || shown[nm]) return;   // legend-unselected/hidden or duplicate → omit
+                    shown[nm] = 1;
                     var val = Number(tlZeroFloor(vmap[nm])).toFixed(2);
-                    html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">' +
+                    html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;' + TC + '">' +
                         '<span style="width:9px;height:9px;border-radius:50%;background:' + PMG_IND_META[id].color + ';flex-shrink:0;"></span>' +
-                        '<span style="flex:1;white-space:nowrap;">' + nm + '</span>' +
-                        '<b style="margin-left:12px;">' + val + ' V</b></div>';
+                        '<span style="flex:1;white-space:nowrap;' + TC + '">' + nm + '</span>' +
+                        '<b style="margin-left:12px;' + TC + '">' + val + ' V</b></div>';
                 });
                 // Looked up by time: an axis tooltip only receives the series whose point is
                 // nearest the cursor, and relay points sit at their own timestamps.
@@ -3546,9 +3601,11 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
                     if (selected[relay.name] === false) return;
                     var bit = _pmgDlBitAt(relay, ps[0].value[0]);
                     if (bit === null) return;
-                    html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;">' +
+                    if (shown[relay.name]) return;
+                    shown[relay.name] = 1;
+                    html += '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;' + TC + '">' +
                         '<span style="width:9px;height:9px;border-radius:50%;background:' + relay.color + ';flex-shrink:0;"></span>' +
-                        '<span style="flex:1;white-space:nowrap;">' + relay.name + '</span>' +
+                        '<span style="flex:1;white-space:nowrap;' + TC + '">' + relay.name + '</span>' +
                         '<span class="rdpms-dl-badge ' + (bit ? 'pickup' : 'drop') + '" style="margin-left:12px;padding:1px 8px;border-radius:999px;font-size:10px;font-weight:700;">' +
                         (bit ? 'Pickup' : 'Drop') + '</span></div>';
                 });
@@ -3558,29 +3615,30 @@ function pmgRenderIndicationBoth(data, startMs, endMs) {
         legend: {
             type: 'plain', data: legends, top: 8, left: 'center', width: '96%',
             icon: 'roundRect', itemGap: 18, itemWidth: 22, itemHeight: 8,
-            padding: [4, 8], textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.72)', padding: [0, 2, 0, 0] }
+            padding: [4, 8], textStyle: { fontSize: 11, color: PAL.text2, padding: [0, 2, 0, 0] },
+            pageTextStyle: { color: PAL.text2 }
         },
         grid: { left: 56, right: 24, top: 96, bottom: 60, containLabel: true },
         xAxis: {
             type: 'time', min: startMs, max: endMs,
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
+            axisLine: { lineStyle: { color: PAL.axis } },
             axisLabel: {
-                color: 'rgba(255,255,255,0.50)',
+                color: PAL.text3,
                 formatter: function (v) { var d = new Date(v); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
             },
-            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)', type: 'dashed' } }
+            splitLine: { show: true, lineStyle: { color: PAL.grid, type: 'dashed' } }
         },
         yAxis: {
             type: 'value',
             name: 'Voltage (V)',
             scale: true,
-            nameTextStyle: { color: 'rgba(255,255,255,0.50)' },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
-            axisLabel: { color: 'rgba(255,255,255,0.50)' },
+            nameTextStyle: { color: PAL.text3 },
+            axisLine: { lineStyle: { color: PAL.axis } },
+            axisLabel: { color: PAL.text3 },
             splitLine: {
                 show: true,
                 lineStyle: {
-                    color: 'rgba(255,255,255,0.06)',
+                    color: PAL.grid,
                     type: 'dashed'
                 }
             }

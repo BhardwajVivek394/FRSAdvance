@@ -107,11 +107,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
 
         // Server-side proxy to call History API (avoids browser CORS issues)
-        public async Task<ActionResult> GetHistoryData(int assetId, string startDate, string endDate)
+        public async Task<ActionResult> GetHistoryData(int assetId, string startDate, string endDate, int? siteId = null)
         {
             try
             {
-                string baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                // Server A / Server B by the site's dbo.Site.ServerType. (616)
+                string baseUrl = ResolveProxyBaseUrlBySite(siteId);
                 string apiUrl = string.Format("{0}/api/HistoryValue?AssetId={1}&StartDate={2}&EndDate={3}",
                     baseUrl, assetId, startDate, endDate);
 
@@ -225,7 +226,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             string roleType = null,
             string attrIds = null,
             int? tsLimit = null,
-            bool? fillGaps = null)
+            bool? fillGaps = null,
+            int? siteId = null)
         {
             return await ProxyDashboardApiAsync(
                 ApiDashboardHistory,
@@ -233,7 +235,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 page, cursor, tsLimit ?? pageSize,
                 attrIds: attrIds,
                 roleType: roleType,
-                fillGapsOverride: fillGaps);
+                fillGapsOverride: fillGaps,
+                siteId: siteId);
         }
 
         /*
@@ -248,13 +251,15 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             string endDate,
             int? page = null,
             int? tsLimit = null,
-            string cursor = null)
+            string cursor = null,
+            int? siteId = null)
         {
             return await ProxyDashboardApiAsync(
                 ApiPmHistoryOperationArray,
                 assetId.ToString(), startDate, endDate,
                 page, cursor, pageSize: tsLimit,
-                attrIds: null);
+                attrIds: null,
+                siteId: siteId);
         }
 
         /*
@@ -270,13 +275,15 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             string endDate,
             int? page = null,
             string cursor = null,
-            int? pageSize = null)
+            int? pageSize = null,
+            int? siteId = null)
         {
             return await ProxyDashboardApiAsync(
                 ApiPmHistoryOperation,
                 assetId.ToString(), startDate, endDate,
                 page, cursor, pageSize: pageSize,
-                attrIds: PmOperationAttrIds);
+                attrIds: PmOperationAttrIds,
+                siteId: siteId);
         }
 
         /*
@@ -292,13 +299,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             string endDate,
             int? page = null,
             string cursor = null,
-            int? pageSize = null)
+            int? pageSize = null,
+            int? siteId = null)
         {
+            // siteId added here too (616 omitted it, so its Integration tab always used Server A).
             return await ProxyDashboardApiAsync(
                 ApiPmHistoryIntegration,
                 assetId.ToString(), startDate, endDate,
                 page, cursor, pageSize: pageSize,
-                attrIds: null);
+                attrIds: null,
+                siteId: siteId);
         }
 
         /*
@@ -313,13 +323,15 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             string endDate,
             int? page = null,
             string cursor = null,
-            int? pageSize = null)
+            int? pageSize = null,
+            int? siteId = null)
         {
             return await ProxyDashboardApiAsync(
                 ApiPmHistoryVibration,
                 assetId.ToString(), startDate, endDate,
                 page, cursor, pageSize,
-                attrIds: null);
+                attrIds: null,
+                siteId: siteId);
         }
 
         // -----------------------------------------------------------------
@@ -340,11 +352,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             int? pageSize,
             string attrIds,
             string roleType = null,
-            bool? fillGapsOverride = null)
+            bool? fillGapsOverride = null,
+            int? siteId = null)
         {
             try
             {
-                string baseUrl = ResolveDashboardBaseUrl();
+                string baseUrl = ResolveDashboardBaseUrl(siteId);
                 if (baseUrl == null)
                 {
                     return Json(
@@ -384,15 +397,180 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
         }
 
-        // Prefer the dedicated setting; fall back to ProxyBaseUrl.
-        private static string ResolveDashboardBaseUrl()
+        /*
+         * Prefer the dedicated setting; fall back to the site's server
+         * proxy (ServerA / ServerB, see ResolveProxyBaseUrlBySite) so
+         * existing deployments keep working. Null when neither is set. (616)
+         */
+        private static string ResolveDashboardBaseUrl(int? siteId)
         {
             string baseUrl = ConfigurationManager.AppSettings["DashboardHistoryBaseUrl"];
 
             if (string.IsNullOrWhiteSpace(baseUrl))
-                baseUrl = ConfigurationManager.AppSettings["ProxyBaseUrl"];
+                baseUrl = ResolveProxyBaseUrlBySite(siteId);
 
             return string.IsNullOrWhiteSpace(baseUrl) ? null : baseUrl.TrimEnd('/');
+        }
+
+        /*
+         * Per-site proxy selection from dbo.Site.ServerType (ported from 616):
+         *   NULL / 1 -> ProxyBaseUrlServerA
+         *   2        -> ProxyBaseUrlServerB
+         * No siteId, no E7MRIV2DB_SQL connection string or a DB failure is
+         * treated as Server A. If the ServerA/ServerB key is missing, falls
+         * back to ProxyBaseUrl. Cached per site for ServerTypeCacheMinutes so
+         * paged history walks don't hit the DB on every request.
+         */
+        private const int ServerTypeCacheMinutes = 10;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, Tuple<int?, DateTime>> _siteServerTypeCache =
+            new System.Collections.Concurrent.ConcurrentDictionary<int, Tuple<int?, DateTime>>();
+
+        private static string ResolveProxyBaseUrlBySite(int? siteId)
+        {
+            int? serverType = (siteId.HasValue && siteId.Value > 0) ? GetSiteServerType(siteId.Value) : null;
+
+            string key = serverType == 2 ? "ProxyBaseUrlServerB" : "ProxyBaseUrlServerA";
+            string baseUrl = ConfigurationManager.AppSettings[key];
+
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                key = "ProxyBaseUrl";
+                baseUrl = ConfigurationManager.AppSettings[key];
+            }
+
+            baseUrl = string.IsNullOrWhiteSpace(baseUrl) ? baseUrl : baseUrl.TrimEnd('/');
+            TraceProxyRouting(siteId, serverType, key, baseUrl);
+            return baseUrl;
+        }
+
+        /*
+         * Makes the routing decision visible:
+         *   - Response headers X-Proxy-* (browser DevTools -> Network ->
+         *     the request -> Response Headers).
+         *   - One line per request in ProxyRouting_yyyyMMdd.log, in the first
+         *     writable folder from ProxyLogCandidateDirs (X-Proxy-LogDir
+         *     header says which one was used).
+         * Never throws -- diagnostics must not break the data call.
+         */
+        private static void TraceProxyRouting(int? siteId, int? serverType, string key, string baseUrl)
+        {
+            var ctx = System.Web.HttpContext.Current;
+
+            string line = string.Format(
+                "{0:yyyy-MM-dd HH:mm:ss.fff} | {1} | SiteId={2} | ServerType={3} | Key={4} | BaseUrl={5}",
+                DateTime.Now,
+                ctx != null ? ctx.Request.RawUrl : "",
+                siteId.HasValue ? siteId.Value.ToString() : "none",
+                serverType.HasValue ? serverType.Value.ToString() : "null",
+                key,
+                baseUrl);
+
+            string logDir = WriteProxyLogLine(line);
+
+            try
+            {
+                if (ctx != null)
+                {
+                    ctx.Response.AppendHeader("X-Proxy-SiteId", siteId.HasValue ? siteId.Value.ToString() : "none");
+                    ctx.Response.AppendHeader("X-Proxy-ServerType", serverType.HasValue ? serverType.Value.ToString() : "null");
+                    ctx.Response.AppendHeader("X-Proxy-Key", key ?? "");
+                    ctx.Response.AppendHeader("X-Proxy-BaseUrl", baseUrl ?? "");
+                    ctx.Response.AppendHeader("X-Proxy-LogDir", logDir ?? "not-writable");
+                }
+            }
+            catch { }
+        }
+
+        private static readonly object _proxyLogLock = new object();
+        private static string _proxyLogDir;   // first folder that accepted a write; re-probed if it later fails
+
+        /*
+         * Log folders, tried in order until one accepts a write:
+         *   1. Web.config appSetting ProxyRoutingLogPath (absolute path), if set
+         *   2. ~/App_Data/Logs
+         *   3. ~/Logs                       (site root)
+         *   4. %TEMP%\E7FRSAdvance\Logs     (app pool's temp -- always writable)
+         */
+        private static IEnumerable<string> ProxyLogCandidateDirs()
+        {
+            string configured = ConfigurationManager.AppSettings["ProxyRoutingLogPath"];
+            if (!string.IsNullOrWhiteSpace(configured))
+                yield return configured.Trim();
+
+            string root = System.Web.Hosting.HostingEnvironment.ApplicationPhysicalPath
+                          ?? AppDomain.CurrentDomain.BaseDirectory;
+            yield return System.IO.Path.Combine(root, "App_Data", "Logs");
+            yield return System.IO.Path.Combine(root, "Logs");
+            yield return System.IO.Path.Combine(System.IO.Path.GetTempPath(), "E7FRSAdvance", "Logs");
+        }
+
+        // Returns the folder the line was written to, or null if none was writable.
+        private static string WriteProxyLogLine(string line)
+        {
+            string fileName = "ProxyRouting_" + DateTime.Now.ToString("yyyyMMdd") + ".log";
+
+            lock (_proxyLogLock)
+            {
+                if (_proxyLogDir != null && TryAppend(_proxyLogDir, fileName, line))
+                    return _proxyLogDir;
+
+                foreach (string dir in ProxyLogCandidateDirs())
+                {
+                    if (TryAppend(dir, fileName, line))
+                    {
+                        _proxyLogDir = dir;
+                        return dir;
+                    }
+                }
+
+                _proxyLogDir = null;
+                return null;
+            }
+        }
+
+        private static bool TryAppend(string dir, string fileName, string line)
+        {
+            try
+            {
+                System.IO.Directory.CreateDirectory(dir);
+                System.IO.File.AppendAllText(System.IO.Path.Combine(dir, fileName), line + Environment.NewLine);
+                return true;
+            }
+            catch
+            {
+                return false;   // no permission / bad path -> try the next folder
+            }
+        }
+
+        private static int? GetSiteServerType(int siteId)
+        {
+            Tuple<int?, DateTime> cached;
+            if (_siteServerTypeCache.TryGetValue(siteId, out cached) && cached.Item2 > DateTime.UtcNow)
+                return cached.Item1;
+
+            int? serverType = null;
+            try
+            {
+                var cs = ConfigurationManager.ConnectionStrings["E7MRIV2DB_SQL"];
+                if (cs == null || string.IsNullOrWhiteSpace(cs.ConnectionString)) return null;   // not configured -> Server A
+                using (var con = new System.Data.SqlClient.SqlConnection(cs.ConnectionString))
+                using (var cmd = new System.Data.SqlClient.SqlCommand("SELECT ServerType FROM dbo.Site WHERE ID = @SiteId", con))
+                {
+                    cmd.Parameters.AddWithValue("@SiteId", siteId);
+                    con.Open();
+                    object result = cmd.ExecuteScalar();
+                    if (result != null && result != DBNull.Value)
+                        serverType = Convert.ToInt32(result);
+                }
+            }
+            catch (Exception)
+            {
+                // DB unreachable -> default to Server A; don't cache the failure.
+                return null;
+            }
+
+            _siteServerTypeCache[siteId] = Tuple.Create(serverType, DateTime.UtcNow.AddMinutes(ServerTypeCacheMinutes));
+            return serverType;
         }
 
         /*

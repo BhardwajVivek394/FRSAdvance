@@ -67,6 +67,76 @@
     function cellById(id) { return state.cells.find(c => c.id === id); }
     function selectedCell() { return state.selectedId ? cellById(state.selectedId) : null; }
 
+    /* ---- Attachable Route / Calling pieces ---------------------------------
+       A RouteIndicator / CallingIndicator dropped (or dragged) near a main
+       signal snaps onto it: attrs.route.attachTo = signal id and the connector
+       vector linkDx/linkDy points at the signal's main-head edge. The piece then
+       moves with its signal; dragging it away detaches it. */
+    const ROUTE_ATTACH_DIST = 70;    // snap on when the piece centre is this close to a head
+    const ROUTE_KEEP_DIST = 160;     // an attached piece stays on its signal within this distance
+    function isRoutePiece(c) { return !!(c && SIP.ROUTE_PIECE_TYPES && SIP.ROUTE_PIECE_TYPES[c.type]); }
+    function isRouteParent(c) { return !!(c && SIP.ROUTE_PARENT_TYPES && SIP.ROUTE_PARENT_TYPES[c.type]); }
+    function pieceCenter(c) { return { x: c.position.x + (c.size.width || 0) / 2, y: c.position.y + (c.size.height || 0) / 2 }; }
+    function attachedPieces(parentId) {
+        return state.cells.filter(p => isRoutePiece(p) && p.attrs && p.attrs.route && p.attrs.route.attachTo === parentId);
+    }
+    function withAttachedPieces(ids) {
+        const out = ids.slice();
+        for (const id of ids) {
+            for (const p of attachedPieces(id)) if (out.indexOf(p.id) === -1) out.push(p.id);
+        }
+        return out;
+    }
+    function updatePieceLink(c) {
+        const rp = (c.attrs = c.attrs || {}).route = (c.attrs.route || {});
+        const parent = rp.attachTo ? cellById(rp.attachTo) : null;
+        if (!isRouteParent(parent)) { rp.attachTo = ''; rp.attachPart = ''; rp.linkDx = 0; rp.linkDy = 0; return false; }
+        const pc = pieceCenter(c);
+        const pt = SIP.routeAttachPoint(parent, pc.x, pc.y, rp.attachPart || undefined);
+        rp.attachPart = pt.part;   // 'main' (signal head) or 'shunt'
+        rp.linkDx = Math.round((pt.x - pc.x) * 10) / 10;
+        rp.linkDy = Math.round((pt.y - pc.y) * 10) / 10;
+        return true;
+    }
+    function refreshAllPieceLinks() {
+        if (!SIP.ROUTE_PIECE_TYPES) return;
+        for (const c of state.cells) {
+            if (isRoutePiece(c) && c.attrs && c.attrs.route && c.attrs.route.attachTo) updatePieceLink(c);
+        }
+    }
+    /* Attach to the nearest main signal in range (keeps its current signal
+       while within ROUTE_KEEP_DIST), or detach. Returns the parent or null. */
+    function snapRoutePiece(c) {
+        if (!isRoutePiece(c)) return null;
+        const rp = (c.attrs = c.attrs || {}).route = (c.attrs.route || {});
+        const pc = pieceCenter(c);
+        let best = null, bestD = Infinity, bestPart = '';
+        for (const p of state.cells) {
+            if (!isRouteParent(p)) continue;
+            // nearest part wins (Signal + Shunt: main head OR shunt)
+            const r = SIP.routeAttachPoint(p, pc.x, pc.y);
+            const lim = (p.id === rp.attachTo) ? ROUTE_KEEP_DIST : ROUTE_ATTACH_DIST;
+            if (r.dist <= lim && r.dist < bestD) { best = p; bestD = r.dist; bestPart = r.part; }
+        }
+        rp.attachTo = best ? best.id : '';
+        rp.attachPart = best ? bestPart : '';
+        updatePieceLink(c);
+        return best;
+    }
+    function routeParentName(p, part) {
+        const sp = (p && p.attrs && p.attrs.signal) || {};
+        const t = p && p.attrs && p.attrs.label && p.attrs.label.text;
+        const isShuntType = !!(p && SIP.ROUTE_SHUNT_TYPES && SIP.ROUTE_SHUNT_TYPES[p.type]);
+        if (p && p.type === 'examples.SignalShunt' && part === 'shunt') {
+            return String(sp.shuntAssetName || ((t || 'Signal + Shunt') + ' (shunt)'));
+        }
+        const base = String(sp.assetName || t || (isShuntType ? 'Shunt' : p && p.type === 'examples.SignalShunt' ? 'Signal + Shunt' : 'Signal'));
+        return (p && p.type === 'examples.SignalShunt') ? base + ' (main signal)' : base;
+    }
+    function pieceParentName(c, p) {
+        return routeParentName(p, c && c.attrs && c.attrs.route && c.attrs.route.attachPart);
+    }
+
     /* Visible bounding box of a cell's ICON (what the user sees), which can
        differ from cell.size. Shunts auto-size their body to 44-64px, so the
        selection overlay / handles must track the body, not the tiny cell.size,
@@ -416,6 +486,7 @@
      * ------------------------------------------------------------------------ */
     function render(skipInspector) {
         if (typeof SIP.prepareRailContext === 'function') SIP.prepareRailContext(state.cells);   // ← ADD THIS LINE
+        refreshAllPieceLinks();   // keep Route/Calling connectors on their signal (after resize/rotate/delete)
 
         const fragments = state.cells.map(c => {
             const inner = renderEditorCell(c);
@@ -866,11 +937,14 @@
         c.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
         state.cells.push(c);
         const snapped = maybeSnapToBackground(c);
+        const parent = snapRoutePiece(c);
         state.selectedId = c.id; state.selectedIds = [c.id];
         trackRecentType(type);
         pushHistory();
         render();
-        toast('Added ' + SIP.spec(type).label + (snapped ? ' (snapped to background)' : ''));
+        toast('Added ' + SIP.spec(type).label + (snapped ? ' (snapped to background)' : '') +
+            (parent ? ' — attached to ' + pieceParentName(c, parent) :
+                (isRoutePiece(c) ? ' — drag it onto a signal or shunt to attach' : '')));
     }
 
     /* Track recently used types for the "Recently Used" toolbox section */
@@ -892,11 +966,14 @@
         // If a signal lamp was spawned on top of a SignalBackground that's
         // already at canvas centre, auto-fit it to the tray.
         const snapped = maybeSnapToBackground(c);
+        const parent = snapRoutePiece(c);
         state.selectedId = c.id; state.selectedIds = [c.id];
         trackRecentType(type);
         pushHistory();
         render();
-        toast('Added ' + SIP.spec(type).label + (snapped ? ' (snapped to background)' : ''));
+        toast('Added ' + SIP.spec(type).label + (snapped ? ' (snapped to background)' : '') +
+            (parent ? ' — attached to ' + pieceParentName(c, parent) :
+                (isRoutePiece(c) ? ' — drag it onto a signal or shunt to attach' : '')));
     }
 
     /* ------------------------------------------------------------------------ *
@@ -1078,6 +1155,16 @@
                         `</select></div>` +
                         `<div class="field"><label>Custom shunt code</label><input type="text" id="insp-combined-shunt-code" value="${escAttr(shuntStateVal)}" placeholder="OFF / PROCEED / T,BL,BR"/></div>` +
                         `</div>`;
+
+                    /* Independent shunt rotation — only the shunt turns, main signal stays */
+                    const shuntRotVal = (((parseFloat(sigProps.shuntRotate) || 0) % 360) + 360) % 360;
+                    html += `<div class="field"><label>Shunt rotate (independent of main signal)</label>` +
+                        `<div style="display:flex;gap:6px;align-items:center;">` +
+                        `<button type="button" class="tb insp-shunt-rot-btn" data-rot="-90" style="padding:4px 9px;" title="Rotate shunt 90° anticlockwise">⟲ 90°</button>` +
+                        `<button type="button" class="tb insp-shunt-rot-btn" data-rot="90" style="padding:4px 9px;" title="Rotate shunt 90° clockwise">⟳ 90°</button>` +
+                        `<input type="number" id="insp-combined-shunt-rotate" value="${shuntRotVal}" min="0" max="359" step="1" style="flex:1;"/>` +
+                        `<button type="button" class="tb insp-shunt-rot-btn" data-rot="reset" style="padding:4px 9px;" title="Reset shunt rotation">0°</button>` +
+                        `</div></div>`;
                 }
             }
 
@@ -1189,11 +1276,12 @@
 
             /* Route / Calling editor.  For examples.Signal this is optional;
                for examples.RouteCallingSignal it is always enabled. */
-            if (c.type === 'examples.RouteCallingSignal' || c.type === 'examples.Signal') {
+            if (c.type === 'examples.RouteCallingSignal' || c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
                 const routeProps = (c.attrs && c.attrs.route) || {};
                 const isRouteCell = c.type === 'examples.RouteCallingSignal';
                 const routeEnabled = isRouteCell || routeProps.enabled === true || routeProps.enabled === 'true';
-                const labelsVal = routeProps.labels || routeProps.routes || routeProps.routeLabels || 'AUG,BUG,CUG,DUG';
+                const labelsVal = (typeof routeProps.labels === 'string' && routeProps.labels.trim() === '')
+                    ? '' : (routeProps.labels || routeProps.routes || routeProps.routeLabels || 'AUG,BUG,CUG,DUG');
                 const activeVal = routeProps.active || routeProps.activeRoutes || '';
                 const routeSideVal = routeProps.routeSide || 'top';
                 const callingSideVal = routeProps.callingSide || 'bottom';
@@ -1261,6 +1349,61 @@
                     `<div class="field"><label>Attach gap</label>` +
                     `<input type="number" id="insp-route-attach-gap" value="${attachGapVal}" min="0" max="80" step="1"/></div>` +
                     `</div>`;
+            }
+        }
+
+        /* ---- Attachable Route / Calling piece ---- */
+        if (isRoutePiece(c)) {
+            const rp = (c.attrs && c.attrs.route) || {};
+            const parent = rp.attachTo ? cellById(rp.attachTo) : null;
+            const isCall = c.type === 'examples.CallingIndicator';
+            html += `<div class="tb-group-h" style="margin-top:14px">${isCall ? 'Calling' : 'Route'} — attachment</div>`;
+            if (parent) {
+                html += `<div class="field" style="display:flex;align-items:center;gap:8px;">` +
+                    `<span style="flex:1;">Attached to <b>${escapeXml(pieceParentName(c, parent))}</b></span>` +
+                    `<button type="button" id="insp-piece-detach" class="tb" style="padding:4px 9px;">Detach</button></div>`;
+                const parts = SIP.routeParts(parent);
+                if (parts.length > 1) {
+                    const cur = rp.attachPart || 'main';
+                    html += `<div class="field"><label>Attach to</label><select id="insp-piece-part">` +
+                        `<option value="main" ${cur === 'main' ? 'selected' : ''}>Main signal</option>` +
+                        `<option value="shunt" ${cur === 'shunt' ? 'selected' : ''}>Shunt</option>` +
+                        `</select></div>`;
+                }
+                html += `<small class="muted">Moves with its signal. Drag it away to detach.</small>`;
+            } else {
+                html += `<div class="field"><span>Not attached.</span> ` +
+                    `<button type="button" id="insp-piece-attach" class="tb" style="padding:4px 9px;">Attach to nearest signal</button></div>` +
+                    `<small class="muted">Or drag it onto a signal or shunt (Signal, Shunt, or the main/shunt part of a Signal + Shunt).</small>`;
+            }
+            if (isCall) {
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>Calling label</label><input type="text" id="insp-piece-call-label" value="${escAttr(rp.callingLabel || 'C')}" maxlength="6"/></div>` +
+                    `<div class="field"><label>Lamp size</label><input type="number" id="insp-piece-dot-size" value="${+rp.dotSize || 3.8}" min="2.4" max="10" step="0.2"/></div>` +
+                    `</div>`;
+                html += `<div class="field"><label>Preview lit (type C)</label>` +
+                    `<input type="text" id="insp-piece-active" value="${escAttr(rp.active || '')}" placeholder="C"/></div>`;
+            } else {
+                const lbls = (typeof rp.labels === 'string') ? rp.labels : 'AUG';
+                const side = String(rp.routeSide || 'top');
+                const opt = (v, t) => `<option value="${v}" ${side === v ? 'selected' : ''}>${t}</option>`;
+                html += `<div class="field"><label>Route aspects</label>` +
+                    `<div style="display:flex;gap:6px;align-items:center;">` +
+                    `<input type="text" id="insp-piece-labels" value="${escAttr(lbls)}" placeholder="AUG,BUG" style="flex:1;"/>` +
+                    `<button type="button" id="insp-piece-add" class="tb" style="padding:4px 9px;">+ Add</button>` +
+                    `<button type="button" id="insp-piece-remove" class="tb" style="padding:4px 9px;">−</button>` +
+                    `</div></div>`;
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>Arms point</label><select id="insp-piece-side">` +
+                    opt('top', 'Up') + opt('bottom', 'Down') + opt('left', 'Left') + opt('right', 'Right') + `</select></div>` +
+                    `<div class="field"><label>Arm length</label><input type="number" id="insp-piece-arm-length" value="${+rp.armLength || 22}" min="8" max="120" step="2"/></div>` +
+                    `</div>`;
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>Lamp size</label><input type="number" id="insp-piece-dot-size" value="${+rp.dotSize || 3.8}" min="2.4" max="10" step="0.2"/></div>` +
+                    `<div class="field"><label>Label gap</label><input type="number" id="insp-piece-label-gap" value="${+rp.labelGap || 8}" min="0" max="40" step="1"/></div>` +
+                    `</div>`;
+                html += `<div class="field"><label>Preview lit routes</label>` +
+                    `<input type="text" id="insp-piece-active" value="${escAttr(rp.active || '')}" placeholder="AUG"/></div>`;
             }
         }
 
@@ -1631,6 +1774,22 @@
                     const sp = ensureSig();
                     sp.shuntState = String(v || 'OFF').toUpperCase();
                 });
+                const normRot = v => (((parseFloat(v) || 0) % 360) + 360) % 360;
+                bindInspectorInputNum('insp-combined-shunt-rotate', v => {
+                    const sp = ensureSig();
+                    sp.shuntRotate = normRot(v);
+                });
+                $$('.insp-shunt-rot-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const sp = ensureSig();
+                        const step = btn.getAttribute('data-rot');
+                        sp.shuntRotate = step === 'reset' ? 0 : normRot((+sp.shuntRotate || 0) + (+step));
+                        const inp = $('#insp-combined-shunt-rotate');
+                        if (inp) inp.value = sp.shuntRotate;
+                        render();
+                        pushHistory();
+                    });
+                });
             }
 
             /* ---- Rotation buttons + free-angle input ---- */
@@ -1731,7 +1890,7 @@
             });
 
             /* Route / Calling bindings */
-            if (c.type === 'examples.RouteCallingSignal' || c.type === 'examples.Signal') {
+            if (c.type === 'examples.RouteCallingSignal' || c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
                 const ensureRoute = () => {
                     c.attrs = c.attrs || {};
                     c.attrs.route = c.attrs.route || {};
@@ -1743,7 +1902,9 @@
                 const ROUTE_POOL = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG', 'FUG', 'HUG', 'JUG', 'KUG', 'LUG'];
                 function getRouteLabels() {
                     const rp = ensureRoute();
-                    return String(rp.labels || 'AUG,BUG,CUG,DUG').split(/[\s,|/]+/)
+                    /* '' = all routes removed (calling stays); undefined = default set */
+                    const raw = (typeof rp.labels === 'string') ? rp.labels : 'AUG,BUG,CUG,DUG';
+                    return raw.split(/[\s,|/]+/)
                         .map(x => String(x || '').trim().toUpperCase())
                         .filter((x, i, a) => x && a.indexOf(x) === i);
                 }
@@ -1781,7 +1942,9 @@
                     routeRemove.addEventListener('click', () => {
                         const rp = ensureRoute();
                         const labels = getRouteLabels();
-                        if (labels.length > 1) labels.pop();
+                        /* Remove only the route aspect — calling is independent and
+                           untouched, so the last route can be removed too. */
+                        if (labels.length > 0) labels.pop();
                         rp.labels = labels.join(',');
                         render();
                         pushHistory();
@@ -1850,6 +2013,64 @@
                     rp.callingGap = v;
                 });
             }
+        }
+
+        /* Attachable Route / Calling piece bindings */
+        if (isRoutePiece(c)) {
+            const rpOf = () => { c.attrs = c.attrs || {}; return (c.attrs.route = c.attrs.route || {}); };
+            const detachBtn = $('#insp-piece-detach');
+            if (detachBtn) detachBtn.addEventListener('click', () => {
+                const rp = rpOf(); rp.attachTo = ''; rp.attachPart = ''; rp.linkDx = 0; rp.linkDy = 0;
+                c.position.x += 30; c.position.y -= 30;   // step clear so it does not re-snap on the next drag
+                render(); pushHistory(); toast('Detached from signal');
+            });
+            const attachBtn = $('#insp-piece-attach');
+            if (attachBtn) attachBtn.addEventListener('click', () => {
+                const pc = pieceCenter(c);
+                let best = null, bestD = Infinity, bestPart = '';
+                for (const p of state.cells) {
+                    if (!isRouteParent(p)) continue;
+                    const r = SIP.routeAttachPoint(p, pc.x, pc.y);
+                    if (r.dist < bestD) { best = p; bestD = r.dist; bestPart = r.part; }
+                }
+                if (!best) { toast('No signal or shunt on the layout to attach to.'); return; }
+                rpOf().attachTo = best.id;
+                rpOf().attachPart = bestPart;
+                updatePieceLink(c);
+                render(); pushHistory(); toast('Attached to ' + pieceParentName(c, best));
+            });
+            const partEl = $('#insp-piece-part');
+            if (partEl) partEl.addEventListener('change', () => {
+                rpOf().attachPart = partEl.value;
+                updatePieceLink(c);
+                render(); pushHistory();
+            });
+            bindInspectorInput('insp-piece-call-label', v => { rpOf().callingLabel = String(v || 'C').toUpperCase(); });
+            bindInspectorInput('insp-piece-active', v => { rpOf().active = String(v || '').toUpperCase(); });
+            bindInspectorInput('insp-piece-labels', v => { rpOf().labels = String(v || '').toUpperCase(); });
+            bindInspectorInputNum('insp-piece-dot-size', v => { const rp = rpOf(); rp.dotSize = Math.max(2.4, Math.min(10, v)); rp.lightSize = rp.dotSize; });
+            bindInspectorInputNum('insp-piece-arm-length', v => { rpOf().armLength = Math.max(8, Math.min(120, v)); });
+            bindInspectorInputNum('insp-piece-label-gap', v => { rpOf().labelGap = Math.max(0, Math.min(40, v)); });
+            const sideEl = $('#insp-piece-side');
+            if (sideEl) sideEl.addEventListener('change', () => { rpOf().routeSide = sideEl.value; render(); pushHistory(); });
+            const POOL = ['AUG', 'BUG', 'CUG', 'DUG', 'EUG', 'FUG', 'HUG', 'JUG', 'KUG', 'LUG'];
+            const curLabels = () => {
+                const rp = rpOf();
+                const raw = (typeof rp.labels === 'string') ? rp.labels : 'AUG';
+                return raw.split(/[\s,|/]+/).map(x => x.trim().toUpperCase()).filter((x, i, a) => x && a.indexOf(x) === i);
+            };
+            const addB = $('#insp-piece-add');
+            if (addB) addB.addEventListener('click', () => {
+                const l = curLabels();
+                l.push(POOL.find(x => l.indexOf(x) === -1) || ('R' + (l.length + 1)));
+                rpOf().labels = l.join(','); render(); pushHistory();
+            });
+            const remB = $('#insp-piece-remove');
+            if (remB) remB.addEventListener('click', () => {
+                const l = curLabels();
+                if (l.length > 1) l.pop();   // a Route piece keeps at least one arm; delete the piece to remove it
+                rpOf().labels = l.join(','); render(); pushHistory();
+            });
         }
 
         // Asset dropdown — pull from registry (server) or harvest from current yard.
@@ -2078,7 +2299,7 @@
         if (isSelected(eid) && state.selectedIds.length > 1) {
             state.selectedId = eid;
             const gs = clientToWorld(evt);
-            drag = { group: true, ids: state.selectedIds.slice(), base: {}, startX: gs.x, startY: gs.y, moved: false, clickEid: eid };
+            drag = { group: true, ids: withAttachedPieces(state.selectedIds), base: {}, startX: gs.x, startY: gs.y, moved: false, clickEid: eid };
             for (const id of drag.ids) { const gc = cellById(id); if (gc) drag.base[id] = { x: gc.position.x, y: gc.position.y }; }
             render();
             evt.preventDefault();
@@ -2114,7 +2335,8 @@
             id: eid,
             offX: start.x - c.position.x,
             offY: start.y - c.position.y,
-            moved: false
+            moved: false,
+            pieceWas: (c.attrs && c.attrs.route && c.attrs.route.attachTo) || ''
         };
         evt.preventDefault();
     }
@@ -2278,10 +2500,21 @@
         const nx = snap(w.x - drag.offX);
         const ny = snap(w.y - drag.offY);
         if (nx !== c.position.x || ny !== c.position.y) {
+            const ddx = nx - c.position.x, ddy = ny - c.position.y;
             c.position.x = nx;
             c.position.y = ny;
             drag.moved = true;
-            renderCellLive(c);   // in-place update — no full rebuild, no flicker
+            // Attached Route / Calling pieces travel with their signal.
+            const kids = isRouteParent(c) ? attachedPieces(c.id) : [];
+            if (kids.length) {
+                for (const k of kids) { k.position.x += ddx; k.position.y += ddy; }
+                renderCellsLive([c.id].concat(kids.map(k => k.id)));
+            } else if (isRoutePiece(c)) {
+                snapRoutePiece(c);   // live attach / detach preview while dragging the piece
+                renderCellLive(c);
+            } else {
+                renderCellLive(c);   // in-place update — no full rebuild, no flicker
+            }
         }
     }
 
@@ -2307,6 +2540,11 @@
             // a SignalBackground, snap-fit it to the tray.
             const c = cellById(drag.id);
             if (c) maybeSnapToBackground(c);
+            if (c && isRoutePiece(c)) {
+                const p = snapRoutePiece(c);
+                if (p && p.id !== drag.pieceWas) toast('Attached to ' + pieceParentName(c, p));
+                else if (!p && drag.pieceWas) toast('Detached from signal');
+            }
             pushHistory();
             changed = true;
         }
@@ -2346,7 +2584,7 @@
                 evt.preventDefault(); pushHistory(); render();
                 return;
             }
-            for (const id of ids) { const c = cellById(id); if (c) { c.position.x += dx; c.position.y += dy; } }
+            for (const id of withAttachedPieces(ids)) { const c = cellById(id); if (c) { c.position.x += dx; c.position.y += dy; } }
             evt.preventDefault();
             pushHistory();
             render();
@@ -2367,7 +2605,7 @@
             : (state.selectedId ? [state.selectedId] : []);
         if (!ids.length) return;
         const del = {};
-        ids.forEach(id => { del[id] = true; });
+        withAttachedPieces(ids).forEach(id => { del[id] = true; });   // a signal takes its attached Route/Calling with it
         state.cells = state.cells.filter(c => !del[c.id]);
         clearSelection();
         pushHistory();
@@ -2382,6 +2620,17 @@
         copy.position.y += 20;
         copy.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
         state.cells.push(copy);
+        // Duplicate the signal's attached Route / Calling pieces onto the copy.
+        if (isRouteParent(c)) {
+            for (const k of attachedPieces(c.id)) {
+                const kc = deepClone(k);
+                kc.id = SIP._uid();
+                kc.position.x += 20; kc.position.y += 20;
+                kc.attrs.route.attachTo = copy.id;
+                state.cells.push(kc);
+            }
+        }
+        if (isRoutePiece(copy)) snapRoutePiece(copy);
         state.selectedId = copy.id;
         state.selectedIds = [copy.id];
         pushHistory();
@@ -2967,6 +3216,7 @@
                     c.z = (state.cells.reduce((m, cc) => Math.max(m, cc.z || 0), 0) + 1);
                     state.cells.push(c);
                     maybeSnapToBackground(c);
+                    snapRoutePiece(c);
                     state.selectedId = c.id; state.selectedIds = [c.id];
                     trackRecentType(type);
                     pushHistory();

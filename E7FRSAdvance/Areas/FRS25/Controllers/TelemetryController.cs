@@ -46,7 +46,41 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             Helper.FilterCacheHelper.SetFilterViewBag(ViewBag,_siteService,_zoneService,_divisionService,includeAssetType: false);
             // FRS asset types are enum-based, so retain existing behaviour.
             ViewBag.AssetTypes = new SelectList(GetFRSAssetType(),"Id","Name");
+            // Site -> ServerType (1 = Server A, 2 = Server B) so the live
+            // WebSocket connects to the station's own server. (616)
+            ViewBag.SiteServerTypes = GetSiteServerTypeMap();
             return View();
+        }
+
+        /*
+         * dbo.Site.ServerType for every site that has one (same source as
+         * Telemetry History proxy routing). Sites missing from the map, a
+         * missing E7MRIV2DB_SQL connection string or a DB failure (empty map)
+         * all use Server A. Ported from 616.
+         */
+        private static Dictionary<int, int> GetSiteServerTypeMap()
+        {
+            var map = new Dictionary<int, int>();
+            try
+            {
+                var cs = ConfigurationManager.ConnectionStrings["E7MRIV2DB_SQL"];
+                if (cs == null || string.IsNullOrWhiteSpace(cs.ConnectionString)) return map;
+                using (var con = new System.Data.SqlClient.SqlConnection(cs.ConnectionString))
+                using (var cmd = new System.Data.SqlClient.SqlCommand("SELECT ID, ServerType FROM dbo.Site WHERE ServerType IS NOT NULL", con))
+                {
+                    con.Open();
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                            map[Convert.ToInt32(reader[0])] = Convert.ToInt32(reader[1]);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // DB unreachable -> every site falls back to Server A.
+            }
+            return map;
         }
 
         // Two request shapes: { zoneId } (Telemetry Live / Detail pages) and
@@ -697,6 +731,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         mDataloggers = JsonConvert.DeserializeObject<List<Domain.Datalogger>>(jsonString);
                     }
                 }
+                // Same site-based aliases as the Event Log modal.
+                ApplySiteAlias(GetSiteAliasMap(searchCriteria.SiteId, searchCriteria.AssetId), mDataloggers);
             }
             catch (Exception ex)
             {
@@ -1891,6 +1927,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 }
             }
 
+            // Site-based aliases for every attribute name shown in the modal.
+            var siteAlias = (mAsset != null && mAsset.Id > 0) ? GetSiteAliasMap(mAsset.SiteId, mAsset.Id) : null;
+
             if (mAsset != null && mAsset.Id > 0 && mAsset.IsDatalogger)
             {
                 var mSearchCriteria = new SearchCriteria();
@@ -1900,12 +1939,14 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 var mDatalogger = DataLoggerEvent(mSearchCriteria);
                 if (mDatalogger != null && mDatalogger.Count > 0)
                 {
+                    ApplySiteAlias(siteAlias, mDatalogger);
                     ViewBag.Datalogger = mDatalogger;
                 }
 
                 var mPeriodicDatalogger = PeriodicDataLoggerEvent(mSearchCriteria);
                 if (mPeriodicDatalogger != null && mPeriodicDatalogger.Count > 0)
                 {
+                    ApplySiteAlias(siteAlias, mPeriodicDatalogger);
                     ViewBag.PeriodicDatalogger = mPeriodicDatalogger;
                 }
 
@@ -1919,12 +1960,28 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     }
                 }
 
-                ViewBag.AssetInfoDatalogger = GetAssetInfoDatalogger(mAsset.Id);
+                var mAssetInfoDataloggers = GetAssetInfoDatalogger(mAsset.Id);
+                if (mAssetInfoDataloggers != null && siteAlias != null)
+                {
+                    foreach (var d in mAssetInfoDataloggers)
+                        d.DataloggerAttribute = siteAlias.Resolve(true, d.DataloggerAttributeId, d.DataloggerAttribute);
+                }
+                ViewBag.AssetInfoDatalogger = mAssetInfoDataloggers;
             }
             if (mAsset != null && mAsset.Id > 0)
             {
                 ViewBag.ChangeTimeAssets = GetChangeTime(mAsset.Id);
-                ViewBag.AssetInfos = GetAssetInfo(mAsset.Id);
+                var mAssetInfos = GetAssetInfo(mAsset.Id);
+                if (mAssetInfos != null && siteAlias != null)
+                {
+                    foreach (var ai in mAssetInfos)
+                    {
+                        var raw = !string.IsNullOrEmpty(ai.AttributeName) ? ai.AttributeName : ai.AttributeAliasName;
+                        var alias = siteAlias.Resolve(false, ai.AssetAttributeId, raw);
+                        if (!string.IsNullOrEmpty(alias) && alias != raw) ai.AttributeAliasName = alias;
+                    }
+                }
+                ViewBag.AssetInfos = mAssetInfos;
             }
 
             return PartialView("_EventLog", mAsset);
@@ -1981,6 +2038,90 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 ViewBag.Error = ex.Message.ToString();
             }
             return mPeriodicDataloggers;
+        }
+
+        // ------------------------------------------------------------------
+        // Site-based attribute alias for the Event Log modal.
+        // Aliases are per site (GetUserAssetInfo/SiteId), so the raw names the
+        // datalogger / asset-info APIs return are replaced with this site's
+        // AliasName for the asset. RoleType 'd' = datalogger, else analog ('c').
+        // Matching: raw attribute name first, then attribute id; no alias -> raw name kept.
+        // ------------------------------------------------------------------
+        private class SiteAliasMap
+        {
+            public Dictionary<string, string> DByName = new Dictionary<string, string>();
+            public Dictionary<string, string> DById = new Dictionary<string, string>();
+            public Dictionary<string, string> CByName = new Dictionary<string, string>();
+            public Dictionary<string, string> CById = new Dictionary<string, string>();
+
+            private static string Norm(string s)
+            {
+                return string.IsNullOrWhiteSpace(s) ? "" : new string(s.Where(ch => !char.IsWhiteSpace(ch) && ch != '_' && ch != '-').ToArray()).ToLowerInvariant();
+            }
+
+            public void Add(bool isDatalogger, string attrName, IEnumerable<string> ids, string alias)
+            {
+                var byName = isDatalogger ? DByName : CByName;
+                var byId = isDatalogger ? DById : CById;
+                var n = Norm(attrName);
+                if (n.Length > 0 && !byName.ContainsKey(n)) byName[n] = alias;
+                foreach (var id in ids)
+                    if (!string.IsNullOrWhiteSpace(id) && !byId.ContainsKey(id.Trim())) byId[id.Trim()] = alias;
+            }
+
+            public string Resolve(bool isDatalogger, int? id, string rawName)
+            {
+                var byName = isDatalogger ? DByName : CByName;
+                var byId = isDatalogger ? DById : CById;
+                string alias;
+                var n = Norm(rawName);
+                if (n.Length > 0 && byName.TryGetValue(n, out alias)) return alias;
+                if (id.HasValue && id.Value > 0 && byId.TryGetValue(id.Value.ToString(), out alias)) return alias;
+                return rawName;
+            }
+        }
+
+        private SiteAliasMap GetSiteAliasMap(int siteId, int assetId)
+        {
+            var map = new SiteAliasMap();
+            if (siteId <= 0 || assetId <= 0) return map;
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var response = hcf.client.GetAsync("AssetInfo/GetUserAssetInfo/SiteId/" + siteId).Result;
+                    if (response.StatusCode != HttpStatusCode.OK) return map;
+                    var token = Newtonsoft.Json.Linq.JToken.Parse(response.Content.ReadAsStringAsync().Result);
+                    var rows = token as Newtonsoft.Json.Linq.JArray;
+                    if (rows == null && token is Newtonsoft.Json.Linq.JObject)
+                        rows = (token["Data"] ?? token["data"] ?? token["mUserAssetInfo"] ?? token["Result"] ?? token["result"]) as Newtonsoft.Json.Linq.JArray;
+                    if (rows == null) return map;
+
+                    foreach (var r in rows)
+                    {
+                        if ((string)r["AssetId"] != assetId.ToString()) continue;
+                        var alias = ((string)r["AliasName"] ?? "").Trim();
+                        if (alias.Length == 0) continue;
+                        var isD = string.Equals(((string)r["RoleType"] ?? "").Trim(), "d", StringComparison.OrdinalIgnoreCase);
+                        var ids = new List<string> { (string)r["AssetAttributeId"], (string)r["AttributeId"], (string)r["DataloggerAttributeId"] };
+                        var role = ((string)r["Role"] ?? "").Trim();
+                        if (role.Length > 0 && role.All(char.IsDigit)) ids.Add(role);
+                        map.Add(isD, (string)r["AttributeName"], ids, alias);
+                        if (isD) map.Add(true, (string)r["DataloggerAttribute"], new string[0], alias);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // No alias map -> raw names stay (same as before).
+            }
+            return map;
+        }
+
+        private static void ApplySiteAlias(SiteAliasMap map, List<Domain.Datalogger> rows)
+        {
+            if (map == null || rows == null) return;
+            foreach (var d in rows) d.AttributeName = map.Resolve(true, d.AttributeId, d.AttributeName);
         }
 
         private List<AssetInfo> GetAssetInfo(int assetId)

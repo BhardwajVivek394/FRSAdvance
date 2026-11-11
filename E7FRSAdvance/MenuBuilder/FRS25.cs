@@ -124,9 +124,12 @@ namespace E7FRSAdvance.MenuBuilder
 
             // Equipment Room
             Menu equipment = new Menu();
-            equipment.Main = equipment.SetMenuAttribute("Equipment Room", "#", "#", FRSIconName.EquipmentRoom);
-            equipment.Childs.Add(equipment.SetMenuAttribute("Equipment Room Live", ControllerName.EquipmentRoom, ActionName.Index, IconName.Dashboard, "FRS25"));
-            equipment.Childs.Add(equipment.SetMenuAttribute("Equipment Room History", ControllerName.EquipmentRoom, ActionName.History, IconName.Dashboard, "FRS25"));
+            // Live and History are one page now (Views/EquipmentRoom/Index.cshtml).
+            // The old History page is still reachable at /FRS25/EquipmentRoom/History.
+            equipment.Main = equipment.SetMenuAttribute("Equipment Room", ControllerName.EquipmentRoom, ActionName.Index, FRSIconName.EquipmentRoom, "FRS25");
+            //equipment.Main = equipment.SetMenuAttribute("Equipment Room", "#", "#", FRSIconName.EquipmentRoom);
+            //equipment.Childs.Add(equipment.SetMenuAttribute("Equipment Room Live", ControllerName.EquipmentRoom, ActionName.Index, IconName.Dashboard, "FRS25"));
+            //equipment.Childs.Add(equipment.SetMenuAttribute("Equipment Room History", ControllerName.EquipmentRoom, ActionName.History, IconName.Dashboard, "FRS25"));
             menus.Add(equipment);
 
             // Asset

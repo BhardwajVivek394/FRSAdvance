@@ -153,7 +153,9 @@
     var PM_TYPES = { 'examples.PointMachine': 1, 'examples.PointMachine1': 1 };
     var SHUNT_TYPES = { 'examples.Shaunt': 1, 'examples.Shaunt2': 1, 'examples.Shaunt3': 1 };
     var POST_TYPES = { 'examples.Post': 1, 'examples.Post1': 1 };  // text-only name posts
-    var ROUTE_CALLING_TYPES = { 'examples.RouteCallingSignal': 1 };
+    var ROUTE_CALLING_TYPES = { 'examples.RouteCallingSignal': 1, 'examples.RouteIndicator': 1, 'examples.CallingIndicator': 1 };
+    /* Attachable pieces: driven by the asset of the signal they are attached to */
+    var ROUTE_PIECE_TYPES = { 'examples.RouteIndicator': 1, 'examples.CallingIndicator': 1 };
     var BUSBAR_TYPES = { 'examples.BusBar': 1 };
     var AXLE_TYPES = { 'examples.AxleCounter': 1 };
     var GATE_TYPES = { 'examples.Gate': 1 };
@@ -1972,6 +1974,7 @@
         state.needFit = true; state.view = null;   // fit-to-content on (re)load
         buildIndex();
         bindPostsToSignals();
+        bindRoutePiecesToSignals();
         loadSipAllTypeMetadata(siteId);
         renderAll();
         sinfo('Layout loaded' + (fromCache ? ' (cache)' : '') + ': ' + state.cells.length +
@@ -2183,6 +2186,30 @@
             (state.byNorm[nk] = state.byNorm[nk] || []);
             if (state.byNorm[nk].indexOf(cell) === -1) state.byNorm[nk].push(cell);
         }
+    }
+    /* Attached Route / Calling pieces (examples.RouteIndicator / CallingIndicator)
+       have no asset of their own: register each under its parent signal's asset
+       name so the parent's route mA / Co_Hg readings light it. Runs after
+       bindPostsToSignals so post-bound parents already carry _sipAsset. */
+    function bindRoutePiecesToSignals() {
+        for (var i = 0; i < state.cells.length; i++) {
+            var c = state.cells[i];
+            if (!c || !ROUTE_PIECE_TYPES[c.type]) continue;
+            var rp = (c.attrs && c.attrs.route) || {};
+            var parent = rp.attachTo ? state.cellById[String(rp.attachTo)] : null;
+            var name = rp.assetName || '';
+            /* On the SHUNT part of a Signal + Shunt → driven by the shunt's own asset */
+            if (!name && parent && parent.type === 'examples.SignalShunt' && rp.attachPart === 'shunt') {
+                name = parent._sipShuntAsset || (parent.attrs && parent.attrs.signal && parent.attrs.signal.shuntAssetName) || '';
+            }
+            /* Main signal, standalone shunt, or a shunt part with no shunt link */
+            if (!name && parent) {
+                name = parent._sipAsset || (parent.attrs && parent.attrs.signal && parent.attrs.signal.assetName) || getCellLabel(parent) || '';
+            }
+            name = String(name || '').trim();
+            if (name) registerCellName(c, name);
+        }
+        state.findMemo = {};
     }
     function bindPostsToSignals() {
         var posts = [], shapes = [], i, c;
@@ -3193,7 +3220,10 @@
     function routeLabelsForCell(cell) {
         var route = (cell.attrs && cell.attrs.route) || {};
         if (cell._sipRouteLabels && cell._sipRouteSrc === route.labels) return cell._sipRouteLabels;
-        var raw = route.labels || route.routes || route.routeLabels || 'AUG,BUG,CUG,DUG,EUG';
+        /* labels === '' means every route was removed in the editor; calling is
+           independent, so return no route labels instead of the default set. */
+        var noRoutes = typeof route.labels === 'string' && route.labels.trim() === '';
+        var raw = noRoutes ? '' : (route.labels || route.routes || route.routeLabels || 'AUG,BUG,CUG,DUG,EUG');
         if (Array.isArray(raw)) raw = raw.join(',');
         var seen = {}, out = [];
         String(raw || '').toUpperCase().split(/[\s,|/]+/).forEach(function (x) {
@@ -3201,7 +3231,7 @@
             if (x && !seen[x]) { seen[x] = true; out.push(x); }
         });
         cell._sipRouteSrc = route.labels;
-        cell._sipRouteLabels = out.length ? out : ['AUG', 'BUG', 'CUG', 'DUG'];
+        cell._sipRouteLabels = (out.length || noRoutes) ? out : ['AUG', 'BUG', 'CUG', 'DUG'];
         return cell._sipRouteLabels;
     }
     function maFor(rec, base) {

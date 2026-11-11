@@ -1356,11 +1356,19 @@ function registerPointMachineAssetDatalogger(
         pmAssetDataloggerMetadata[aid] = [];
     }
 
-    pmAssetDataloggerMetadata[aid].push({
-        role:
-            String(datalogger.Value == null ? '' : datalogger.Value).trim(),
-        attrId:
-            String(datalogger.DataloggerAttributeId == null ? '' : datalogger.DataloggerAttributeId).trim(),
+    var role = String(datalogger.Value == null ? '' : datalogger.Value).trim();
+    var attrId = String(datalogger.DataloggerAttributeId == null ? '' : datalogger.DataloggerAttributeId).trim();
+
+    // Metadata can be loaded more than once per site; register each relay once
+    // (a repeat showed the same relay twice in the graph legend).
+    var list = pmAssetDataloggerMetadata[aid];
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].name === name && list[i].role === role && list[i].attrId === attrId) return;
+    }
+
+    list.push({
+        role: role,
+        attrId: attrId,
         name: name,
         assetName:
             String(datalogger.DataloggerAssetName || '').trim()
