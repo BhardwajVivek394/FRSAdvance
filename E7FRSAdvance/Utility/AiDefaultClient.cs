@@ -4,9 +4,19 @@ using System.Configuration;
 using System.Threading.Tasks;
 using Domain;   // AnthropicClient
 using E7MRIWeb.Areas.FRS25.Controllers;   // DeepSeekClient / OpenAiClient (Domain keeps the 616 namespace)
+using AiModelConfig = E7.AiCore.AiModelConfig;   // 619 delta: engine list now lives in the E7.AiCore project
 
 namespace E7FRSAdvance.AiCore
 {
+    // 619 delta: the old Utility\AiCoreShim.cs is gone; ai-log lines go to the E7.AiCore writer.
+    internal static class AiCoreLog
+    {
+        internal static void Write(string level, string tag, string message)
+        {
+            E7.AiCore.AnalysisEngine.AiLogStatic(level, tag, message);
+        }
+    }
+
     // ==================================================================================
     //  AiDefaultClient -- one-shot "summary" calls on the AiModelConfig IsDefault engine.
     //
@@ -60,7 +70,7 @@ namespace E7FRSAdvance.AiCore
                 return oc.SendMessageAsync(messages, null, systemPrompt);
             }
 
-            bool haiku = AiModelConfig.IsHaiku55(model);
+            bool haiku = true;   // 619 (E7.AiCore 1.0.196.0+): every Anthropic model gets its own output cap + effort "low"
             int antMax = haiku ? AiModelConfig.AnthropicOutputTokens(model, key) : maxTokens;
             string effort = haiku ? "low" : null;
             AnthropicClient ac = (AnthropicClient)_clients.GetOrAdd(

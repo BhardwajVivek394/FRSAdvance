@@ -2129,9 +2129,14 @@ x.Value.Timestamp.TimestampDevice.Second == timeStamp.Second)
                         assetName = a.AssetName,
                         assetType = a.AssetType,
                         station = a.SiteName,
+                        stationCode = a.StationCode,
+                        division = a.DivisionName,
+                        zone = a.ZoneName,
                         alertType = a.AlertType,
                         alertTypeId = a.AlertTypeId,
                         causeCode = a.CauseCode,
+                        possibleCause = a.PossibleCause,
+                        setAlertMessage = a.SetAlertMessage,
                         description = a.Description,
                         incidenceTime = a.SetTimeStamp
                     })

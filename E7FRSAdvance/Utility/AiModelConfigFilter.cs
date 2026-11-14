@@ -4,11 +4,11 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Mvc;
-using E7FRSAdvance.AiCore;
+using E7.AiCore;
 
 namespace E7FRSAdvance.Utility
 {
-    // 1.0.190.0: keeps E7FRSAdvance.AiCore.AiModelConfig filled from the AiModelConfig/GetDefault API.
+    // 1.0.190.0: keeps E7.AiCore.AiModelConfig filled from the AiModelConfig/GetDefault API.
     // Called the same way as every other E7 API call: HttpClientFactory (APIBaseUrl / APIBaseUrlSecure)
     // with ClsHttpContent.LoginUser.Token. Runs at the START of a logged-in request, where the session
     // is available; the AI code reads the cached answer later (after awaits, no HttpContext needed).

@@ -1,0 +1,256 @@
+{
+  "_readme": [
+    "Alert judge settings (E7.AiCore.Judge 2.0.0.0). Re-read automatically when the file changes (within 30 s); no rebuild, no app-pool recycle.",
+    "Connection values are NOT here: McpServerUrl, E7Login*, AiProvider/DeepSeek*/OpenAi*/Anthropic* and InternalApiKey are the web.config keys AiChat already uses.",
+    "Sections Mcp / History / Ai / Flow / Rules / Audit are the AlertJudge 1.1.2.0 appsettings.json names. Live and Judge are new in 2.0."
+  ],
+
+  "Mcp": {
+    "Tools": {
+      "SearchTags": "search_tags",
+      "GetAssetTags": "get_asset_tags",
+      "HistoryGet": "history_get",
+      "AttributeRangeHist": "get_attribute_range_history",
+      "GetFrsAlerts": "get_frs_alerts",
+      "FamilyTracks": ""
+    },
+    "ArgNames": {
+      "SiteId": "SiteId",
+      "AssetId": "AssetId",
+      "AttributeId": "AttributeId",
+      "RoleType": "RoleType",
+      "TagId": "TagId",
+      "StartDate": "StartDate",
+      "EndDate": "EndDate",
+      "Limit": "limit",
+      "OutputMode": "outputMode",
+      "Sort": "sort",
+      "SiteIds": "SiteIds",
+      "AssetIds": "AssetIds",
+      "PageSize": "PageSize"
+    },
+    "_notUsed": "GetAssetTags, AttributeRangeHist and FamilyTracks are read by nothing (same as 1.1.2.0); kept so the file matches.",
+    "_tagIdWarning": [
+      "ArgNames.TagId MUST be \"TagId\" -- lower-case d. The MCP server's history_get parameter is spelled that way and JSON property names are case-sensitive.",
+      "This file shipped with \"TagID\" through 1.0.182.0. The server then received a request with no tag identifier it recognised and returned nothing, for every tag, every asset and every alert -- which is why every live re-check came back NO_DATA and true alerts were suppressed as live-no-data.",
+      "The RESPONSE field is spelled TagID. Only the REQUEST parameter is TagId. Do not make them match."
+    ]
+  },
+
+  "History": {
+    "_sendUtcWarning": [
+      "SendUtc MUST be false. This is measured, not assumed -- do not set it back to true without re-reading the echo in JudgeAIlogs.",
+      "The MCP server parses the history_get date strings as IST LOCAL time. It echoes the window it applied as a Unix epoch, and on 09.10.2026 all EIGHT windows across alerts 1137362 and 1034216 echoed exactly 19800 s (5h30m, the IST offset) below the stamp read as UTC: sent 28092026_022857, echo 1790542737 = 28/09 02:28:57 IST.",
+      "With true, the judge converted to UTC and the server took another 5h30m off, so every window landed 5h30m BEFORE the event. The spans were always right (1719 s, 346 s) -- only the position was wrong, which is why the data read as plausible and two true alerts were discarded as 'False alarm' with 85% confidence.",
+      "TO CONFIRM after changing it: the 24 h baseline average must land near the average the card implies. For 1137362 the card says 80% Avg = 261.26, so the true average is about 326.6; with the window 5h30m early the judge computed 131.199."
+    ],
+    "StampFormat": "ddMMyyyy_HHmmss",
+    "SendUtc": false,
+    "IstOffsetMinutes": 330,
+    "RowLimit": 5000,
+    "OutputMode": "json",
+    "BaselineHours": 24,
+    "InstantLookbackSec": 60,
+    "LookbackHours": 48,
+    "MaxFrameHours": 6,
+    "AdjacencyWindowSec": 120,
+    "RoleDataLogger": "d",
+    "RoleRdpms": "c",
+    "RoleIps": "c"
+  },
+
+  "Ai": {
+    "Enabled": true,
+    "Provider": "",
+    "_providerHelp": [
+      "Provider (1.0.187.0): pins the AI VENDOR for the judge, overriding both the request's provider and the Web.config AiProvider key. Blank = leave it to the request, then to Web.config, then to the built-in default -- the same order AiChat/AnalyzeAlertJson uses.",
+      "1.0.188.0 -- YOU PROBABLY DO NOT NEED TO SET THIS. The built-in default is now quantum10 = DeepSeek Pro, the same literal AnalysisEngine._aiProviderDefault and ChatEngine.Main already used. So with this blank, no provider on the request and NO AiProvider key in Web.config, the judge runs DeepSeek by itself. Up to 1.0.187.0 that same case ran Anthropic -- the judge was the only reader of that key still defaulting to anthropic, which is AnalysisEngine changelog 1.0.160.201 happening a second time.",
+      "Set this only to FORCE a vendor against what the request and Web.config say -- e.g. one account is out of credit at 2 a.m. and you want the judge moved without a Web.config edit and an app-pool recycle.",
+      "Accepts a vendor (deepseek | openai | anthropic) or any brand label the rest of the system uses: QUANTUM, ENERGY7 QUANTUM, quantum10, quantum11, NEXUS, nexus16/19/49, ORION, orion16/17, ENERGY7 ULTRA, tesla 1, tesla 2. quantum11 (or 'flash') also selects the DeepSeek flash model.",
+      "WHY IT EXISTS: a Web.config change needs an app-pool recycle and a deploy window. This file is re-read within 30 s, so moving the judge to another vendor is a one-line edit with no rebuild and no recycle.",
+      "ON 10.10.2026: Web.config had AiProvider=anthropic while every request carried provider=QUANTUM. AnalyzeAlertJson read the request and ran DeepSeek (worked); the judge ignored it and ran Anthropic, which had no credit. From 1.0.187.0 the judge reads the request too, so that exact case needs no setting at all: the request outranks the Web.config key, and the key only decides for a caller that names no provider.",
+      "PRECEDENCE, highest first: (1) this setting, (2) the request's provider, (3) the Web.config AiProvider key, (4) quantum10 = DeepSeek Pro.",
+      "QUANTUM = DeepSeek. NEXUS and ULTRA = Anthropic. ORION = OpenAI. These are brand labels, not vendor names -- that is what made the two endpoints disagree."
+    ],
+    "MaxTurns": 4,
+    "MaxTokens": 1500,
+    "TimeoutSec": 60,
+    "WisdomDir": "Rules/wisdom",
+    "DecisionReferencePath": "Rules/decision-reference.md",
+    "MaxSamplesPerAttr": 60,
+    "TrendBuckets": 6,
+    "_notUsed": "MaxTurns is read by nothing (same as 1.1.2.0)."
+  },
+
+  "Flow": {
+    "CardUnreadable": "PASS",
+    "CardMismatch": "PASS",
+    "NoData": "PASS",
+    "AiIsFinal": true,
+    "AiUnavailable": "SUPPRESSED",
+    "AiUnavailableVerified": "PASS",
+    "AiPassMinConfidence": 0,
+    "AiVetoNeedsNewEvidence": true,
+    "AiVetoOnMissingData": "PASS",
+    "AiVetoNeedsAnswer": "PASS",
+    "_aiVetoNeedsAnswerHelp": [
+      "AiVetoNeedsAnswer (1.0.192.3): what a SUPPRESS recommendation may do when the AI answered NEITHER of the two questions -- logic_correct AND data_correct both null. PASS (default) refuses that veto and records decidedBy 'ai-overruled' with ground 'no-answer'. SUPPRESSED restores 1.0.192.2.",
+      "WHY THE OTHER TWO CAPS MISS IT: both AiVetoNeedsNewEvidence and AiVetoOnMissingData are guarded on data_correct == false, and in C# (null == false) is false. An abstention satisfies neither, so the recommendation killed the alert on its own through the ai.Recommendation != PASS term.",
+      "ON 13.10.2026: both TC GJ SHORT replays died this way -- 1343345 and 1204111, recommendation=SUPPRESS, logic_correct=null, data_correct=null, confidence 92. TC GJ SHORT is the catalogue's ONLY ExternallyDetermined cause: attrs=0, SustainSec=0, relay/analog/adjacency all SKIPPED, live check skipped BY DESIGN. The model was handed an empty evidence bundle (0 series / 0 samples) and asked to judge it. Answering null is the honest reply.",
+      "The old reason text proved the point by contradicting itself: it ended '...so it was accepted as reported rather than independently verified' beside a SUPPRESSED decision.",
+      "NARROW: data_correct=false keeps its veto in full (subject to the two caps above), logic_correct=false keeps its veto untouched, and a PASS recommendation is unaffected. Only the all-null abstention is refused."
+    ],
+    "_aiVetoOnMissingDataHelp": [
+      "AiVetoOnMissingData (1.0.192.0): what the AI may do when its OWN stated ground for data_correct=false is missing / unmapped / unverifiable telemetry, rather than data that contradicts the card. PASS (default) refuses that veto; SUPPRESSED restores 1.0.191.0.",
+      "WHY: every other step here already refuses to suppress for want of evidence -- Flow.NoData, Live.NoData, Live.Unsupported, Live.NoEvidenceFailure. The AI step was the one hole left, and one honest sentence from the model undid every check that did pass.",
+      "The 1.0.190.0 cap (AiVetoNeedsNewEvidence) does NOT close it: that one requires the computation to have VERIFIED the alert -- every counted condition held AND the set/reset cards corroborate. When the tags are unmapped there is nothing to hold, so that cap never engages.",
+      "ON 12.10.2026, four of the sixteen real Mode-3 suppressions were this: 14372 and 14379 SIG RG CURR HIGH ('No telemetry available for either gating attribute; alert cannot be confirmed', confidence 92), 14371 TC TR UP TPR DN ('VTC 24 DC TPR I/P(V) is unmapped and not verifiable') -- with 3 of 3 COUNTED conditions HELD -- and 14366 TC GJ SHORT, which is ExternallyDetermined and has nothing to re-derive BY DESIGN.",
+      "NARROW: only when the AI's own words name the absence (see JudgePolicy.AiGroundIsMissingData). A model that says the numbers CONTRADICT the card keeps its veto in full. An overrule is never silent: decidedBy becomes 'ai-overruled' and the ground is recorded as 'missing-data'."
+    ],
+    "_aiVetoHelp": [
+      "AiVetoNeedsNewEvidence (1.0.190.0): when the computation VERIFIED the alert -- the live re-check held EVERY counted condition through the sustain window AND the set/reset cards corroborate each other -- the AI may no longer suppress on the ground that the reading recovered AFTER the window. Default true.",
+      "ON 11.10.2026: alerts 1137362, 1034216 and 1023426 each passed every computed check (relay PASS, analog PASS, live PASS 2/2 held, reset CONFIRMED, logic_correct true) and were then deleted on data_correct=false alone, with 'the value recovered before the reset' as the reason. Seven checks said yes, one said no, and AiIsFinal=true made the one win.",
+      "That ground is never valid: no cause rule requires a condition to persist to the reset, and EVERY closed alert recovered -- recovery is what a reset means. Two of the three reasons were also arithmetically false, because the model read the wrong half of an OR threshold (it called 217.8 mA a recovery against an effective threshold of 261.26).",
+      "NARROW BY DESIGN. The AI keeps its veto for logic_correct=false, a card that contradicts its own numbers, a reading that does not show the breach INSIDE the window, and instrument artefacts. Only the recovered-later argument is refused, and only on an alert the computation already verified.",
+      "An overrule is never silent: decidedBy becomes 'ai-overruled', confidence is set to 0, the AI's own headline is quoted in the reason, and the log carries a 'policy: AI data_correct=false OVERRULED' line.",
+      "Set false to restore 1.0.189.1, where one AI sentence outranked every computed check."
+    ],
+    "_aiUnavailableHelp": [
+      "AiUnavailableVerified (2.9): what to do when the AI could not run AND the computation actually verified the alert -- the live re-check held at least one condition on independent data, or the alert is closed and its own set and reset cards corroborate it. Default PASS.",
+      "This branch is only reachable after the card/catalogue match, the catalogue gates and the live re-check have ALL passed, so reaching it means the computation already decided. The AI is asked two questions about logic and data and can only ever REMOVE an alert the computation accepted -- an AI that did not answer has removed nothing.",
+      "On 09.10.2026 alerts 1137362 and 1034216 passed every check (relay PASS, analog PASS, live PASS 2/2 held, reset card CONFIRMED, decision ACCEPT) and were both SUPPRESSED because the Anthropic API answered 400 'Your credit balance is too low'. A billing problem deleted two true alerts.",
+      "Confidence stays 0 in this case on purpose: the alert is delivered on the computation, not on an AI opinion.",
+      "AiUnavailable (unchanged, default SUPPRESSED) still governs the weaker case where the live step found no evidence either way -- there the AI was the only remaining check, so its absence does suppress.",
+      "Set AiUnavailableVerified = SUPPRESSED to require the AI for every delivery, as builds up to 1.0.184.0 did."
+    ],
+    "_noEvidenceNeverSuppresses": [
+      "1.0.192.0 -- CardUnreadable, CardMismatch and NoData were all SUPPRESSED up to 1.0.191.0, and Live.NoData / Live.Unsupported with them. Together they made 'we could not look' mean 'it did not happen', which is the opposite of what this judge is for.",
+      "ON 12.10.2026, of 16 suppressions across 17 real Mode-3 gate calls: 10 were card-match, 2 were no-data. Twelve real alerts deleted, none of them with any evidence against it.",
+      "CardMismatch=PASS is belt-and-braces here: JudgeVerifier.CardComparisons in this build only reads FAIL-marked thresholds, which is what produced those 10 false mismatches. Once you trust that fix you can put CardMismatch back to SUPPRESSED so a GENUINE card/catalogue disagreement still suppresses.",
+      "The judge now suppresses only on positive proof: sustain, adjacency, relay-gate, analog-gate, live-recheck, card-contradiction, prior-discard, ai."
+    ],
+    "_help": "CardUnreadable (new, J1 fix): a card that is not a JSON object. 1.1.2.0 answered PASS; set PASS to get that back. AiIsFinal=false: the gates and the live re-check decide, the AI only explains."
+  },
+
+  "Rules": {
+    "ConfidenceConfirmed": 90,
+    "ConfidenceNotConfirmed": 85,
+    "CoveragePenalty": 25,
+    "AvgOnlyMinMarginPct": 5,
+    "_avgOnlyHelp": [
+      "AvgOnlyMinMarginPct (1.0.190.0): an alert that breached ONLY the rolling-average threshold, by less than this percentage of it, is DELIVERED but marked low-confidence. 0 disables the mark.",
+      "1023426 (118/119T) fired at 262.08 mA against an 80%-Avg threshold of 269.30 -- 2.7% below -- while Min Safe (210) PASSED, so the current was healthy in absolute terms. The alert card says so itself: '(value is okay for Min/Max; alert triggered because of Avg threshold)'.",
+      "It is still delivered: a drift below the rolling average is exactly what PREDICTIVE means, and suppressing it would disable a whole class of predictive alerting. The mark is so a maintainer can see at a glance that this is a 2.7% drift and not a collapse.",
+      "A condition that ALSO breached a Min Safe or Max Safe limit is an absolute breach and is never marked."
+    ],
+    "_notUsed": "CoveragePenalty is read by nothing (same as 1.1.2.0)."
+  },
+
+  "Audit": {
+    "Dir": "Audit",
+    "Enabled": true
+  },
+
+  "Live": {
+    "Enabled": true,
+    "WindowSource": "card",
+    "WindowSec": 15,
+    "MaxWindowSec": 900,
+    "WaitMaxSec": 20,
+    "NoData": "PASS",
+    "Unsupported": "PASS",
+    "NoEvidenceFailure": "PASS",
+    "UseCardThresholds": true,
+    "RelaysMustHold": true,
+    "FailureOnset": true,
+    "IgnoreConditions": [ "∆IBALST", "VIPS TR-1 110 AC", "VIPS TR-1 110AC" ],
+    "UseResetCard": true,
+    "ClosedConfirmedNoData": "PASS",
+    "CardContradiction": "SUPPRESSED",
+    "Formulas": {},
+    "_help": [
+      "Enabled=false turns the live re-check off: the judge then behaves exactly like AlertJudge 1.1.2.0 (proven by the parity diff).",
+      "WindowSource: card = card.meta.checkWindow ('15 sec'); catalog = the cause's SustainSec; fixed = WindowSec. Falls back card -> catalog -> WindowSec. MaxWindowSec caps it.",
+      "WaitMaxSec: if the window has not elapsed yet the judge waits up to this many seconds for the data; longer than that = NO_DATA ('call again after ...').",
+      "NoData / Unsupported: SUPPRESSED (an unverified condition never passes) or PASS (let the gates + AI decide and mark the condition as not verified).",
+      "UseCardThresholds=true: the numbers printed on the card (the rule that fired) are re-checked. false: 'NN% Avg' thresholds are recomputed from the 24 h baseline.",
+      "RelaysMustHold=true: the enabling relay (TPR etc.) must stay in state through the whole window; false: checked at the set instant only.",
+      "FailureOnset (3.0): for a FAILURE, checkWindow is a window to FIND the condition in, not one it must already be true at the first instant of. Two TC SHORT alerts at GAHLOTA decided opposite ways on sampling jitter alone: 04AT 1263751 had its card sample stamped 08:38:35, five seconds into an 08:38:30-08:38:40 window, so the value at the first instant was 108.801 (not < 100 MinFail) even though the window minimum was 90.225 -- SUPPRESSED as a False alarm at confidence 90. 04BT 1160057 had its sample stamped 09:53:09, one second BEFORE its window, so it was already breaching at t=0 -- PASS.",
+      "04AT was a real short: TPR dropped 08:38:26, relay-end current fell 108.8 -> 90.2 -> 58.4 over 45 s while feed-end held 724-807 mA (615-716 mA into the ballast), IBALST ran 622-634 against a threshold of 36 and HELD, and the reset card CONFIRMED both conditions.",
+      "The condition must still HOLD from its onset to the end of the window, and one never true anywhere in the window still LAPSES. PREDICTIVE is unaffected -- there the rule genuinely is sustain from the set instant. Set false to restore 1.0.185.0.",
+      "IgnoreConditions: card conditions reported but NOT counted. '∆IBALST' is listed because its formula is not known yet -- remove it once Formulas has one. The VIPS rows are informational on the card (no threshold, no comparison), so there is nothing to verify; listing them stops them suppressing the alert.",
+      "UseResetCard (2.7): compare the alert's SET card against its RESET card. The service measures the same conditions at both ends of the event -- 1137362 recorded ITC RELAY END at 148.61 when it set and 332.12 when it reset, against the same thresholds. No historian, no tag mapping, no retention window, so it works on an alert of any age.",
+      "ClosedConfirmedNoData (2.7): what to do when the live re-check found nothing either way AND the alert is closed with its two cards corroborating each other. PASS (default) delivers it with the basis stated in the reason. SUPPRESSED goes back to 1.0.182.0, which discarded 1137362 and 1034216 -- both true alerts -- as live-no-data. A live FAIL is never overridden either way.",
+      "CardContradiction (2.7): what to do when the SET card's own measurement does not breach the SET card's own threshold. SUPPRESSED (default) -- the card argues against itself and no outside data is needed to see it, which is the classic mid-transition capture. PASS records it as evidence and lets the gates and the AI decide.",
+      "Formulas: derived conditions that have no formula on the card, e.g. { \"∆IBALST\": \"IBALST(mA) - ITC RELAY END(mA)\" }. Operands are attribute names (unit in brackets is ignored) or numbers; + - * / ( )."
+    ]
+  },
+
+  "PriorDiscard": {
+    "Enabled": true,
+    "ConnectionName": "E7MRIV2DB_SQL",
+    "LookbackDays": 30,
+    "MaxRows": 5,
+    "TimeoutSec": 5,
+    "Rejected": "SUPPRESSED",
+    "_help": [
+      "New in 2.1. Read-only lookup of dbo.PendingAlertApproval -- what a PERSON already decided about this asset and this cause. Nothing in AlertV3 changes.",
+      "Only rows with Status=2 (Discarded) AND UpdatedBy NOT NULL are read: the sibling sweep and the active-conflict auto-discard write UpdatedBy=NULL and carry no human judgement.",
+      "Rejected: what DiscardWasValid=0 ('the reviewer said the alert was NOT valid') does to a repeat. SUPPRESSED short-circuits before history and AI are spent. PASS records it as evidence only and lets the gates decide.",
+      "A discard with DiscardWasValid=1 or NULL never decides -- its remark goes into the verdict and into the AI pack as context.",
+      "ConnectionName must name a connectionStrings entry that reaches the RDPMS database. Requires SQL Patch 47 (DiscardWasValid, DiscardRemark).",
+      "Any failure -- no connection string, Patch 47 missing, SQL down, timeout -- is reported as priorDiscards.checked=false and the judgement runs exactly as 2.0 did. A prior discard can only suppress, never pass, so losing the lookup is always the safe direction.",
+      "Enabled=false turns the whole step off."
+    ]
+  },
+
+  "Learned": {
+    "MaintenanceMode": "report",
+    "CaseMode": "report",
+    "CasesFile": "",
+    "K": 5,
+    "AssetWeight": 3,
+    "MinCases": 1,
+    "MaxFileAgeHours": 72,
+    "TimeoutSec": 5,
+    "_help": [
+      "New in 1.0.202.0. Two checks learned from what reviewers already decided. Read-only.",
+      "MaintenanceMode: the asset is inside a dbo.MaintenanceMode window at the alert time -> SUPPRESSED (decidedBy 'maintenance'). Uses PriorDiscard.ConnectionName.",
+      "CaseMode: the alert card is compared with past decided alerts of the same cause from judge-cases.json (written every night by E7.AlertCaseExtractor). The K most similar decide: more discarded -> SUPPRESSED, more approved -> PASS (decidedBy 'similar-cases'). No past case of the cause = no answer, the existing checks decide.",
+      "Each mode is off | report | enforce. report = the check runs and is written to verdict.learned and the decision path, but the verdict is NOT changed. enforce = it decides, and history and AI are skipped. Start with report, compare learned.wouldDecide with the reviewers for a few days, then set enforce.",
+      "Neither check overrides a card/catalogue mismatch or a reviewer's 'not valid' prior discard.",
+      "CasesFile: blank = judge-cases.json in this folder. The extractor's JudgeCasesPath must point at this folder.",
+      "AssetWeight: how much 'same asset' counts, in card values (0 = ignore the asset). MinCases: fewer comparable past cases than this = no answer.",
+      "MaxFileAgeHours: a judge-cases.json older than this is not used (the 02:00 job has stopped) and a WARN is logged. 0 = no limit.",
+      "Any failure (no file, bad file, SQL down) is reported in verdict.learned.*.error and the judgement runs as before."
+    ]
+  },
+
+  "Log": {
+    "BySite": true,
+    "Card": true,
+    "Daily": false,
+    "Summary": false,
+    "General": false,
+    "_help": [
+      "New in 1.0.203.0; since 1.0.206.0 only the alert's own text file is written by default.",
+      "BySite: every judgement is written to <log folder>\\<siteId>-<station>\\<ASSET TYPE>\\<CAUSE>\\<alertId>.txt. An alert judged again is appended to the same file. The file holds everything: BEGIN, REQ (request options), CARD (the alert card as sent), STEP (every line of every step), CASE (each matched past case), AI and AIRAW (the AI answer and its whole reply), PATH (the result of every step), ERROR (when it failed), RESP (the response JSON as returned), END (the verdict and the reason).",
+      "Card: false leaves the CARD line out.",
+      "Daily: true also appends every block to <siteId>-<station>\\judgeai-yyyy-MM-dd.log (all alerts of the site in one file).",
+      "Summary: true also appends one row per judgement to <siteId>-<station>\\judge-summary-yyyy-MM.csv.",
+      "General: true also writes the lines that belong to no alert (start-up, case file loaded, warnings) to _general\\judgeai-yyyy-MM-dd.log. They are always in ai-log-yyyyMMdd.txt.",
+      "Web.config JudgeAiLogEnabled=false turns all of it off. Nothing deletes old files; clean the site folders up by hand when needed."
+    ]
+  },
+
+  "Judge": {
+    "MaxConcurrent": 1000,
+    "MaxBodyBytes": 262144,
+    "_maxConcurrentHelp": [
+      "MaxConcurrent = 1000 (set 11.10.2026, by request). High enough to be no limit at all, so the judge never answers 'busy'. The default was 4.",
+      "THERE IS NO OTHER CEILING IN THE JUDGE: the parser applies no upper clamp and the check is Math.Max(1, MaxConcurrent). JudgeEngine also declares SemaphoreSlim admission(64,64) but never uses it -- dead code, not a backstop.",
+      "WHAT BINDS INSTEAD: (1) the AI provider's per-key concurrency and tokens-per-minute; (2) the two MCP historian servers; (3) RAM on the web box.",
+      "WATCH meta.elapsed -- it is the only early warning left now that busy is gone. Normal is 12-23 s with AI. If p95 climbs well past that under load, lower this number again; it is re-read within 30 s with no rebuild and no recycle."
+    ]
+  }
+}

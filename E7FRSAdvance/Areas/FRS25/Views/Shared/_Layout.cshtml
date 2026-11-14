@@ -3307,12 +3307,32 @@
             font-size: 11.5px;
             color: rgba(255,255,255,0.65);
             line-height: 1.4;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
+            overflow-wrap: anywhere;
         }
+
+        .e7-notif-loc {
+            font-size: 11px;
+            color: rgba(255,255,255,0.65);
+            margin-bottom: 2px;
+            overflow-wrap: anywhere;
+        }
+
+            .e7-notif-loc i {
+                font-size: 10px;
+                opacity: .7;
+            }
+
+        .e7-notif-cause {
+            font-size: 11.5px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.85);
+            margin-bottom: 2px;
+        }
+
+        body[data-aurora="light"] .e7-notif-loc { color: #475569 !important; }
+        body[data-aurora="light"] .e7-notif-cause { color: #0b1530 !important; }
+        #e7Body .e7-notif-loc { color: var(--e7-text-2) !important; }
+        #e7Body .e7-notif-cause { color: var(--e7-text) !important; }
 
         .e7-notif-tag {
             display: inline-flex;
@@ -3775,13 +3795,88 @@
         }
 
         // ── Fullscreen ──────────────────────────────────────────────
-        document.getElementById('e7Fullscreen').addEventListener('click', function () {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
-            } else {
-                document.exitFullscreen && document.exitFullscreen();
+        // The button uses the standard Fullscreen API for the current page. Browsers
+        // always end that mode when a new page loads, and no page can prevent it, so
+        // the user is told to press F11: the browser's own full screen stays on while
+        // moving between pages, with every page behaving exactly as normal.
+        (function () {
+            var btn = document.getElementById('e7Fullscreen');
+            if (!btn) return;
+
+            function apiFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+
+            // F11 mode: the browser itself is full screen (not through the Fullscreen API).
+            // Page zoom inflates innerWidth/innerHeight (at 80% zoom a maximized window
+            // looks bigger than the screen), so use the zoom-independent display-mode
+            // media query, falling back to the OUTER window size.
+            function browserFs() {
+                if (apiFs()) return false;
+                try {
+                    if (window.matchMedia && matchMedia('(display-mode: fullscreen)').matches) return true;
+                } catch (e) { }
+                return window.outerWidth >= screen.width && window.outerHeight >= screen.height;
             }
-        });
+
+            function setBtnState() {
+                var on = apiFs() || browserFs();
+                btn.title = on ? (apiFs() ? 'Exit Fullscreen' : 'Press F11 to exit full screen') : 'Fullscreen';
+                var ic = btn.querySelector('i');
+                if (ic) ic.className = on ? 'fa fa-compress' : 'fa fa-arrows-alt';
+            }
+
+            var tipTimer = null;
+            function showTip(html) {
+                var tip = document.getElementById('e7FsTip');
+                if (!tip) {
+                    tip = document.createElement('div');
+                    tip.id = 'e7FsTip';
+                    tip.setAttribute('role', 'status');
+                    tip.style.cssText =
+                        'position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:2147483647;' +
+                        'max-width:calc(100vw - 32px);padding:10px 16px;border-radius:10px;' +
+                        'background:rgba(27,60,85,.95);color:#fff;font:500 13px Inter,system-ui,sans-serif;' +
+                        'box-shadow:0 10px 28px rgba(20,44,74,.25);transition:opacity .3s ease;opacity:0;pointer-events:none;';
+                    document.body.appendChild(tip);
+                }
+                tip.innerHTML = html;
+                tip.style.opacity = '1';
+                if (tipTimer) clearTimeout(tipTimer);
+                tipTimer = setTimeout(function () { tip.style.opacity = '0'; }, 5000);
+            }
+
+            var KEY_STYLE = 'display:inline-block;padding:1px 7px;margin:0 2px;border-radius:5px;' +
+                            'border:1px solid rgba(255,255,255,.5);font-weight:700;';
+
+            btn.addEventListener('click', function () {
+                if (apiFs()) {
+                    var exit = document.exitFullscreen || document.webkitExitFullscreen;
+                    if (exit) { try { var p = exit.call(document); if (p && p['catch']) p['catch'](function () { }); } catch (e) { } }
+                    return;
+                }
+                if (browserFs()) {
+                    showTip('Press <span style="' + KEY_STYLE + '">F11</span> to exit full screen.');
+                    return;
+                }
+                var el = document.documentElement;
+                var req = el.requestFullscreen || el.webkitRequestFullscreen;
+                var blocked = function (err) {
+                    var why = (err && (err.message || err.name)) || 'not allowed';
+                    try { console.warn('[Fullscreen] request blocked:', why, { enabled: document.fullscreenEnabled }); } catch (e) { }
+                    showTip('The browser blocked full screen (' + why + '). Press <span style="' + KEY_STYLE + '">F11</span> instead.');
+                };
+                if (!req || document.fullscreenEnabled === false) { blocked({ message: 'full screen is disabled for this page' }); return; }
+                showTip('Tip: press <span style="' + KEY_STYLE + '">F11</span> to keep full screen while moving between pages.');
+                try {
+                    var r = req.call(el);
+                    if (r && r['catch']) r['catch'](blocked);
+                } catch (e) { blocked(e); }
+            });
+
+            document.addEventListener('fullscreenchange', setBtnState);
+            document.addEventListener('webkitfullscreenchange', setBtnState);
+            window.addEventListener('resize', setBtnState);
+            setBtnState();
+        })();
 
         // ── Live clock ticker (header live badge) ───────────────────
         (function () {
@@ -3951,8 +4046,8 @@
     <script>
         /* Ask AI sidebar engine: the AiModelConfig/GetAllWithKeys IsDefault engine and the engine list
            (id + label only, never keys) -- same source as the ChatBot page and the Telemetry drawer. */
-        window.E7_DEFAULT_ENGINE = @Html.Raw(E7FRSAdvance.AiCore.AiModelConfig.JsString(E7FRSAdvance.AiCore.AiModelConfig.DefaultEngine("quantum10")));
-        window.E7_ENGINES = @Html.Raw(E7FRSAdvance.AiCore.AiModelConfig.EngineListJson());
+        window.E7_DEFAULT_ENGINE = @Html.Raw(E7.AiCore.AiModelConfig.JsString(E7.AiCore.AiModelConfig.DefaultEngine("quantum10")));
+        window.E7_ENGINES = @Html.Raw(E7.AiCore.AiModelConfig.EngineListJson());
     </script>
     <script src="@Url.Content("~/Areas/FRS25/assets/js/ai-chat-sidebar.js")?v=@System.IO.File.GetLastWriteTimeUtc(Server.MapPath("~/Areas/FRS25/assets/js/ai-chat-sidebar.js")).Ticks"></script>
 
@@ -4152,12 +4247,19 @@
             try {
                 var d = n.time ? parseDateSafe(n.time) : new Date();
                 if (d && !isNaN(d.getTime())) {
-                    timeStr = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+                    timeStr = ('0' + d.getDate()).slice(-2) + '/' + ('0' + (d.getMonth() + 1)).slice(-2) + '/' + d.getFullYear() + ' ' +
+                              ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2);
                 }
             } catch (e) {}
 
-            // Descriptions arrive with server markup (<b>, <br>) — reduce to plain text before escaping
-            var desc = stripTags(String(n.description || '').replace(/<br\s*\/?>/gi, '\n')).split('\n')[0];
+            // Descriptions arrive with server markup (<b>, <br>) — reduce to plain text (all lines) before escaping
+            var desc = stripTags(String(n.description || '').replace(/<br\s*\/?>/gi, '\n'))
+                .split('\n').map(function (s) { return s.trim(); }).filter(function (s) { return s; })
+                .map(escapeHtml).join('<br>');
+
+            var assetLbl = (n.assetName || 'Unknown asset') + (n.assetType ? ' (' + n.assetType + ')' : '');
+            var locParts = [n.station, n.division, n.zone].filter(function (s) { return s; }).map(escapeHtml);
+            var cause    = stripTags(n.causeCode || '');
 
             html +=
                 '<a href="javascript:void(0)" class="e7-notif-item unread" ' +
@@ -4167,13 +4269,14 @@
                     '</div>' +
                     '<div class="e7-notif-body">' +
                         '<div class="e7-notif-title">' +
-                            '<span class="e7-notif-asset">' + escapeHtml(n.assetName || 'Unknown asset') + '</span>' +
+                            '<span class="e7-notif-asset" title="' + escapeHtml(assetLbl) + '">' + escapeHtml(assetLbl) + '</span>' +
                             '<span class="e7-notif-time">' + timeStr + '</span>' +
                         '</div>' +
-                        '<div class="e7-notif-desc">' +
-                            escapeHtml(stripTags(n.causeCode || '')) +
-                            (desc ? ' — ' + escapeHtml(desc) : '') +
-                        '</div>' +
+                        (locParts.length
+                            ? '<div class="e7-notif-loc"><i class="fas fa-map-marker-alt"></i> ' + locParts.join(' &bull; ') + '</div>'
+                            : '') +
+                        (cause ? '<div class="e7-notif-cause">' + escapeHtml(cause) + '</div>' : '') +
+                        (desc ? '<div class="e7-notif-desc">' + desc + '</div>' : '') +
                         '<span class="e7-notif-tag ' + tagClass + '">' + escapeHtml(n.alertType || 'Alert') + '</span>' +
                     '</div>' +
                 '</a>';
@@ -4266,9 +4369,13 @@
                         siteId:      a.siteId || 0,
                         assetId:     a.assetId || 0,
                         assetName:   a.assetName || '',
+                        assetType:   a.assetType || '',
+                        station:     a.stationCode || a.station || '',
+                        division:    a.division || '',
+                        zone:        a.zone || '',
                         alertType:   a.alertType || 'Failure',
-                        causeCode:   a.causeCode || '',
-                        description: a.description || '',
+                        causeCode:   a.causeCode || a.possibleCause || '',
+                        description: a.description || a.setAlertMessage || '',
                         time:        a.incidenceTime || ''
                     });
                 });
@@ -4388,9 +4495,13 @@
                     siteId:      a.SiteId,
                     assetId:     a.AssetId,
                     assetName:   a.AssetName,
+                    assetType:   a.AssetType || '',
+                    station:     a.StationCode || a.StationName || a.SiteName || a.Station || '',
+                    division:    a.DivisionName || a.Division || '',
+                    zone:        a.ZoneName || a.Zone || '',
                     alertType:   a.AlertType,
-                    causeCode:   a.CauseCode,
-                    description: a.Description,
+                    causeCode:   a.CauseCode || a.PossibleCause || '',
+                    description: a.Description || a.SetAlertMessage || a.Message || '',
                     time:        a.Time
                 });
                 changed = true;

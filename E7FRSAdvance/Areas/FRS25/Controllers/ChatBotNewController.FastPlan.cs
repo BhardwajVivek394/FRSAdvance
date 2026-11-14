@@ -3,6 +3,7 @@ using E7FRSAdvance.Utility;
 using E7FRSAdvance.Interface;
 using Newtonsoft.Json.Linq;
 using System;
+using E7MRIWeb.Areas.FRS25.Controllers;   // Domain AI types (CauseCatalog, RdpmsMaps, AI clients) keep the 616 namespace
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -473,8 +474,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         return rows;
                     }
 
-                    int maintId = (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace /* 616: .Maintenance (4) */;
-                    int ackId = 6 /* 616: AcknowledgemenStatus.Acknowledge; not in the 617 enum */;
+                    int maintId = (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Maintenace /* 617 enum spelling, value 4 */;
+                    int ackId = (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Acknowledge;
 
                     foreach (Domain.FRSAlert a in lister.mFRSAlerts)
                     {
