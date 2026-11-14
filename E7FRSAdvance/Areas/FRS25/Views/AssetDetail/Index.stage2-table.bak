@@ -1,0 +1,757 @@
+@model Domain.AssetLister
+@{ ViewBag.Title = "Asset Overview";
+    Layout = "~/Areas/FRS25/Views/Shared/_Layout.cshtml";
+    bool isGuest = E7FRSAdvance.Utility.ClsHttpContent.LoginUser.UserClassId == E7FRSAdvance.Utility.Utility.UserClass.Guest.GetHashCode();
+}
+
+@*
+    ============================================================================
+    UNIFIED ASSET PAGE  —  Equipment Room model (single page, drill-in drawer)
+    ----------------------------------------------------------------------------
+    ONE page, no mode toggle:
+      • Main grid  = Asset Inventory  (_Details: grouped counts by type/make)
+                     with Table / Pie / Bar / Graph views + KPIs + export.
+      • Drawer     = Asset Utilization for the clicked station + asset type
+                     (_Utilization: operations / signal hours + relay popup),
+                     with its own date range, KPIs, Table/Pie/Bar/Graph + export.
+    Just like Equipment Room, where the second dimension (history) lives in the
+    per-room drawer. Both existing partials are reused unchanged; the inventory
+    partial's #pager/#listView ids are re-tagged after injection so the drawer's
+    utilization partial keeps its own pager (the two partials share those ids).
+    ============================================================================
+*@
+
+<style>
+    .search-section { padding: 18px 0; position: relative; z-index: 100; }
+    .search-title { font-size: 18px; font-weight: 600; color: var(--e7-text); margin-bottom: 16px; }
+    .filter-row { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; position: relative; z-index: 100; }
+    .filter-item { flex-shrink: 0; position: relative; z-index: 100; }
+    .filter-item label { display: block; font-size: 13px; color: var(--e7-text-2); margin-bottom: 6px; font-weight: 500; }
+    .select-btn { display: flex; align-items: center; justify-content: space-between; background: var(--e7-surface); border: 1px solid var(--e7-border-2); border-radius: 6px; padding: 8px 12px; font-size: 14px; color: var(--e7-text); cursor: pointer; min-width: 150px; height: 40px; }
+    .select-btn:hover { border-color: var(--e7-text-4); }
+    .select-btn.active { border-color: var(--e7-accent); box-shadow: 0 0 0 2px var(--e7-accent-soft); }
+    .select-btn .text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+    .select-btn i { margin-left: 8px; font-size: 12px; color: var(--e7-text-3); }
+    .filter-input { border: 1px solid var(--e7-border-2); border-radius: 6px; padding: 8px 12px; font-size: 14px; height: 40px; width: 130px; outline: none; background: var(--e7-surface); color: var(--e7-text); }
+    .filter-input:focus { border-color: var(--e7-accent); box-shadow: 0 0 0 2px var(--e7-accent-soft); }
+    .filter-dropdown { position: fixed; background: var(--e7-surface); border: 1px solid var(--e7-border); border-radius: 8px; box-shadow: var(--e7-shadow-pop); min-width: 240px; max-width: 320px; z-index: 11050; display: none; }
+    .filter-dropdown.open { display: block; }
+    .dropdown-search { padding: 10px 12px; border-bottom: 1px solid var(--e7-border); }
+    .dropdown-search input { width: 100%; border: 1px solid var(--e7-border); border-radius: 6px; padding: 8px 12px; font-size: 13px; outline: none; background: var(--e7-surface); color: var(--e7-text); }
+    .dropdown-search input:focus { border-color: var(--e7-accent); }
+    .dropdown-header { padding: 10px 14px; background: var(--e7-surface-2); border-bottom: 1px solid var(--e7-border); display: flex; align-items: center; gap: 10px; }
+    .dropdown-header input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--e7-accent); }
+    .dropdown-header label { font-size: 14px; font-weight: 600; color: var(--e7-text); cursor: pointer; margin: 0; }
+    .dropdown-list { max-height: 250px; overflow-y: auto; }
+    .dropdown-item { display: flex; align-items: center; padding: 10px 14px; gap: 10px; cursor: pointer; border-bottom: 1px solid var(--e7-border); transition: background 0.15s; }
+    .dropdown-item:last-child { border-bottom: none; }
+    .dropdown-item:hover { background: var(--e7-surface-3); }
+    .dropdown-item.checked { background: var(--e7-accent-soft); }
+    .dropdown-item.hidden { display: none; }
+    .dropdown-item input[type="checkbox"] { width: 18px; height: 18px; cursor: pointer; accent-color: var(--e7-accent); flex-shrink: 0; }
+    .dropdown-item span { font-size: 14px; color: var(--e7-text); }
+    .dropdown-item.checked span { color: var(--e7-accent-ink); font-weight: 500; }
+    .dropdown-item span mark { background: var(--e7-amber-soft); color: var(--e7-text); padding: 0; border-radius: 2px; }
+    .dropdown-empty { padding: 25px; text-align: center; color: var(--e7-text-3); font-size: 14px; }
+    .dropdown-no-results { padding: 20px; text-align: center; color: var(--e7-text-3); font-size: 13px; display: none; }
+    .dropdown-no-results.show { display: block; }
+    .btn-search { background: var(--primary); border: none; border-radius: 6px; padding: 8px 16px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; color: #fff; font-size: 14px; font-weight: 500; }
+    .btn-search i { font-size: 14px; }
+    .dropdown-backdrop { position: fixed; inset: 0; z-index: 11040; display: none; }
+    .dropdown-backdrop.show { display: block; }
+    .table-border { position: relative; z-index: 1; }
+
+    .as-seg { display: inline-flex; background: var(--e7-surface-2); border: 1px solid var(--e7-border); border-radius: 8px; padding: 3px; gap: 2px; }
+    .as-seg button { border: none; background: transparent; color: var(--e7-text-2); font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: all .15s; }
+    .as-seg button:hover { color: var(--e7-text); }
+    .as-seg button.active { background: var(--e7-surface); color: var(--e7-accent-ink); box-shadow: var(--e7-shadow-card, 0 1px 2px rgba(0,0,0,.08)); }
+    .as-seg.sm button { padding: 5px 11px; font-size: 12px; }
+
+    .as-cardhead { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 4px 2px 14px; }
+    .as-cardhead h4 { margin: 0; font-size: 17px; font-weight: 600; color: var(--e7-heading); }
+    .as-meta { font-size: 12px; color: var(--e7-text-3); font-weight: 500; margin-left: 10px; }
+
+    .as-kpis { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin: 4px 0 18px; }
+    .as-kpi { background: var(--e7-surface); border: 1px solid var(--e7-border); border-radius: 10px; padding: 14px 16px; }
+    .as-kpi .k-label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--e7-text-3); font-weight: 600; }
+    .as-kpi .k-val { font-size: 24px; font-weight: 700; color: var(--e7-heading); margin-top: 4px; }
+    @@media (max-width: 991.98px) { .as-kpis { grid-template-columns: repeat(2,1fr); } }
+    @@media (max-width: 560px) { .as-kpis { grid-template-columns: 1fr; } }
+
+    .as-chart-card { background: var(--e7-surface-2); border: 1px solid var(--e7-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+    .as-chart-title { font-size: 13px; font-weight: 600; color: var(--e7-heading); margin-bottom: 10px; }
+    .as-chart-wrap { position: relative; height: 250px; }
+    .as-chart-empty { height: 260px; display: flex; align-items: center; justify-content: center; color: var(--e7-text-3); font-size: 13px; }
+
+    /* drawer */
+    .as-drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 680px; max-width: 96vw; background: var(--e7-surface); border-left: 1px solid var(--e7-border); box-shadow: -14px 0 40px rgba(0,0,0,.16); z-index: 11000; transform: translateX(100%); transition: transform .28s ease; display: flex; flex-direction: column; }
+    .as-drawer.is-open { transform: translateX(0); }
+    .as-dr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px; border-bottom: 1px solid var(--e7-border); }
+    .as-dr-head h4 { margin: 0; font-size: 16px; font-weight: 700; color: var(--e7-heading); }
+    .as-dr-close { width: 34px; height: 34px; border: 1px solid var(--e7-border); background: var(--e7-surface-2); border-radius: 8px; cursor: pointer; color: var(--e7-text-2); font-size: 14px; }
+    .as-dr-close:hover { color: var(--e7-text); border-color: var(--e7-text-4); }
+    .as-dr-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+    .as-dr-tools { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+    .as-dr-tools label { display: block; font-size: 12px; color: var(--e7-text-2); margin-bottom: 5px; font-weight: 500; }
+    .as-dr-kpis { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 14px; }
+    .as-dr-tile { background: var(--e7-surface-2); border: 1px solid var(--e7-border); border-radius: 8px; padding: 10px 12px; }
+    .as-dr-tile .t-l { font-size: 11px; color: var(--e7-text-3); text-transform: uppercase; letter-spacing: .4px; }
+    .as-dr-tile .t-v { font-size: 20px; font-weight: 700; color: var(--e7-heading); margin-top: 2px; }
+    .as-dr-msg { padding: 24px 18px; text-align: center; color: var(--e7-text-3); font-size: 13px; }
+    .as-dr-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.28); z-index: 10900; display: none; }
+    .as-dr-backdrop.show { display: block; }
+
+    #assetContent table tbody tr, #assetContent .dropdown-item { cursor: pointer; }
+    #assetContent table tbody tr:hover td[colspan] { cursor: default; }
+
+    #pager.pagination, #asInvPager.pagination { flex-wrap: wrap; row-gap: 6px; justify-content: flex-end; }
+    @@media (max-width: 767.98px) {
+        .showing-records { text-align: center; justify-content: center !important; }
+        #pager.pagination, #asInvPager.pagination { justify-content: center; width: 100%; }
+    }
+</style>
+
+<script src="~/assets/js/jquery-3.5.1.min.js"></script>
+@* Chart.js + export libs load lazily on first use (asEnsureChart / asEnsureExcel / asEnsurePdf) *@
+
+<section class="section" id="assetPage">
+    <!-- Header -->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="row">
+                        <div class="col-12 col-sm-6">
+                            <nav aria-label="breadcrumb">
+                                <ol class="breadcrumb">
+                                    <li class="breadcrumb-item">Asset</li>
+                                    <li class="breadcrumb-item active" aria-current="page"><a href="#">Overview</a></li>
+                                </ol>
+                            </nav>
+                        </div>
+                        <div class="col-12 col-sm-6 d-flex flex-sm-row-reverse align-items-center">
+                            <h2 class="page-name">Asset Overview</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search card -->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body p-0">
+                    <div class="search-section">
+                        <div class="search-title">Search</div>
+                        <div class="dropdown-backdrop" id="backdrop"></div>
+                        <div class="filter-row">
+                            <div class="filter-item">
+                                <label>Zone</label>
+                                <div class="select-btn" id="btnZone" data-target="ddZone"><span class="text" id="txtZone">All</span><i class="fas fa-chevron-down"></i></div>
+                            </div>
+                            <div class="filter-item">
+                                <label>Division</label>
+                                <div class="select-btn" id="btnDivision" data-target="ddDivision"><span class="text" id="txtDivision">All</span><i class="fas fa-chevron-down"></i></div>
+                            </div>
+                            <div class="filter-item">
+                                <label>Station</label>
+                                <div class="select-btn" id="btnSite" data-target="ddSite"><span class="text" id="txtSite">All</span><i class="fas fa-chevron-down"></i></div>
+                            </div>
+                            <div class="filter-item">
+                                <label>Asset Type</label>
+                                <div class="select-btn" id="btnAssetType" data-target="ddAssetType"><span class="text" id="txtAssetType">All</span><i class="fas fa-chevron-down"></i></div>
+                            </div>
+                            <div class="filter-item">
+                                <label>Asset Make</label>
+                                <div class="select-btn" id="btnAssetMake" data-target="ddAssetMake"><span class="text" id="txtAssetMake">All</span><i class="fas fa-chevron-down"></i></div>
+                            </div>
+                            <div class="filter-item">
+                                <label>&nbsp;</label>
+                                <button type="button" class="btn-search" id="btnSearch" onclick="asSearch()"><i class="fa-solid fa-magnifying-glass"></i></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="filter-dropdown" id="ddZone">
+                        <div class="dropdown-search"><input type="text" placeholder="Search zone..." onkeyup="asFilterDropdown('zone', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllZone"><label for="chkAllZone">Select All</label></div>
+                        <div class="dropdown-list" id="listZone">
+                            @if (ViewBag.Zones != null) { foreach (var z in (IEnumerable<SelectListItem>)ViewBag.Zones) {
+                                <div class="dropdown-item" data-value="@z.Value" data-text="@z.Text"><input type="checkbox" class="cb-zone" value="@z.Value"><span>@z.Text</span></div>
+                            } }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+                    <div class="filter-dropdown" id="ddDivision">
+                        <div class="dropdown-search"><input type="text" placeholder="Search division..." onkeyup="asFilterDropdown('division', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllDivision"><label for="chkAllDivision">Select All</label></div>
+                        <div class="dropdown-list" id="listDivision">
+                            @if (ViewBag.Divisions != null) { foreach (var d in (IEnumerable<SelectListItem>)ViewBag.Divisions) {
+                                <div class="dropdown-item" data-value="@d.Value" data-text="@d.Text"><input type="checkbox" class="cb-division" value="@d.Value"><span>@d.Text</span></div>
+                            } }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+                    <div class="filter-dropdown" id="ddSite">
+                        <div class="dropdown-search"><input type="text" placeholder="Search station..." onkeyup="asFilterDropdown('site', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllSite"><label for="chkAllSite">Select All</label></div>
+                        <div class="dropdown-list" id="listSite">
+                            @if (ViewBag.Sites != null) { foreach (var s in (IEnumerable<SelectListItem>)ViewBag.Sites) {
+                                <div class="dropdown-item" data-value="@s.Value" data-text="@s.Text"><input type="checkbox" class="cb-site" value="@s.Value"><span>@s.Text</span></div>
+                            } }
+                        </div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+                    <div class="filter-dropdown" id="ddAssetType">
+                        <div class="dropdown-search"><input type="text" placeholder="Search asset type..." onkeyup="asFilterDropdown('assetType', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllAssetType"><label for="chkAllAssetType">Select All</label></div>
+                        <div class="dropdown-list" id="listAssetType"><div class="dropdown-empty">Select a station first</div></div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+                    <div class="filter-dropdown" id="ddAssetMake">
+                        <div class="dropdown-search"><input type="text" placeholder="Search asset make..." onkeyup="asFilterDropdown('assetMake', this.value)"></div>
+                        <div class="dropdown-header"><input type="checkbox" id="chkAllAssetMake"><label for="chkAllAssetMake">Select All</label></div>
+                        <div class="dropdown-list" id="listAssetMake"><div class="dropdown-empty">Select a station first</div></div>
+                        <div class="dropdown-no-results">No results found</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results card -->
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="as-cardhead">
+                        <div class="d-flex align-items-center">
+                            <h4>Asset Inventory</h4>
+                            <span class="as-meta" id="asResultMeta"></span>
+                        </div>
+                        <div class="d-flex align-items-center" style="gap:12px;">
+                            <div class="as-seg sm" id="asViewToggle" style="display:none;">
+                                <button type="button" class="active" data-view="Table"><i class="fas fa-table"></i> Table</button>
+                                <button type="button" data-view="Pie"><i class="fas fa-chart-pie"></i> Pie</button>
+                                <button type="button" data-view="Bar"><i class="fas fa-chart-bar"></i> Bar</button>
+                                <button type="button" data-view="Graph"><i class="fas fa-chart-line"></i> Graph</button>
+                            </div>
+                            @if (!isGuest)
+                            {
+                                <div class="dropdown" id="asDownloadWrap" style="display:none;">
+                                    <button class="btn btn-inactive" id="asDownloadBtn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" title="Download">
+                                        <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' /></svg>
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-right" aria-labelledby="asDownloadBtn">
+                                        <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadExcel()"><i class="fa fa-file-excel mr-2" style="color:var(--e7-green,#22c55e);"></i> Excel</a>
+                                        <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadCSV()"><i class="fa fa-file-alt mr-2" style="color:var(--e7-accent,#3b82f6);"></i> CSV</a>
+                                        <a class="dropdown-item" href="javascript:void(0);" onclick="fnDownloadPDF()"><i class="fa fa-file-pdf mr-2" style="color:var(--e7-red,#ef4444);"></i> PDF</a>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="as-kpis" id="asKpis" style="display:none;">
+                        <div class="as-kpi"><div class="k-label">Groups</div><div class="k-val" id="asK1V">0</div></div>
+                        <div class="as-kpi"><div class="k-label">Stations</div><div class="k-val" id="asK2V">0</div></div>
+                        <div class="as-kpi"><div class="k-label">Asset Types</div><div class="k-val" id="asK3V">0</div></div>
+                        <div class="as-kpi"><div class="k-label">Total Assets</div><div class="k-val" id="asK4V">0</div></div>
+                    </div>
+
+                    <div class="table-border">
+                        <div id="assetContent" class="col-12 p-0">
+                            <div class="as-dr-msg" style="padding:46px 18px;">
+                                <i class="fas fa-magnifying-glass fa-2x d-block mb-3" style="color:var(--e7-text-4);"></i>
+                                Choose a station and press search to load the asset inventory. Click any row to see its utilization.
+                            </div>
+                        </div>
+                        <div id="assetChart" style="display:none; padding-top:6px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Drawer: utilization for the clicked station + asset type -->
+<div class="as-dr-backdrop" id="asDrBackdrop" onclick="asCloseDrawer()"></div>
+<aside class="as-drawer" id="asDrawer" aria-hidden="true">
+    <div class="as-dr-head">
+        <div>
+            <h4 id="asDrTitle">Utilization</h4>
+            <div class="as-meta" id="asDrSub" style="margin:0;"></div>
+        </div>
+        <button type="button" class="as-dr-close" onclick="asCloseDrawer()" title="Close"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="as-dr-body">
+        <div class="as-dr-tools">
+            <div><label>From Date</label><input type="text" class="filter-input" id="asDrFrom" readonly></div>
+            <div><label>To Date</label><input type="text" class="filter-input" id="asDrTo" readonly></div>
+            <button type="button" class="btn-search" id="asDrSearchBtn" onclick="asDrSearch()"><i class="fa-solid fa-magnifying-glass"></i></button>
+            <div style="flex:1;"></div>
+            <div class="as-seg sm" id="asDrViewToggle" style="display:none;">
+                <button type="button" class="active" data-view="Table"><i class="fas fa-table"></i></button>
+                <button type="button" data-view="Pie"><i class="fas fa-chart-pie"></i></button>
+                <button type="button" data-view="Bar"><i class="fas fa-chart-bar"></i></button>
+                <button type="button" data-view="Graph"><i class="fas fa-chart-line"></i></button>
+            </div>
+            @if (!isGuest)
+            {
+                <div class="dropdown" id="asDrDownloadWrap" style="display:none;">
+                    <button class="btn btn-inactive" data-toggle="dropdown" title="Download" style="height:40px;">
+                        <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d='M4 16.004V17a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 4.5v11m3.5-3.5L12 15.5 8.5 12' /></svg>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-right">
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="asDrDownload('excel')"><i class="fa fa-file-excel mr-2" style="color:var(--e7-green,#22c55e);"></i> Excel</a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="asDrDownload('csv')"><i class="fa fa-file-alt mr-2" style="color:var(--e7-accent,#3b82f6);"></i> CSV</a>
+                        <a class="dropdown-item" href="javascript:void(0);" onclick="asDrDownload('pdf')"><i class="fa fa-file-pdf mr-2" style="color:var(--e7-red,#ef4444);"></i> PDF</a>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="as-dr-kpis" id="asDrKpis" style="display:none;">
+            <div class="as-dr-tile"><div class="t-l">Assets</div><div class="t-v" id="asDrKAssets">0</div></div>
+            <div class="as-dr-tile"><div class="t-l">Operations</div><div class="t-v" id="asDrKOps">0</div></div>
+            <div class="as-dr-tile"><div class="t-l">Signal Hours</div><div class="t-v" id="asDrKHours">0</div></div>
+        </div>
+
+        <div id="asDrContent"></div>
+        <div id="asDrChart" style="display:none;"></div>
+    </div>
+</aside>
+
+<script>
+    // =====================================================================
+    //  UNIFIED ASSET PAGE  (Equipment Room model)
+    // =====================================================================
+    var asView = 'Table';                 // main inventory view
+    var asDrView = 'Table';               // drawer utilization view
+    var asOpenDropdown = null;
+    var asTypeMap = {};                   // asset-type name -> id
+    var asDrStation = '', asDrType = '', asDrStationId = null, asDrTypeId = null;
+    var _asDetailsXhr = null, _asUtilXhr = null, _asMakeXhr = null;
+    var _asOrigDivision = null, _asOrigSite = null;
+
+    function asCap(s) { if (s === 'assetType') return 'AssetType'; if (s === 'assetMake') return 'AssetMake'; return s.charAt(0).toUpperCase() + s.slice(1); }
+    function asEscRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+    function asGetValues(type) { var v = []; $('.cb-' + type + ':checked').each(function () { v.push($(this).val()); }); return v; }
+    function asNotify(m) { if (typeof CommonNotification === 'function') CommonNotification('ERROR', m, 'Error'); else alert(m); }
+    function asFmtDMY(d) { return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
+    function asToServerDate(s) { if (!s) return ''; var p = s.split('/'); if (p.length !== 3) return s; return p[1] + '/' + p[0] + '/' + p[2]; }
+
+    // ---- dropdown open/close/filter ---------------------------------
+    function asToggleDD(id, btn) {
+        if (asOpenDropdown === id) { asCloseDD(); return; }
+        asCloseDD();
+        var $dd = $('#' + id); $('body').append($dd);
+        var r = btn.getBoundingClientRect();
+        $dd.css({ position: 'absolute', visibility: 'hidden', display: 'block', top: '-9999px', left: '-9999px' });
+        var h = $dd.outerHeight(), w = $dd.outerWidth();
+        var top = r.bottom + 4, left = r.left;
+        if (top + h > window.innerHeight) top = r.top - h - 4;
+        if (left + w > window.innerWidth) left = window.innerWidth - w - 8;
+        $dd.css({ visibility: '', display: '', top: top + 'px', left: left + 'px' }).addClass('open');
+        $(btn).addClass('active'); $('#backdrop').addClass('show');
+        asOpenDropdown = id;
+        setTimeout(function () { $dd.find('.dropdown-search input').focus(); }, 80);
+    }
+    function asCloseDD() {
+        if (!asOpenDropdown) return;
+        var $dd = $('#' + asOpenDropdown);
+        $dd.find('.dropdown-search input').val('');
+        $dd.find('.dropdown-item').removeClass('hidden').each(function () { var t = $(this).data('text'); if (t) $(this).find('span').text(t); });
+        $dd.find('.dropdown-no-results').removeClass('show');
+        $dd.removeClass('open');
+        $('.select-btn').removeClass('active'); $('#backdrop').removeClass('show');
+        asOpenDropdown = null;
+    }
+    function asFilterDropdown(type, txt) {
+        var $dd = $('#dd' + asCap(type)), $items = $dd.find('.dropdown-list .dropdown-item'), $nr = $dd.find('.dropdown-no-results');
+        var s = (txt || '').toLowerCase().trim(), vis = 0;
+        $items.each(function () {
+            var $i = $(this), t = ($i.data('text') || $i.find('span').text()).toLowerCase();
+            if (s === '' || t.indexOf(s) > -1) {
+                $i.removeClass('hidden'); vis++;
+                var orig = $i.data('text') || $i.find('span').text();
+                if (s !== '') { $i.find('span').html(String(orig).replace(new RegExp('(' + asEscRegex(txt) + ')', 'gi'), '<mark>$1</mark>')); }
+                else { $i.find('span').text(orig); }
+            } else { $i.addClass('hidden'); }
+        });
+        $nr.toggleClass('show', vis === 0 && s !== '');
+    }
+
+    function asUpdateText(type) {
+        var $all = $('.cb-' + type), $ck = $('.cb-' + type + ':checked'), c = $ck.length, t = $all.length, text = 'All';
+        if (c === 0) text = 'All';
+        else if (c === 1) text = $ck.first().closest('.dropdown-item').data('text') || $ck.first().closest('.dropdown-item').find('span').text();
+        else if (c === t && t > 0) text = 'All (' + c + ')';
+        else text = c + ' selected';
+        $('#txt' + asCap(type)).text(text);
+    }
+    function asUpdateAllState(type) { var $all = $('#list' + asCap(type) + ' .cb-' + type); $('#chkAll' + asCap(type)).prop('checked', $all.length > 0 && $all.length === $all.filter(':checked').length); }
+    function asSelectAll(type, checked) {
+        $('#list' + asCap(type) + ' .dropdown-item').each(function () {
+            if (!$(this).hasClass('hidden')) { $(this).find('input[type="checkbox"]').prop('checked', checked); $(this).toggleClass('checked', checked); }
+        });
+        asUpdateText(type);
+    }
+    function asClear(type) { $('#list' + asCap(type)).empty(); $('#chkAll' + asCap(type)).prop('checked', false); $('#txt' + asCap(type)).text('All'); }
+    function asMsg(type, m) { $('#list' + asCap(type)).html('<div class="dropdown-empty">' + m + '</div>'); $('#chkAll' + asCap(type)).prop('checked', false); $('#txt' + asCap(type)).text('All'); }
+    function asResetText(type) { $('#chkAll' + asCap(type)).prop('checked', false); $('#txt' + asCap(type)).text('All'); }
+    function asBuildList(type, items, valKey, nameKey) {
+        var html = '';
+        $.each(items, function (i, it) {
+            html += '<div class="dropdown-item" data-value="' + it[valKey] + '" data-text="' + it[nameKey] + '"><input type="checkbox" class="cb-' + type + '" value="' + it[valKey] + '"><span>' + it[nameKey] + '</span></div>';
+        });
+        $('#list' + asCap(type)).html(html || '<div class="dropdown-empty">None found</div>');
+        $('#chkAll' + asCap(type)).prop('checked', false); $('#txt' + asCap(type)).text('All');
+    }
+    function asResetDownstream(changed) {
+        var order = ['zone', 'division', 'site', 'assetType', 'assetMake'], idx = order.indexOf(changed);
+        for (var i = idx + 1; i < order.length; i++) {
+            var t = order[i];
+            if (t === 'assetMake' || t === 'assetType') asMsg(t, 'Select a station first'); else asClear(t);
+        }
+    }
+
+    // ---- cascades ----------------------------------------------------
+    function asLoadDivisions() {
+        var zoneIds = asGetValues('zone').map(Number);
+        asResetDownstream('division');
+        if (zoneIds.length === 0) { $('#listDivision').html(_asOrigDivision); $('#listSite').html(_asOrigSite); asResetText('division'); asResetText('site'); return; }
+        $.ajax({ url: '/FRS25/AssetDetail/GetDivisionByZoneId', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SearchCriteria: { ZoneIds: zoneIds } }),
+            success: function (d) { asBuildList('division', d, 'Id', 'Name'); asClear('site'); },
+            error: function () { asNotify('Failed to load divisions.'); } });
+    }
+    function asLoadSites() {
+        var divIds = asGetValues('division').map(Number);
+        asResetDownstream('site');
+        if (divIds.length === 0) { $('#listSite').html(_asOrigSite); asResetText('site'); return; }
+        $.ajax({ url: '/FRS25/AssetDetail/GetSiteByDivisionId', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SearchCriteria: { DivisionIds: divIds } }),
+            success: function (d) { asBuildList('site', d, 'Id', 'Name'); },
+            error: function () { asNotify('Failed to load sites.'); } });
+    }
+    function asLoadAssetTypes() {
+        var siteIds = asGetValues('site');
+        asResetDownstream('assetType'); asTypeMap = {};
+        if (siteIds.length === 0) { asMsg('assetType', 'Select a station first'); return; }
+        $('#listAssetType').html('<div class="dropdown-empty">Loading...</div>');
+        $.ajax({ url: '/FRS25/AssetDetail/GetAssetTypeBySiteIds', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify(siteIds),
+            success: function (d) {
+                if (d && d.length) {
+                    var html = '';
+                    $.each(d, function (i, it) {
+                        asTypeMap[it.Name] = it.Id;
+                        html += '<div class="dropdown-item" data-value="' + it.Id + '" data-name="' + it.Name + '" data-text="' + it.Name + '"><input type="checkbox" class="cb-assetType" value="' + it.Id + '"><span>' + it.Name + '</span></div>';
+                    });
+                    $('#listAssetType').html(html);
+                } else { asMsg('assetType', 'No asset types found'); }
+            },
+            error: function () { asMsg('assetType', 'Failed to load asset types'); } });
+    }
+    function asLoadMakes() {
+        var siteIds = asGetValues('site').map(Number);
+        if (siteIds.length === 0) { asMsg('assetMake', 'Select a station first'); return; }
+        var typeNames = $('.cb-assetType:checked').map(function () { return $(this).closest('.dropdown-item').data('name'); }).get();
+        var prev = asGetValues('assetMake');
+        if (_asMakeXhr) _asMakeXhr.abort();
+        $('#listAssetMake').html('<div class="dropdown-empty">Loading...</div>');
+        _asMakeXhr = $.ajax({ url: '/FRS25/AssetDetail/GetAssetFilters', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify({ SearchCriteria: { ZoneIds: asGetValues('zone'), DivisionIds: asGetValues('division'), SiteIds: siteIds, AssetTypes: typeNames, siteAttributeDatasList: [] } }),
+            success: function (data) {
+                if (data.AssetMakes && data.AssetMakes.length) {
+                    var html = '';
+                    $.each(data.AssetMakes, function (i, m) {
+                        var ck = prev.indexOf(m) > -1;
+                        html += '<div class="dropdown-item' + (ck ? ' checked' : '') + '" data-value="' + m + '" data-text="' + m + '"><input type="checkbox" class="cb-assetMake" value="' + m + '"' + (ck ? ' checked' : '') + '><span>' + m + '</span></div>';
+                    });
+                    $('#listAssetMake').html(html);
+                } else { asMsg('assetMake', 'No asset makes found'); }
+                asUpdateAllState('assetMake'); asUpdateText('assetMake');
+            },
+            error: function (x, s) { if (s === 'abort') return; asMsg('assetMake', 'Failed to load makes'); },
+            complete: function () { _asMakeXhr = null; } });
+    }
+
+    // ---- inventory search (main grid) -------------------------------
+    function asSearch() {
+        var siteIds = asGetValues('site');
+        if (!siteIds.length) { asNotify('Station is required.'); return; }
+        if (_asDetailsXhr) _asDetailsXhr.abort();
+        $('#assetContent').html('<div class="text-center p-5"><i class="fas fa-spinner fa-spin fa-2x text-primary"></i><br/><small class="text-muted mt-2 d-block">Loading inventory...</small></div>');
+        $('#btnSearch').prop('disabled', true);
+        var payload = { SearchCriteria: {
+            ZoneIds: asGetValues('zone'), DivisionIds: asGetValues('division'), SiteIds: siteIds,
+            AssetTypes: $('.cb-assetType:checked').map(function () { return $(this).closest('.dropdown-item').data('name'); }).get(),
+            siteAttributeDatasList: asGetValues('assetMake')
+        } };
+        _asDetailsXhr = $.ajax({ url: '/FRS25/AssetDetail/_Details', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify(payload), dataType: 'html',
+            success: function (html) {
+                $('#assetContent').html(html);
+                // Re-tag the inventory partial's shared ids so the drawer's utilization
+                // partial keeps its own #pager (both partials hardcode id="pager").
+                $('#assetContent').find('#pager').attr('id', 'asInvPager');
+                $('#assetContent').find('#listView').attr('id', 'asInvListView');
+                $('#asResultMeta').text('As on ' + asFmtDMY(new Date()));
+                asKpisInventory();
+                $('#asDownloadWrap').show();
+                $('#asViewToggle').css('display', 'inline-flex');
+                asRenderView(asView);
+            },
+            error: function (x, s) { if (s === 'abort') return; asNotify('Something went wrong!'); $('#assetContent').html(''); },
+            complete: function () { _asDetailsXhr = null; $('#btnSearch').prop('disabled', false); } });
+    }
+
+    function asInvRows() { return $('#assetContent #tblAssetDetail tbody tr').filter(function () { return !$(this).find('td[colspan]').length; }); }
+    function asKpisInventory() {
+        var $r = asInvRows(), stations = {}, types = {}, total = 0;
+        $r.each(function () { var td = $(this).find('td'); stations[$.trim(td.eq(3).text())] = 1; types[$.trim(td.eq(4).text())] = 1; total += parseInt($.trim(td.eq(6).text())) || 0; });
+        $('#asK1V').text($r.length); $('#asK2V').text(Object.keys(stations).length); $('#asK3V').text(Object.keys(types).length); $('#asK4V').text(total.toLocaleString());
+        $('#asKpis').css('display', 'grid');
+    }
+
+    // ---- generic chart + export engine ------------------------------
+    var asCharts = [], asDrCharts = [];
+    var AS_PALETTE = ['#4361ee', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f43f5e', '#14b8a6', '#f97316', '#3b82f6', '#84cc16', '#a855f7', '#eab308', '#0ea5e9', '#ef4444', '#10b981'];
+    function asPalette(n) { var a = []; for (var i = 0; i < n; i++) a.push(AS_PALETTE[i % AS_PALETTE.length]); return a; }
+    function asEnsureChart(cb) { if (window.Chart) return cb(); $.getScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js').always(function () { cb(); }); }
+    function asMakeChart(el, kind, labels, data) {
+        if (!el || !labels.length) return null;
+        var colors = asPalette(labels.length), ds;
+        if (kind === 'doughnut') ds = [{ data: data, backgroundColor: colors, borderColor: 'var(--e7-surface)', borderWidth: 2 }];
+        else if (kind === 'bar') ds = [{ label: 'Value', data: data, backgroundColor: colors, borderRadius: 4, maxBarThickness: 96, categoryPercentage: 0.6, barPercentage: 0.8 }];
+        else ds = [{ label: 'Value', data: data, borderColor: '#4361ee', backgroundColor: 'rgba(67,97,238,.14)', fill: true, tension: .3, pointRadius: 5, pointHoverRadius: 7, pointBackgroundColor: '#4361ee' }];
+        return new Chart(el, { type: kind, data: { labels: labels, datasets: ds },
+            options: { responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: kind === 'doughnut', position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } },
+                scales: kind === 'doughnut' ? {} : { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { ticks: { autoSkip: true, maxRotation: 45 } } } } });
+    }
+    function asKind(view) { return view === 'Pie' ? 'doughnut' : (view === 'Bar' ? 'bar' : 'line'); }
+    function asGroup($rows, labelIdx, valIdx, useRaw) {
+        var map = {};
+        $rows.each(function () {
+            var td = $(this).find('td'), key = $.trim(td.eq(labelIdx).text()) || '—';
+            var v = useRaw ? (parseFloat(td.eq(valIdx).data('raw')) || 0) : (parseInt($.trim(td.eq(valIdx).text())) || 0);
+            map[key] = (map[key] || 0) + v;
+        });
+        return map;
+    }
+    function asDestroy(arr) { arr.forEach(function (c) { try { if (c) c.destroy(); } catch (e) {} }); arr.length = 0; }
+
+    // main inventory view switch
+    function asRenderView(view) {
+        asView = view || 'Table';
+        $('#asViewToggle button').removeClass('active').filter('[data-view="' + asView + '"]').addClass('active');
+        if (asView === 'Table') { asDestroy(asCharts); $('#assetChart').hide().empty(); $('#assetContent').show(); return; }
+        $('#assetContent').hide(); $('#assetChart').show();
+        asEnsureChart(function () {
+            if (!window.Chart) { $('#assetChart').html('<div class="as-chart-empty">Chart library unavailable.</div>'); return; }
+            asDestroy(asCharts);
+            var $r = asInvRows();
+            if (!$r.length) { $('#assetChart').html('<div class="as-chart-empty">No data to chart.</div>'); return; }
+            var byType = asGroup($r, 4, 6, false), byStation = asGroup($r, 3, 6, false), kind = asKind(asView);
+            $('#assetChart').html('<div class="row">' +
+                '<div class="col-12 col-xl-6"><div class="as-chart-card"><div class="as-chart-title">By Asset Type (count)</div><div class="as-chart-wrap"><canvas id="asChartType"></canvas></div></div></div>' +
+                '<div class="col-12 col-xl-6"><div class="as-chart-card"><div class="as-chart-title">By Station (count)</div><div class="as-chart-wrap"><canvas id="asChartStation"></canvas></div></div></div></div>');
+            asCharts.push(asMakeChart(document.getElementById('asChartType'), kind, Object.keys(byType), Object.values(byType)));
+            asCharts.push(asMakeChart(document.getElementById('asChartStation'), kind, Object.keys(byStation), Object.values(byStation)));
+        });
+    }
+
+    // ---- export (shared) --------------------------------------------
+    function asEnsureExcel(cb) {
+        if (window.ExcelJS && window.saveAs) return cb();
+        var need = [];
+        if (!window.ExcelJS) need.push('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js');
+        if (!window.saveAs) need.push('https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js');
+        var left = need.length; if (!left) return cb();
+        need.forEach(function (u) { $.getScript(u).always(function () { if (--left === 0) cb(); }); });
+    }
+    function asEnsurePdf(cb) {
+        if (window.jspdf && window.jspdf.jsPDF) return cb();
+        $.getScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js').always(function () {
+            $.getScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js').always(cb);
+        });
+    }
+    function asModel($rows, headers, name, title) {
+        var rows = [];
+        $rows.each(function () { var r = []; $(this).find('td').each(function () { r.push($.trim($(this).text()).replace(/\s+/g, ' ')); }); rows.push(r); });
+        return { headers: headers, rows: rows, name: name + '_' + new Date().toISOString().slice(0, 10), title: title };
+    }
+    function asDoExport(type, m) {
+        if (!m.rows.length) { asNotify('Nothing to export.'); return; }
+        if (type === 'csv') {
+            var esc = function (s) { return '"' + String(s).replace(/"/g, '""') + '"'; };
+            var csv = m.headers.map(esc).join(',') + '\r\n' + m.rows.map(function (r) { return r.map(esc).join(','); }).join('\r\n');
+            asEnsureExcel(function () { window.saveAs(new Blob([csv], { type: 'text/csv;charset=utf-8;' }), m.name + '.csv'); });
+        } else if (type === 'excel') {
+            asEnsureExcel(function () {
+                var wb = new ExcelJS.Workbook(), ws = wb.addWorksheet(m.title);
+                ws.addRow(m.headers); ws.getRow(1).font = { bold: true };
+                m.rows.forEach(function (r) { ws.addRow(r); });
+                wb.xlsx.writeBuffer().then(function (buf) { window.saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), m.name + '.xlsx'); });
+            });
+        } else {
+            asEnsurePdf(function () {
+                var doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
+                doc.text(m.title, 14, 14);
+                doc.autoTable({ head: [m.headers], body: m.rows, startY: 20, styles: { fontSize: 8 } });
+                doc.save(m.name + '.pdf');
+            });
+        }
+    }
+    var AS_INV_HEAD = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Asset Make', 'Count of Asset'];
+    var AS_UTIL_HEAD = ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Asset Number', 'Value'];
+    function fnDownloadExcel() { asDoExport('excel', asModel(asInvRows(), AS_INV_HEAD, 'AssetInventory', 'Asset Inventory')); }
+    function fnDownloadCSV() { asDoExport('csv', asModel(asInvRows(), AS_INV_HEAD, 'AssetInventory', 'Asset Inventory')); }
+    function fnDownloadPDF() { asDoExport('pdf', asModel(asInvRows(), AS_INV_HEAD, 'AssetInventory', 'Asset Inventory')); }
+
+    // ---- DRAWER: utilization drill-in -------------------------------
+    function asStationId(name) {
+        var id = null;
+        $('#listSite .dropdown-item').each(function () {
+            var t = $.trim($(this).data('text'));
+            if (t === name || t === ('GAHLOTA - ' + name) || (t.indexOf(name) > -1)) { if (id == null) id = $(this).data('value'); }
+        });
+        return id;
+    }
+    function asOpenDrawer(station, type, siteId, typeId) {
+        asDrStation = station; asDrType = type;
+        asDrStationId = (siteId != null && siteId !== '' && Number(siteId) > 0) ? siteId : asStationId(station);
+        asDrTypeId = (typeId != null && typeId !== '' && Number(typeId) > 0) ? typeId : asTypeMap[type];
+        $('#asDrTitle').text(station);
+        $('#asDrSub').text(type || '');
+        $('#asDrBackdrop').addClass('show'); $('#asDrawer').addClass('is-open').attr('aria-hidden', 'false');
+        asDrView = 'Table';
+        $('#asDrViewToggle button').removeClass('active').filter('[data-view="Table"]').addClass('active');
+        $('#asDrContent').html(''); $('#asDrChart').hide().empty(); $('#asDrKpis').hide(); $('#asDrViewToggle').hide(); $('#asDrDownloadWrap').hide();
+        if (!asDrStationId || asDrTypeId == null) {
+            $('#asDrContent').html('<div class="as-dr-msg">Could not resolve this station / asset type for utilization.<br>Re-run the station search and try again.</div>');
+            return;
+        }
+        asDrSearch();
+    }
+    function asCloseDrawer() { $('#asDrawer').removeClass('is-open').attr('aria-hidden', 'true'); $('#asDrBackdrop').removeClass('show'); }
+
+    function asDrSearch() {
+        var from = $('#asDrFrom').val(), to = $('#asDrTo').val();
+        if (!from || !to) { asNotify('From and To dates are required.'); return; }
+        if (asDrStationId == null || asDrTypeId == null) return;
+        if (_asUtilXhr) _asUtilXhr.abort();
+        $('#asDrContent').html('<div class="as-dr-msg"><i class="fas fa-spinner fa-spin"></i> Loading utilization…</div>');
+        $('#asDrSearchBtn').prop('disabled', true);
+        var payload = { SearchCriteria: {
+            SiteIds: [String(asDrStationId)], AssetTypeIds: [String(asDrTypeId)], AssetIds: [],
+            StartDate: asToServerDate(from), EndDate: asToServerDate(to)
+        } };
+        _asUtilXhr = $.ajax({ url: '/FRS25/AssetDetail/_Utilization', type: 'POST', contentType: 'application/json',
+            data: JSON.stringify(payload), dataType: 'html',
+            success: function (html) {
+                $('#asDrContent').html(html);
+                // The _Utilization partial carries its own range bar (blank here, the old
+                // parent filled it) and its own download button (which points at the
+                // inventory export). The drawer already provides both, so drop them.
+                var $c = $('#asDrContent');
+                $c.find('#selectedRangeBar').closest('[class*="col-"]').hide();
+                $c.find('#btnDownload').closest('[class*="col-"]').hide();
+                asDrKpis();
+                $('#asDrViewToggle').css('display', 'inline-flex');
+                $('#asDrDownloadWrap').show();
+                asDrRenderView(asDrView);
+            },
+            error: function (x, s) { if (s === 'abort') return; $('#asDrContent').html('<div class="as-dr-msg">Something went wrong loading utilization.</div>'); },
+            complete: function () { _asUtilXhr = null; $('#asDrSearchBtn').prop('disabled', false); } });
+    }
+    function asDrUtilRows() { return $('#asDrContent #tblUtilization tbody tr').filter(function () { return !$(this).find('td[colspan]').length; }); }
+    function asDrKpis() {
+        var $r = asDrUtilRows(), ops = 0, hours = 0;
+        $r.each(function () { var cell = $(this).find('td').eq(6); if (cell.data('signal') == 1 || cell.data('signal') === '1') hours += parseFloat(cell.data('raw')) || 0; else ops += parseInt(cell.data('raw')) || 0; });
+        $('#asDrKAssets').text($r.length); $('#asDrKOps').text(ops.toLocaleString()); $('#asDrKHours').text(hours.toFixed(1));
+        $('#asDrKpis').css('display', 'grid');
+    }
+    function asDrRenderView(view) {
+        asDrView = view || 'Table';
+        $('#asDrViewToggle button').removeClass('active').filter('[data-view="' + asDrView + '"]').addClass('active');
+        if (asDrView === 'Table') { asDestroy(asDrCharts); $('#asDrChart').hide().empty(); $('#asDrContent').show(); return; }
+        $('#asDrContent').hide(); $('#asDrChart').show();
+        asEnsureChart(function () {
+            if (!window.Chart) { $('#asDrChart').html('<div class="as-chart-empty">Chart library unavailable.</div>'); return; }
+            asDestroy(asDrCharts);
+            var $r = asDrUtilRows();
+            if (!$r.length) { $('#asDrChart').html('<div class="as-chart-empty">No data to chart.</div>'); return; }
+            var byAsset = asGroup($r, 5, 6, true), kind = asKind(asDrView);
+            $('#asDrChart').html('<div class="as-chart-card"><div class="as-chart-title">Operations / hours by Asset Number</div><div class="as-chart-wrap"><canvas id="asDrChartCanvas"></canvas></div></div>');
+            asDrCharts.push(asMakeChart(document.getElementById('asDrChartCanvas'), kind, Object.keys(byAsset), Object.values(byAsset)));
+        });
+    }
+    function asDrDownload(type) { asDoExport(type, asModel(asDrUtilRows(), AS_UTIL_HEAD, 'AssetUtilization_' + (asDrStation || 'station'), 'Asset Utilization — ' + asDrStation + ' / ' + asDrType)); }
+
+    // ---- wire-up -----------------------------------------------------
+    $(document).ready(function () {
+        _asOrigDivision = $('#listDivision').html();
+        _asOrigSite = $('#listSite').html();
+
+        if ($.fn.datepicker) { $('#asDrFrom, #asDrTo').datepicker({ dateFormat: 'dd/mm/yyyy', autoClose: true }); }
+        var today = new Date(), from = new Date(); from.setDate(from.getDate() - 30);
+        $('#asDrFrom').val(asFmtDMY(from)); $('#asDrTo').val(asFmtDMY(today));
+
+        $('.select-btn').on('click', function (e) { e.stopPropagation(); asToggleDD($(this).data('target'), this); });
+        $('#backdrop').on('click', asCloseDD);
+        $(document).on('click', '.dropdown-search', function (e) { e.stopPropagation(); });
+
+        $(document).on('click', '#ddZone .dropdown-item, #ddDivision .dropdown-item, #ddSite .dropdown-item, #ddAssetType .dropdown-item, #ddAssetMake .dropdown-item', function (e) {
+            e.stopPropagation();
+            var $cb = $(this).find('input[type="checkbox"]');
+            if (!$(e.target).is('input[type="checkbox"]')) $cb.prop('checked', !$cb.prop('checked'));
+            $(this).toggleClass('checked', $cb.prop('checked'));
+            var type = ($cb.attr('class') || '').replace('cb-', '');
+            asUpdateAllState(type); asUpdateText(type);
+            if (type === 'zone') asLoadDivisions();
+            else if (type === 'division') asLoadSites();
+            else if (type === 'site') asLoadAssetTypes();
+            else if (type === 'assetType') asLoadMakes();
+        });
+
+        $(document).on('click', '.dropdown-header', function (e) {
+            e.stopPropagation();
+            var $chk = $(this).find('input[type="checkbox"]'), raw = $chk.attr('id').replace('chkAll', ''), type = raw.charAt(0).toLowerCase() + raw.slice(1);
+            var apply = function (state) {
+                asSelectAll(type, state);
+                if (type === 'zone') asLoadDivisions(); else if (type === 'division') asLoadSites();
+                else if (type === 'site') asLoadAssetTypes(); else if (type === 'assetType') asLoadMakes();
+            };
+            if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) { setTimeout(function () { apply($chk.prop('checked')); }, 0); }
+            else { var ns = !$chk.prop('checked'); $chk.prop('checked', ns); apply(ns); }
+        });
+
+        // main view toggle
+        $('#asViewToggle').on('click', 'button', function () { asRenderView($(this).data('view')); });
+        // drawer view toggle
+        $('#asDrViewToggle').on('click', 'button', function () { asDrRenderView($(this).data('view')); });
+
+        // inventory row click -> open utilization drawer for that station + asset type
+        $(document).on('click', '#assetContent #tblAssetDetail tbody tr', function () {
+            if ($(this).find('td[colspan]').length) return;
+            var td = $(this).find('td');
+            asOpenDrawer($.trim(td.eq(3).text()), $.trim(td.eq(4).text()), $(this).data('siteid'), $(this).data('typeid'));
+        });
+
+        $(document).on('keydown', function (e) { if (e.key === 'Escape') { asCloseDD(); asCloseDrawer(); } });
+
+        // re-skin charts on theme toggle
+        if (window.MutationObserver) {
+            new MutationObserver(function () {
+                if (asView !== 'Table' && $('#assetChart').is(':visible')) asRenderView(asView);
+                if (asDrView !== 'Table' && $('#asDrChart').is(':visible')) asDrRenderView(asDrView);
+            }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-aurora'] });
+        }
+    });
+</script>

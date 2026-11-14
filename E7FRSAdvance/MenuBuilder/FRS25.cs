@@ -133,10 +133,15 @@ namespace E7FRSAdvance.MenuBuilder
             menus.Add(equipment);
 
             // Asset
+            // Asset Detail and Asset Utilization are one page now (Views/AssetDetail/Index.cshtml):
+            // an inventory grid with a per-row utilization drill-in drawer, mirroring the
+            // unified Equipment Room above. The old Utilization action is still reachable at
+            // /FRS25/AssetDetail/Utilization.
             Menu asset = new Menu();
-            asset.Main = asset.SetMenuAttribute("Asset", "#", "#", IconName.Iot);
-            asset.Childs.Add(asset.SetMenuAttribute("Asset Detail", ControllerName.AssetDetail, ActionName.Index, FRSIconName.Asset, "FRS25"));
-            asset.Childs.Add(asset.SetMenuAttribute("Asset Utilization", ControllerName.AssetDetail, ActionName.Utilization, IconName.Dashboard, "FRS25"));
+            asset.Main = asset.SetMenuAttribute("Asset", ControllerName.AssetDetail, ActionName.Index, FRSIconName.Asset, "FRS25");
+            //asset.Main = asset.SetMenuAttribute("Asset", "#", "#", IconName.Iot);
+            //asset.Childs.Add(asset.SetMenuAttribute("Asset Detail", ControllerName.AssetDetail, ActionName.Index, FRSIconName.Asset, "FRS25"));
+            //asset.Childs.Add(asset.SetMenuAttribute("Asset Utilization", ControllerName.AssetDetail, ActionName.Utilization, IconName.Dashboard, "FRS25"));
             menus.Add(asset);
 
             //Asset Type

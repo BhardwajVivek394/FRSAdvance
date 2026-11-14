@@ -38,10 +38,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
         public ActionResult Index()
         {
-
+            // Unified Asset page (Inventory + Utilization). Asset Type / Make / Number
+            // load dynamically via the cascade endpoints, so no eager lists are needed.
             Helper.FilterCacheHelper.SetFilterViewBag(ViewBag, _siteService, _zoneService, _divisionService, includeAssetType: false);
-            //ViewBag.AssetTypes = new SelectList(_assetTypeService.GetLister(new AssetTypeLister()), "Id", "Name");
-            //ViewBag.RailwayAssetMake = GetRailwayAssetMake();
             return View();
         }
 
@@ -141,12 +140,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
         public ActionResult Utilization()
         {
-            var assetLister = new Domain.AssetLister();
-
+            // The "Asset Utilization" menu now opens the same unified Asset page
+            // (inventory grid + per-row utilization drawer). Kept as its own action
+            // so the existing menu link and bookmarks keep working.
             Helper.FilterCacheHelper.SetFilterViewBag(ViewBag, _siteService, _zoneService, _divisionService, includeAssetType: false);
-            ViewBag.AssetTypes = new SelectList(Helper.FilterCacheHelper.GetAllAssetTypes(_assetTypeService), "Id", "Name");
-
-            return View(assetLister);
+            return View("Index");
         }
 
         public ActionResult _Utilization(Domain.AssetLister assetLister)

@@ -15,6 +15,7 @@ using Newtonsoft.Json.Linq;
 
 namespace E7FRSAdvance.Areas.FRS25.Controllers
 {
+    [E7FRSAdvance.Areas.FRS25.Filter.Authenticate]
     public class PerformanceController : Controller
     {
         // ── Culture-safe date re-parser ──────────────────────────────

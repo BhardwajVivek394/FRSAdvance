@@ -1838,9 +1838,22 @@
         };
         document.head.appendChild(s1);
     }
+
+    // jsPDF + autotable (~0.4 MB) are loaded lazily on first PDF export click.
+    var _pdfLibsLoaded = false;
+    function ensurePdfLibs(callback) {
+        if (_pdfLibsLoaded || (typeof window.jspdf !== 'undefined')) { _pdfLibsLoaded = true; callback(); return; }
+        var p = document.createElement('script');
+        p.src = 'https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js';
+        p.onload = function () {
+            var a = document.createElement('script');
+            a.src = 'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js';
+            a.onload = function () { _pdfLibsLoaded = true; callback(); };
+            document.head.appendChild(a);
+        };
+        document.head.appendChild(p);
+    }
 </script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js"></script>
 
 <section class="section">
     <div class="row">
@@ -2037,6 +2050,26 @@
                         </div>
                     </div>
 
+                    <!-- KPI tiles (computed from the loaded table) -->
+                    <div id="pfKpis" style="display:none;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:12px 0 4px;">
+                        <div style="background:var(--e7-surface);border:1px solid var(--e7-border);border-radius:10px;padding:14px 16px;">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--e7-text-3);font-weight:600;">Stations</div>
+                            <div id="pfKpiStations" style="font-size:24px;font-weight:700;color:var(--e7-heading);margin-top:4px;">0</div>
+                        </div>
+                        <div style="background:var(--e7-surface);border:1px solid var(--e7-border);border-radius:10px;padding:14px 16px;">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--e7-text-3);font-weight:600;">Avg (True+PT) Failure</div>
+                            <div id="pfKpiFailure" style="font-size:24px;font-weight:700;color:var(--e7-heading);margin-top:4px;">0%</div>
+                        </div>
+                        <div style="background:var(--e7-surface);border:1px solid var(--e7-border);border-radius:10px;padding:14px 16px;">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--e7-text-3);font-weight:600;">Avg (True+PT) Predictive</div>
+                            <div id="pfKpiPredictive" style="font-size:24px;font-weight:700;color:var(--e7-heading);margin-top:4px;">0%</div>
+                        </div>
+                        <div style="background:var(--e7-surface);border:1px solid var(--e7-border);border-radius:10px;padding:14px 16px;">
+                            <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--e7-text-3);font-weight:600;">Avg Failure by RDPMS</div>
+                            <div id="pfKpiRdpms" style="font-size:24px;font-weight:700;color:var(--e7-heading);margin-top:4px;">0%</div>
+                        </div>
+                    </div>
+
                     <!-- Selected Range Display Bar -->
                     <div id="selectedRangeBar" style="display:none;margin:10px 0;padding:10px 16px;background:var(--e7-surface-2, #f8fafc);border:1px solid var(--e7-border, #e2e8f0);border-radius:10px;position:relative;align-items:center;gap:8px;flex-wrap:wrap;">
                         <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--e7-ask-from),var(--e7-ask-to));border-radius:10px 0 0 10px;"></div>
@@ -2058,6 +2091,18 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Interactive views (Ranked / Cards) built from the loaded table -->
+                    <div class="pfx-head" id="pfxHead" style="display:none;">
+                        <div class="pfx-meta" id="pfxInfo"></div>
+                        <div class="pfx-seg" id="pfxViewToggle">
+                            <button type="button" class="active" data-view="rank"><i class="fas fa-ranking-star"></i> Ranked</button>
+                            <button type="button" data-view="cards"><i class="fas fa-grip"></i> Cards</button>
+                            <button type="button" data-view="table"><i class="fas fa-table"></i> Table</button>
+                        </div>
+                    </div>
+                    <div id="pfxRank" style="display:none;"></div>
+                    <div id="pfxCards" class="pfx-grid" style="display:none;"></div>
 
                     <!-- Table View Container -->
                     <div class="table-border" id="divTableContainer">
@@ -3185,6 +3230,8 @@
             success: function (data) {
                 $("#loader").hide();
                 $("#divTableContainer").empty().append(data);
+                pfRenderKpis();
+                pfxBuildViews();
             },
             error: function () {
                 $("#loader").hide();
@@ -3193,11 +3240,31 @@
         });
     }
 
+    // KPI tiles: averages of the three percentages across the loaded stations.
+    function pfRenderKpis() {
+        var $rows = $('#tblPerformance tbody tr[data-station]');
+        if (!$rows.length) { $('#pfKpis').hide(); return; }
+        var f = [], p = [], r = [];
+        $rows.each(function () {
+            var fv = parseFloat($(this).attr('data-failure')); if (!isNaN(fv)) f.push(fv);
+            var pv = parseFloat($(this).attr('data-predictive')); if (!isNaN(pv)) p.push(pv);
+            var rv = parseFloat($(this).attr('data-rdpms')); if (!isNaN(rv)) r.push(rv);
+        });
+        var avg = function (a) { return a.length ? (a.reduce(function (s, x) { return s + x; }, 0) / a.length) : 0; };
+        $('#pfKpiStations').text($rows.length);
+        $('#pfKpiFailure').text(avg(f).toFixed(1) + '%');
+        $('#pfKpiPredictive').text(avg(p).toFixed(1) + '%');
+        $('#pfKpiRdpms').text(avg(r).toFixed(1) + '%');
+        $('#pfKpis').css('display', 'grid');
+    }
+
     // ===== CHART VIEW =====
     function fnLoadChartView(mAssetLister, viewType) {
         $("#loader").show();
         $('#divTableContainer').hide();
         $('#divChartContainer').show();
+        $('#pfKpis').hide();
+        pfxHideViews();
 
         // First load table data to parse for chart
         $.ajax({
@@ -5165,5 +5232,157 @@
     $('#modal-ActualFailureEntry').on('show.bs.modal', function () {
         var today = new Date().toISOString().split('T')[0];
         $('#ef_IncidenceDateTime, #ef_RectificationDateTime').attr('max', today);
+    });
+</script>
+
+@* ===== Interactive layer: Ranked / Cards views + per-station drawer (Equipment Room model) ===== *@
+<style>
+    .pfx-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 12px 2px 12px; }
+    .pfx-meta { font-size: 12px; color: var(--e7-text-3); font-weight: 500; }
+    .pfx-seg { display: inline-flex; background: var(--e7-surface-2); border: 1px solid var(--e7-border); border-radius: 8px; padding: 3px; gap: 2px; }
+    .pfx-seg button { border: none; background: transparent; color: var(--e7-text-2); font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+    .pfx-seg button.active { background: var(--e7-surface); color: var(--e7-accent-ink); box-shadow: var(--e7-shadow-card, 0 1px 2px rgba(0,0,0,.08)); }
+    .pfx-bar { height: 8px; border-radius: 999px; background: var(--e7-surface-3); overflow: hidden; }
+    .pfx-bar > i { display: block; height: 100%; border-radius: 999px; }
+    .pfx-good { background: var(--e7-green, #16a34a); } .pfx-mid { background: var(--e7-amber, #f59e0b); } .pfx-low { background: var(--e7-red, #dc2626); } .pfx-na { background: var(--e7-border-2, #cbd5e1); }
+    .pfx-rank-row { display: grid; grid-template-columns: 34px minmax(150px,1.2fr) repeat(3, minmax(120px,1fr)) 90px 30px; align-items: center; gap: 12px; padding: 11px 12px; border: 1px solid var(--e7-border); border-radius: 10px; margin-bottom: 8px; background: var(--e7-surface); cursor: pointer; }
+    .pfx-rank-row:hover { border-color: var(--e7-accent); box-shadow: 0 0 0 2px var(--e7-accent-soft); }
+    .pfx-rank-row .no { width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--e7-surface-2); color: var(--e7-text-2); }
+    .pfx-rank-row.top .no { background: var(--e7-amber-soft); color: var(--e7-amber, #b45309); }
+    .pfx-rank-row .nm { font-weight: 600; color: var(--e7-heading); font-size: 14px; }
+    .pfx-rank-row .sb { font-size: 12px; color: var(--e7-text-3); }
+    .pfx-metric { font-size: 11px; color: var(--e7-text-3); }
+    .pfx-metric b { display: block; font-size: 13px; color: var(--e7-heading); margin-bottom: 3px; }
+    .pfx-rank-row .sc { text-align: right; font-weight: 700; font-size: 16px; color: var(--e7-heading); }
+    .pfx-rank-row .sc small { display: block; font-size: 10px; font-weight: 500; color: var(--e7-text-3); }
+    .pfx-rank-row .go { color: var(--e7-text-4); text-align: right; }
+    @@media (max-width: 991.98px) { .pfx-rank-row { grid-template-columns: 30px 1fr 90px 30px; } .pfx-rank-row .pfx-metric { display: none; } }
+    .pfx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
+    .pfx-card { background: var(--e7-surface); border: 1px solid var(--e7-border); border-radius: 12px; padding: 14px 16px; cursor: pointer; display: flex; flex-direction: column; gap: 10px; }
+    .pfx-card:hover { border-color: var(--e7-accent); box-shadow: 0 0 0 2px var(--e7-accent-soft); }
+    .pfx-card .hd { display: flex; align-items: center; gap: 12px; }
+    .pfx-card .ico { width: 42px; height: 42px; border-radius: 10px; background: var(--e7-accent-soft); color: var(--e7-accent-ink); display: inline-flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+    .pfx-card .tt { font-weight: 600; color: var(--e7-heading); font-size: 14px; }
+    .pfx-card .st { font-size: 12px; color: var(--e7-text-3); }
+    .pfx-card .sc { margin-left: auto; text-align: right; font-weight: 700; font-size: 20px; color: var(--e7-heading); }
+    .pfx-card .sc small { display: block; font-size: 10px; font-weight: 500; color: var(--e7-text-3); }
+    .pfx-card .row-m { display: grid; grid-template-columns: 1fr 70px; align-items: center; gap: 8px; font-size: 12px; color: var(--e7-text-2); }
+    .pfx-card .row-m b { color: var(--e7-heading); text-align: right; }
+    .pfx-card .ft { display: flex; justify-content: space-between; font-size: 12px; color: var(--e7-text-3); border-top: 1px solid var(--e7-border); padding-top: 8px; }
+    .pfx-card .ft b { color: var(--e7-accent-ink); }
+    .pfx-drawer { position: fixed; top: 0; right: 0; height: 100vh; width: 560px; max-width: 96vw; background: var(--e7-surface); border-left: 1px solid var(--e7-border); box-shadow: -14px 0 40px rgba(0,0,0,.16); z-index: 11000; transform: translateX(100%); transition: transform .28s ease; display: flex; flex-direction: column; }
+    .pfx-drawer.is-open { transform: translateX(0); }
+    .pfx-dr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--e7-border); }
+    .pfx-dr-head h4 { margin: 0; font-size: 16px; font-weight: 700; color: var(--e7-heading); }
+    .pfx-dr-btn { width: 34px; height: 34px; border: 1px solid var(--e7-border); background: var(--e7-surface-2); border-radius: 8px; cursor: pointer; color: var(--e7-text-2); font-size: 13px; }
+    .pfx-dr-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+    .pfx-tile { background: var(--e7-surface-2); border: 1px solid var(--e7-border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+    .pfx-tile .l { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--e7-text-3); font-weight: 600; }
+    .pfx-tile .v { font-size: 30px; font-weight: 700; color: var(--e7-heading); line-height: 1.1; margin: 6px 0 8px; }
+    .pfx-tile .v small { font-size: 12px; font-weight: 500; color: var(--e7-text-3); margin-left: 6px; }
+    .pfx-tile .pfx-bar { height: 10px; margin-bottom: 10px; }
+    .pfx-tile button { background: none; border: 1px solid var(--e7-border); border-radius: 8px; color: var(--e7-accent-ink); font-weight: 600; font-size: 12px; padding: 6px 12px; cursor: pointer; }
+    .pfx-tile button:disabled { color: var(--e7-text-4); cursor: default; }
+    .pfx-dr-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.28); z-index: 10900; display: none; }
+    .pfx-dr-backdrop.show { display: block; }
+    .pfx-sum { font-size: 12px; color: var(--e7-text-3); background: var(--e7-surface-2); border: 1px solid var(--e7-border); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; }
+</style>
+
+<div class="pfx-dr-backdrop" id="pfxDrBackdrop" onclick="pfxCloseDrawer()"></div>
+<aside class="pfx-drawer" id="pfxDrawer" aria-hidden="true">
+    <div class="pfx-dr-head">
+        <div><h4 id="pfxDrTitle">Station</h4><div class="pfx-meta" id="pfxDrSub"></div></div>
+        <div style="display:flex;gap:6px;">
+            <button type="button" class="pfx-dr-btn" onclick="pfxDrStep(-1)" title="Previous"><i class="fas fa-chevron-up"></i></button>
+            <button type="button" class="pfx-dr-btn" onclick="pfxDrStep(1)" title="Next"><i class="fas fa-chevron-down"></i></button>
+            <button type="button" class="pfx-dr-btn" onclick="pfxCloseDrawer()" title="Close"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+    <div class="pfx-dr-body" id="pfxDrBody"></div>
+</aside>
+
+<script>
+    var pfxRows = [], pfxView = 'rank', pfxDrStation = null;
+    var PFX_METRICS = [
+        { col: 'failure', key: 'f', label: '(True + PT) failure alerts', sub: 'of total failure alerts' },
+        { col: 'predictive', key: 'p', label: '(True + PT) predictive alerts', sub: 'of total predictive alerts' },
+        { col: 'rdpms', key: 'r', label: 'Failure alerts by RDPMS', sub: 'of total actual failures' }
+    ];
+    function pfxEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function pfxCls(v) { return v == null ? 'pfx-na' : v >= 75 ? 'pfx-good' : v >= 50 ? 'pfx-mid' : 'pfx-low'; }
+    function pfxFmt(v) { return v == null ? '–' : (Math.round(v * 10) / 10) + '%'; }
+    function pfxBar(v) { return '<div class="pfx-bar"><i class="' + pfxCls(v) + '" style="width:' + (v == null ? 0 : Math.min(100, v)) + '%"></i></div>'; }
+
+    function pfxBuildViews() {
+        pfxRows = [];
+        $('#tblPerformance tbody tr[data-station]').each(function () {
+            var $r = $(this), td = $r.find('td');
+            var f = parseFloat($r.attr('data-failure')), p = parseFloat($r.attr('data-predictive')), r = parseFloat($r.attr('data-rdpms'));
+            var avail = [f, p, r].filter(function (x) { return !isNaN(x); });
+            pfxRows.push({ station: $r.attr('data-station'), zone: $.trim(td.eq(1).text()), division: $.trim(td.eq(2).text()),
+                f: isNaN(f) ? null : f, p: isNaN(p) ? null : p, r: isNaN(r) ? null : r,
+                score: avail.length ? avail.reduce(function (a, b) { return a + b; }, 0) / avail.length : null });
+        });
+        if (!pfxRows.length) { pfxHideViews(); return; }
+        pfxRows.sort(function (a, b) { return (b.score == null ? -1 : b.score) - (a.score == null ? -1 : a.score); });
+        try { var sv = localStorage.getItem('pfxView'); if (sv === 'rank' || sv === 'cards' || sv === 'table') pfxView = sv; } catch (e) { }
+        pfxRenderRank(); pfxRenderCards();
+        $('#pfxInfo').text(pfxRows.length + ' stations · ranked by average of the three metrics');
+        $('#pfxHead').css('display', 'flex');
+        pfxSetView(pfxView);
+    }
+    function pfxHideViews() { $('#pfxHead, #pfxRank, #pfxCards').hide(); }
+    function pfxSetView(v) {
+        pfxView = v; try { localStorage.setItem('pfxView', v); } catch (e) { }
+        $('#pfxViewToggle button').removeClass('active').filter('[data-view="' + v + '"]').addClass('active');
+        $('#pfxRank').toggle(v === 'rank'); $('#pfxCards').css('display', v === 'cards' ? 'grid' : 'none'); $('#divTableContainer').toggle(v === 'table');
+    }
+    function pfxMetricCell(row, m) { return '<div class="pfx-metric"><b>' + pfxFmt(row[m.key]) + '</b>' + pfxBar(row[m.key]) + m.label.replace('(True + PT) ', '') + '</div>'; }
+    function pfxRenderRank() {
+        var html = '';
+        pfxRows.forEach(function (row, i) {
+            html += '<div class="pfx-rank-row' + (i < 3 && row.score != null ? ' top' : '') + '" data-station="' + pfxEsc(row.station) + '"><span class="no">' + (i + 1) + '</span>' +
+                '<div><div class="nm"><i class="fas fa-train-subway" style="color:var(--e7-accent-ink);margin-right:8px;"></i>' + pfxEsc(row.station) + '</div><div class="sb">' + pfxEsc(row.zone) + ' · ' + pfxEsc(row.division) + '</div></div>' +
+                PFX_METRICS.map(function (m) { return pfxMetricCell(row, m); }).join('') +
+                '<div class="sc">' + pfxFmt(row.score) + '<small>avg score</small></div><div class="go"><i class="fas fa-chevron-right"></i></div></div>';
+        });
+        $('#pfxRank').html(html);
+    }
+    function pfxRenderCards() {
+        var html = '';
+        pfxRows.forEach(function (row) {
+            html += '<div class="pfx-card" data-station="' + pfxEsc(row.station) + '"><div class="hd"><div class="ico"><i class="fas fa-train-subway"></i></div><div><div class="tt">' + pfxEsc(row.station) + '</div><div class="st">' + pfxEsc(row.zone) + ' · ' + pfxEsc(row.division) + '</div></div><div class="sc">' + pfxFmt(row.score) + '<small>avg</small></div></div>' +
+                PFX_METRICS.map(function (m) { return '<div class="row-m"><div>' + m.label.replace('(True + PT) ', '') + pfxBar(row[m.key]) + '</div><b>' + pfxFmt(row[m.key]) + '</b></div>'; }).join('') +
+                '<div class="ft"><span>Click for break up</span><b>Details <i class="fas fa-arrow-right"></i></b></div></div>';
+        });
+        $('#pfxCards').html(html);
+    }
+    function pfxBtnFor(station, col) { return $('.perf-breakup-btn').filter(function () { return $(this).data('station') === station && $(this).data('col') === col; }).first(); }
+    function pfxOpenDrawer(station) {
+        var row = null; pfxRows.forEach(function (r) { if (r.station === station) row = r; }); if (!row) return;
+        pfxDrStation = station;
+        $('#pfxDrTitle').text(station); $('#pfxDrSub').text(row.zone + ' · ' + row.division + ' · ' + ($('#dispFromDate').text() || '') + ' → ' + ($('#dispToDate').text() || ''));
+        var html = '<div class="pfx-sum">Average score <b style="color:var(--e7-heading);">' + pfxFmt(row.score) + '</b> across the available metrics. Open a break up to see the True / Partially true / False alerts behind each figure.</div>';
+        PFX_METRICS.forEach(function (m) {
+            var has = pfxBtnFor(station, m.col).length > 0;
+            html += '<div class="pfx-tile"><div class="l">' + m.label + '</div><div class="v">' + pfxFmt(row[m.key]) + '<small>' + m.sub + '</small></div>' + pfxBar(row[m.key]) +
+                '<button type="button" data-col="' + m.col + '"' + (has ? '' : ' disabled') + '><i class="fas fa-chart-bar"></i> ' + (has ? 'View break up' : 'No alerts in range') + '</button></div>';
+        });
+        $('#pfxDrBody').html(html);
+        $('#pfxDrBackdrop').addClass('show'); $('#pfxDrawer').addClass('is-open').attr('aria-hidden', 'false');
+    }
+    function pfxCloseDrawer() { $('#pfxDrawer').removeClass('is-open').attr('aria-hidden', 'true'); $('#pfxDrBackdrop').removeClass('show'); }
+    function pfxDrStep(dir) { var i = -1; pfxRows.forEach(function (r, k) { if (r.station === pfxDrStation) i = k; }); if (i < 0) return; pfxOpenDrawer(pfxRows[(i + dir + pfxRows.length) % pfxRows.length].station); }
+    function pfxBreakup(col) {
+        // reuse the existing break-up modal: trigger the matching icon in the (possibly hidden) table row
+        var $b = pfxBtnFor(pfxDrStation, col); if (!$b.length) return;
+        pfxCloseDrawer();
+        setTimeout(function () { $b.trigger('click'); }, 120);
+    }
+    $(function () {
+        $('#pfxViewToggle').on('click', 'button', function () { pfxSetView($(this).data('view')); });
+        $(document).on('click', '#pfxRank .pfx-rank-row, #pfxCards .pfx-card', function () { pfxOpenDrawer($(this).data('station')); });
+        $(document).on('click', '#pfxDrBody button[data-col]', function () { pfxBreakup($(this).data('col')); });
+        $(document).on('keydown', function (e) { if (e.key === 'Escape') pfxCloseDrawer(); });
     });
 </script>
