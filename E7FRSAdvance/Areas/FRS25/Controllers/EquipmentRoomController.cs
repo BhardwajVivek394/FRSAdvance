@@ -148,6 +148,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             if (string.IsNullOrEmpty(sc.StartTime) && string.IsNullOrEmpty(sc.EndTime))
                 endDate = endDate.AddHours(23).AddMinutes(58);
 
+            // The API reads these with Convert.ToDateTime (server culture). "11/16/2026" fails on an
+            // en-IN machine (dd/MM), so send ISO yyyy-MM-dd, which every culture parses the same way.
+            if (!string.IsNullOrEmpty(sc.StartDate))
+                sc.StartDate = startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            if (!string.IsNullOrEmpty(sc.EndDate))
+                sc.EndDate = endDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
             try
             {
                 mAssetLister.Pager.Take = -1;

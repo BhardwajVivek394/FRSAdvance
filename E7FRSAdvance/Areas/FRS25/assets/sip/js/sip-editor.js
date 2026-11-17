@@ -1060,11 +1060,36 @@
                 (c.type === 'examples.Signal' ? 'Signal' :
                     c.type === 'examples.SignalShunt' ? 'Signal + Shunt' :
                         c.type === 'examples.RouteCallingSignal' ? 'Route / Calling Signal' :
-                            c.type === 'examples.Shaunt' ? 'Shunt · Proceed' :
-                                c.type === 'examples.Shaunt2' ? 'Shunt · Diverge' :
-                                    c.type === 'examples.Shaunt3' ? 'Shunt · Off' :
-                                        'Shunt') +
+                            'Shunt 3-Asp') +
                 `</div>`;
+
+            /* Standalone shunt (Shaunt / Shaunt2 / Shaunt3): lamp combination,
+               same codes as the Signal + Shunt "Shunt combination". Older cells
+               without attrs.signal.shuntState fall back to their type's pattern. */
+            const SHUNT_DEFAULT_STATE = { 'examples.Shaunt': 'PROCEED', 'examples.Shaunt2': 'DIVERGE_RIGHT', 'examples.Shaunt3': 'OFF' };
+            if (SHUNT_DEFAULT_STATE[c.type]) {
+                const stVal = String(sigProps.shuntState || SHUNT_DEFAULT_STATE[c.type]).toUpperCase();
+                const _sel = v => (v === stVal ? 'selected' : '');
+                const SHUNT_OPTS = [
+                    ['OFF', 'Off / all dark'],
+                    ['PROCEED', 'Proceed · BL + BR'],
+                    ['DIVERGE_RIGHT', 'Diverge right · Top + BR'],
+                    ['DIVERGE_LEFT', 'Diverge left · Top + BL'],
+                    ['TOP', 'Top only'],
+                    ['BL', 'Bottom-left only'],
+                    ['BR', 'Bottom-right only'],
+                    ['ALL', 'All three']
+                ];
+                const isCustom = !SHUNT_OPTS.some(o => o[0] === stVal);
+                html += `<div class="insp-grid">` +
+                    `<div class="field"><label>Shunt combination</label><select id="insp-shunt-state">` +
+                    SHUNT_OPTS.map(o => `<option value="${o[0]}" ${_sel(o[0])}>${o[1]}</option>`).join('') +
+                    (isCustom ? `<option value="${escAttr(stVal)}" selected>Custom · ${escAttr(stVal)}</option>` : '') +
+                    `</select></div>` +
+                    `<div class="field"><label>Custom shunt code</label><input type="text" id="insp-shunt-code" value="${escAttr(stVal)}" placeholder="OFF / PROCEED / T,BL,BR"/></div>` +
+                    `</div>`;
+                html += shuntMirrorFieldHtml(sigProps.shuntMirror);
+            }
 
             /* Lamp/lit controls apply to main signal and combined signal+shunt */
             if (c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
@@ -1165,6 +1190,7 @@
                         `<input type="number" id="insp-combined-shunt-rotate" value="${shuntRotVal}" min="0" max="359" step="1" style="flex:1;"/>` +
                         `<button type="button" class="tb insp-shunt-rot-btn" data-rot="reset" style="padding:4px 9px;" title="Reset shunt rotation">0°</button>` +
                         `</div></div>`;
+                    html += shuntMirrorFieldHtml(sigProps.shuntMirror);
                 }
             }
 
@@ -1649,6 +1675,37 @@
                 bindAssetLinkField('insp-sig-asset', ensureSig, 'assetName', 'assetId');
                 if (c.type === 'examples.SignalShunt') bindAssetLinkField('insp-shunt-asset', ensureSig, 'shuntAssetName', 'shuntAssetId');
             }
+            /* Standalone shunt lamp combination -> attrs.signal.shuntState */
+            const shStateEl = $('#insp-shunt-state');
+            if (shStateEl) {
+                shStateEl.addEventListener('change', () => {
+                    const sp = ensureSig();
+                    sp.shuntState = String(shStateEl.value || 'OFF').toUpperCase();
+                    const codeEl = $('#insp-shunt-code');
+                    if (codeEl) codeEl.value = sp.shuntState;
+                    render();
+                    pushHistory();
+                });
+            }
+            bindInspectorInput('insp-shunt-code', v => {
+                const sp = ensureSig();
+                sp.shuntState = String(v || 'OFF').toUpperCase();
+            });
+            /* Shunt mirror (single shunt and Signal + Shunt) -> attrs.signal.shuntMirror */
+            $$('.insp-shunt-mirror-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const sp = ensureSig();
+                    const m = btn.getAttribute('data-mirror') || '';
+                    if (m) sp.shuntMirror = m; else delete sp.shuntMirror;
+                    $$('.insp-shunt-mirror-btn').forEach(b => {
+                        const on = (b.getAttribute('data-mirror') || '') === m;
+                        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+                        b.style.borderColor = on ? '#22d3ee' : 'rgba(255,255,255,0.15)';
+                    });
+                    render();
+                    pushHistory();
+                });
+            });
             /* Lamp/lit controls exist for main signal and combined signal+shunt */
             if (c.type === 'examples.Signal' || c.type === 'examples.SignalShunt') {
                 function cleanLampCode(v) {
@@ -2098,6 +2155,21 @@
         });
     }
 
+    /* "Mirror shunt" button row: None / Left↔Right / Up↔Down / Both.
+       Stored as attrs.signal.shuntMirror = '' | 'H' | 'V' | 'HV'. */
+    function shuntMirrorFieldHtml(cur) {
+        cur = String(cur || '').toUpperCase();
+        if (cur === 'VH' || cur === 'BOTH') cur = 'HV';
+        const opts = [['', 'None'], ['H', '⇋ Left↔Right'], ['V', '⇵ Up↔Down'], ['HV', 'Both']];
+        return `<div class="field"><label>Mirror shunt</label>` +
+            `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">` +
+            opts.map(o => {
+                const on = o[0] === cur;
+                return `<button type="button" class="tb insp-shunt-mirror-btn" data-mirror="${o[0]}" aria-pressed="${on}" ` +
+                    `style="padding:4px 9px;border:1px solid ${on ? '#22d3ee' : 'rgba(255,255,255,0.15)'};">${o[1]}</button>`;
+            }).join('') +
+            `</div></div>`;
+    }
     function bindInspectorInput(id, setter) {
         const el = $('#' + id);
         if (!el) return;

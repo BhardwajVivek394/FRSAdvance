@@ -708,6 +708,8 @@ function _ipsGroupChargingSeries() {
         );
 
         var isBin = memberSeries.every(function (s) { return s.isBin; });
+        // Members are already in amperes (converted in _ipsBuildSeries).
+        var isAmpere = !isBin && memberSeries.every(function (s) { return !!s.isAmpere; });
 
         var newKey = 'battgrp::' + groupKey;
         var colorSource = memberSeries[0];
@@ -720,7 +722,8 @@ function _ipsGroupChargingSeries() {
             assetId: 'battgrp::' + group.bucket,
             attrId: group.attrId,
 
-            name: group.attrName,
+            name: isAmpere ? ipsBattAmpLabel(group.attrName) : group.attrName,
+            isAmpere: isAmpere,
 
             assetName:
                 group.baseName ||
@@ -932,6 +935,34 @@ function _ipsBuildSeries() {
                 ]);
             }
 
+            var seriesName = ipsAttrName(
+                assetId,
+                attributeRow.AttributeId,
+                dataType,
+                rawName
+            );
+
+            /*
+             * 616: CURRENT IS PLOTTED IN AMPERES. IIPS currents arrive in mA
+             * (e.g. 23400) and shared the volts' "Value" axis, which flattened
+             * every voltage line against the floor. Convert once here (battery
+             * groups below then sum already-converted members) and route them
+             * to their own "A" axis in _ipsRender. Same classifier as the table.
+             */
+            var isAmpereSeries =
+                !isBinary &&
+                (typeof ipsClassifyTab !== 'function' ||
+                    ipsClassifyTab(false, rawName, seriesName) === 'current');
+
+            if (isAmpereSeries) {
+                for (var cIdx = 0; cIdx < points.length; cIdx++) {
+                    var cN = parseFloat(points[cIdx][1]);
+                    if (!isNaN(cN)) {
+                        points[cIdx][1] = tlZeroFloor(cN / IPS_BATT_MA_PER_AMP);
+                    }
+                }
+            }
+
             var key = ipsKey(
                 assetId,
                 attributeRow.AttributeId
@@ -1007,12 +1038,13 @@ function _ipsBuildSeries() {
                 assetId: String(assetId),
                 attrId: attributeRow.AttributeId,
 
-                name: ipsAttrName(
-                    assetId,
-                    attributeRow.AttributeId,
-                    dataType,
-                    rawName
-                ),
+                // Caption carries the unit the points are in.
+                name: isAmpereSeries
+                    ? ipsBattAmpLabel(seriesName)
+                    : seriesName,
+
+                // Unit flag read by _ipsRender's axis routing.
+                isAmpere: isAmpereSeries,
 
                 assetName:
                     ipsAssetName(assetId),
@@ -1619,7 +1651,9 @@ function _ipsRender() {
                     ? '\u2014'
                     : (series.isBin
                         ? (Number(value) >= 0.5 ? 'Pickup' : 'Drop')
-                        : tlZeroFloor(Number(value)).toFixed(2));
+                        // Amperes keep the battery 3 decimals (616), so small
+                        // currents converted from mA do not round to 0.00.
+                        : tlZeroFloor(Number(value)).toFixed(series.isAmpere ? IPS_BATT_DECIMALS : 2));
 
             var seriesName =
                 ipsSeriesLabel(series);
@@ -1896,6 +1930,7 @@ function _ipsRender() {
         // Analog IPS attributes use their numeric scale; DataLogger relays use the
         // right-hand Pickup / Drop (State) axis.
         var hasBinary = false;
+        var hasAmpere = false;
 
         var usedNames = {};
         var legends = [];
@@ -1918,6 +1953,8 @@ function _ipsRender() {
             legends.push(label);
 
             if (series.isBin) hasBinary = true;
+            var isAmpereSeries = !series.isBin && !!series.isAmpere;
+            if (isAmpereSeries) hasAmpere = true;
 
             chartSeries.push({
                 id: key,
@@ -1936,7 +1973,8 @@ function _ipsRender() {
                 symbol: 'circle',
                 symbolSize: 4,
 
-                yAxisIndex: series.isBin ? 1 : 0,
+                // Axis 1 = Pickup / Drop state, axis 2 = amperes, else axis 0.
+                yAxisIndex: series.isBin ? 1 : (isAmpereSeries ? 2 : 0),
 
                 lineStyle: {
                     width: 1.8,
@@ -1965,7 +2003,8 @@ function _ipsRender() {
         };
 
         option.grid = {
-            left: 64,
+            // Room for the offset amperes axis when one is shown.
+            left: hasAmpere ? 124 : 64,
             right:
                 hasBinary
                     ? 64
@@ -2055,6 +2094,22 @@ function _ipsRender() {
                 splitLine: {
                     show: false
                 }
+            },
+
+            {
+                // 616: amperes axis for IIPS currents, offset left of the
+                // shared Value axis; hidden when no ampere series is plotted.
+                type: 'value',
+                name: 'A',
+                position: 'left',
+                offset: 56,
+                min: 0,
+                scale: true,
+                show: hasAmpere,
+                nameTextStyle: { fontSize: 11, color: '#0ea5e9' },
+                axisLabel: { fontSize: 10, color: '#0ea5e9' },
+                axisLine: { show: true, lineStyle: { color: '#0ea5e9' } },
+                splitLine: { show: false }
             }
         ];
 

@@ -30,5 +30,7 @@ namespace Domain
         public decimal? RDPMSMultiplication { get; set; }
         public string A10Multiplayer { get; set; }
         public string AttributeAliasName { get; set; }
+        // Signal aspect (1 Main, 2 Shunt, 3 Calling, 4 Route) — dashboard signal counts
+        public int? AttributeType { get; set; }
     }
 }

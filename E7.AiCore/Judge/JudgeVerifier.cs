@@ -131,6 +131,17 @@ namespace E7.AiCore.Judge
                     {
                         m.Agree.Add(a.Name + ": card " + (bit == 1 ? "UP" : "DN") + " = catalog " + a.State);
                     }
+                    else if (a.Class == "temporal")
+                    {
+                        // 1.0.208.0 -- A POINT OPERATION RELAY IS A SEQUENCE, NOT A STATE. The SPN
+                        // has two kinds of point failure: WITH operation (NWCR/RWCR UP during the
+                        // operation, then the KR down) and WITHOUT. The card prints one instant, and
+                        // for the OP causes AlertV3 prints the non-OP relay rows, so the card can show
+                        // CR DN where the rule needs CR UP. That is not a contradiction: whether the
+                        // CR was UP is read from history around the alert time (EvalAttr, temporal).
+                        m.Agree.Add(a.Name + ": card " + (bit == 1 ? "UP" : "DN") + ", catalog " + a.State
+                            + " -- operation relay, checked from history around the alert time instead of the card");
+                    }
                     else
                     {
                         m.Disagree.Add(a.Name + ": card " + (bit == 1 ? "UP" : "DN") + " ≠ catalog " + a.State);
@@ -318,13 +329,16 @@ namespace E7.AiCore.Judge
 
             log.Add("verify: case " + o.AlertState + ", eval " + o.EvalMode + ", set " + JudgeUtil.T(card.TriggeredAt, "HH:mm:ss") + (card.ResetAt != null ? " reset " + JudgeUtil.T(card.ResetAt, "HH:mm:ss") : ""));
 
-            List<JudgeAttrResult> results = def.Attrs.Select(a => EvalAttr(a, card, ev, sustain)).ToList();
+            List<JudgeAttrResult> results = def.Attrs.Select(a => EvalAttr(a, card, ev, sustain, cfg.PointOpWindowSec)).ToList();
             List<JudgeAttrResult> gating = results.Where(r => (r.Status == "HELD" || r.Status == "LAPSED") && r.HeldForSec != null).ToList();
             o.HeldForSec = gating.Count > 0 ? gating.Min(r => r.HeldForSec) : null;
             o.Attrs = results;
             o.Fired = results.Where(r => r.Status == "HELD").Select(r => r.Name).ToList();
 
-            List<JudgeAttrResult> relays = results.Where(r => r.Class == "relay").ToList();
+            // 1.0.208.0 -- point operation relays (class "temporal") count as relays. Before, a point
+            // cause had NO relay in this gate, so the gate was SKIPPED and every point FAILURE
+            // ended NO_DATA whatever the data said.
+            List<JudgeAttrResult> relays = results.Where(r => r.Class == "relay" || (r.Class == "temporal" && r.Status != "UNSUPPORTED")).ToList();
             o.Relay = GateOf("DataLogger relays", relays);
 
             List<JudgeAttrResult> analogs = results.Where(r => r.Class == "analog" || r.Class == "ips").ToList();
@@ -354,8 +368,8 @@ namespace E7.AiCore.Judge
                 {
                     foreach (JudgeCauseDef other in stage2)
                     {
-                        List<JudgeAttrResult> res2 = other.Attrs.Select(a => EvalAttr(a, card, ev, o.AlertState == "SET_RESET" ? other.SustainSec : 0)).ToList();
-                        JudgeGate g2 = GateOf("relay", res2.Where(r => r.Class == "relay").ToList());
+                        List<JudgeAttrResult> res2 = other.Attrs.Select(a => EvalAttr(a, card, ev, o.AlertState == "SET_RESET" ? other.SustainSec : 0, cfg.PointOpWindowSec)).ToList();
+                        JudgeGate g2 = GateOf("relay", res2.Where(r => r.Class == "relay" || (r.Class == "temporal" && r.Status != "UNSUPPORTED")).ToList());
                         if (g2.Result == "PASS")
                         {
                             flow = "PROCEED";
@@ -450,7 +464,7 @@ namespace E7.AiCore.Judge
         // =========================================================================================
         // One attr over the frame, step-function semantics
         // =========================================================================================
-        private static JudgeAttrResult EvalAttr(JudgeCauseAttr a, JudgeCard card, JudgeEvidenceBundle ev, int sustainSec)
+        private static JudgeAttrResult EvalAttr(JudgeCauseAttr a, JudgeCard card, JudgeEvidenceBundle ev, int sustainSec, int opWindowSec = 15)
         {
             JudgeAttrResult r = new JudgeAttrResult();
             r.Name = a.Name;
@@ -465,7 +479,10 @@ namespace E7.AiCore.Judge
                 return r;
             }
 
-            if (a.Class == "temporal" || (a.EffectiveThreshold ?? "").StartsWith("TIMING", StringComparison.OrdinalIgnoreCase))
+            // 1.0.208.0 -- a temporal RELAY (point NWCR/RWCR/NWKR/RWKR) is now checked from history
+            // around the alert time, further down. Anything else with a TIMING rule stays unsupported.
+            bool temporalRelay = a.Class == "temporal" && WantBit(a.State) >= 0;
+            if (!temporalRelay && (a.Class == "temporal" || (a.EffectiveThreshold ?? "").StartsWith("TIMING", StringComparison.OrdinalIgnoreCase)))
             {
                 r.Status = "UNSUPPORTED";
                 r.Detail = "point-op timing — needs role-p PM ops";
@@ -498,6 +515,58 @@ namespace E7.AiCore.Judge
             {
                 r.Status = "NO_DATA";
                 r.Detail = "no value before or inside the frame (history or card)";
+                return r;
+            }
+
+            if (temporalRelay)
+            {
+                // The relay must have been in the required state at SOME moment inside
+                // [alert time - window, alert time + window]. The history gives the state at the
+                // alert time with the time of its last change, plus every change after it. A relay
+                // has two states, so a last change INSIDE the window means it was in the other
+                // state just before that change.
+                int w = Math.Max(0, opWindowSec);
+                DateTimeOffset lo = ev.From.AddSeconds(-w);
+                DateTimeOffset hi = ev.From.AddSeconds(w);
+                bool sawUp = false;
+                bool sawDn = false;
+                if (s.StateAtStart != null)
+                {
+                    bool up = s.StateAtStart.Value >= 0.5;
+                    sawUp = up;
+                    sawDn = !up;
+                    if (s.StateSource == "history" && s.StateAtStartTs != null && s.StateAtStartTs.Value >= lo)
+                    {
+                        sawUp = true;
+                        sawDn = true;
+                    }
+                }
+
+                foreach (JudgeSample t in s.Transitions)
+                {
+                    if (t.Ts > hi)
+                    {
+                        continue;
+                    }
+
+                    if (t.Value >= 0.5)
+                    {
+                        sawUp = true;
+                    }
+                    else
+                    {
+                        sawDn = true;
+                    }
+                }
+
+                string want = (a.State ?? "").ToUpperInvariant();
+                bool okT = want == "UP" ? sawUp : want == "UP->DN" ? (sawUp && sawDn) : sawDn;
+                r.Observed = s.Last ?? s.StateAtStart;
+                r.Status = okT ? "HELD" : "LAPSED";
+                r.Detail = a.Name + " " + a.State + " within +/-" + w + "s of the alert time: at set=" + JudgeUtil.R(s.StateAtStart)
+                    + " (" + s.StateSource + ", last change " + JudgeUtil.T(s.StateAtStartTs, "HH:mm:ss") + "), changes after set="
+                    + s.Transitions.Count + ", seen UP=" + (sawUp ? "yes" : "no") + " DN=" + (sawDn ? "yes" : "no")
+                    + " → " + (okT ? "found" : "NOT found");
                 return r;
             }
 

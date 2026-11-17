@@ -302,6 +302,9 @@ function abortPmIndicationRequest() {
             'body[data-aurora="light"] ' + T + ' tbody tr td.pm616-s1,body[data-aurora="light"] ' + T + ' tbody tr td.pm616-s2,body[data-aurora="light"] ' + T + ' tbody tr td.pm616-s3{background:var(--e7-surface, #f8fafc) !important;}',
             T + ' a.pm-table-array-link{color:inherit;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer;}',
             T + ' a.pm-table-array-link:hover{color:var(--e7-accent,#22d3ee);}',
+            // Same link look inside the operation history (inline panel + modal).
+            '.pm-hist-tbl a.pm-table-array-link,.pm616-hist-table a.pm-table-array-link{color:inherit;text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer;}',
+            '.pm-hist-tbl a.pm-table-array-link:hover,.pm616-hist-table a.pm-table-array-link:hover{color:var(--e7-accent,#22d3ee);}',
             T + ' a.pm-hist-link{color:var(--e7-heading,#fff);font-weight:700;text-decoration:underline;text-decoration-color:rgba(34,211,238,.45);text-underline-offset:3px;cursor:pointer;}',
             T + ' a.pm-hist-link i{font-size:10px;opacity:.65;color:var(--e7-accent,#22d3ee);margin-left:4px;}',
             T + ' tbody tr td.pm616-ind-n{color:var(--e7-green,#34d399) !important;font-weight:600;}',
@@ -1272,7 +1275,9 @@ function abortPmIndicationRequest() {
                 if (isNaN(ms) || ms <= 0) continue;
                 var sec = Math.floor(ms / 1000) * 1000;
                 var key = dec.direction + '|' + sec;
-                if (!map[key]) map[key] = { direction: dec.direction, ms: sec, A: {}, B: {} };
+                // ts = raw device timestamp of the operation, used by the row's
+                // waveform links (the graph matches the nearest array to it).
+                if (!map[key]) map[key] = { direction: dec.direction, ms: sec, ts: en.Timestamp.TimestampDevice || en.Timestamp.TimestampLocal || '', A: {}, B: {} };
                 var end = (dec.type === 'AC' || dec.type === 'AV') ? 'A' : 'B';
                 var kind = (dec.type === 'AC' || dec.type === 'BC') ? 'C' : 'V';
                 var n = parseFloat(en.Value);
@@ -1290,6 +1295,14 @@ function abortPmIndicationRequest() {
         var z = Number(zf(v));
         return dec === 0 ? String(Math.round(z)) : z.toFixed(2);
     }
+    // 616: an operation's IPT / VPT 110 values link to that operation's
+    // waveform (pmShowTableArrayGraph): type AC/AV/BC/BV, N/R by direction.
+    // Opened by the delegated a.pm-table-array-link[data-pm616-type] handler.
+    function histLink(html, assetId, r, end, kind, hasVal) {
+        if (!assetId || !r || !r.ts || !hasVal) return html;
+        return arrayLink(html, assetId, r.direction === 'Reverse' ? 'R' : 'N', end + kind, r.ts);
+    }
+    function histHas(v) { return v !== undefined && v !== null && !isNaN(v); }
     // Adapt one { columns[], rows[{ts, v[]}] } page into the HistoryValue
     // { AttributeId, Values{ k: {Value, Timestamp} } } shape buildDayHistoryRows reads.
     function mergeDayHistoryPage(r, data, byAttr) {
@@ -1346,7 +1359,7 @@ function abortPmIndicationRequest() {
      * G4 — same-day history modal (v616 29840-30018)
      * ==================================================================== */
     var _histReq = 0;
-    function renderDayHistoryTable(rows) {
+    function renderDayHistoryTable(rows, assetId) {
         if (!rows.length) {
             return '<div class="pm616-hist-wrap"><div style="padding:30px;text-align:center;">No operations recorded today for this point machine.</div></div>';
         }
@@ -1366,11 +1379,11 @@ function abortPmIndicationRequest() {
             var rev = r.direction === 'Reverse';
             h += '<tr><td style="font-weight:600;">' + hms(r.ms) + '</td>' +
                 '<td><span class="pm616-hist-dir ' + (rev ? 'r' : 'n') + '">' + r.direction + '</span></td>' +
-                '<td>' + histNum(r.A.CMax, 2, na) + ' / ' + histNum(r.A.CAvg, 2, na) + '</td>' +
-                '<td>' + histNum(r.A.VAvg, 2, na) + '</td>' +
+                '<td>' + histLink(histNum(r.A.CMax, 2, na) + ' / ' + histNum(r.A.CAvg, 2, na), assetId, r, 'A', 'C', histHas(r.A.CMax) || histHas(r.A.CAvg)) + '</td>' +
+                '<td>' + histLink(histNum(r.A.VAvg, 2, na), assetId, r, 'A', 'V', histHas(r.A.VAvg)) + '</td>' +
                 '<td>' + histNum(r.A.COperationTime, 0, na) + '</td>' +
-                '<td>' + histNum(r.B.CMax, 2, na) + ' / ' + histNum(r.B.CAvg, 2, na) + '</td>' +
-                '<td>' + histNum(r.B.VAvg, 2, na) + '</td>' +
+                '<td>' + histLink(histNum(r.B.CMax, 2, na) + ' / ' + histNum(r.B.CAvg, 2, na), assetId, r, 'B', 'C', histHas(r.B.CMax) || histHas(r.B.CAvg)) + '</td>' +
+                '<td>' + histLink(histNum(r.B.VAvg, 2, na), assetId, r, 'B', 'V', histHas(r.B.VAvg)) + '</td>' +
                 '<td>' + histNum(r.B.COperationTime, 0, na) + '</td></tr>';
         });
         h += '</tbody></table></div>';
@@ -1425,7 +1438,7 @@ function abortPmIndicationRequest() {
             }
             // The API can return records from before the requested start: keep today only.
             var rows = sameDay(buildDayHistoryRows((r && r.Data) ? r.Data : []), start, now);
-            $('#model-div-alert').html(renderDayHistoryTable(rows));
+            $('#model-div-alert').html(renderDayHistoryTable(rows, assetId));
             fixHistSticky();
         }, function () {
             if (my !== _histReq) return;
@@ -1451,7 +1464,7 @@ function abortPmIndicationRequest() {
     /* ======================================================================
      * B1 — inline card history (replaces the broken private parser)
      * ==================================================================== */
-    function renderInlineHistory(rows) {
+    function renderInlineHistory(rows, assetId) {
         if (!rows.length) {
             return '<div style="padding:30px;text-align:center;color:var(--e7-text-3, #94a3b8);font-size:13px;">No operations recorded today for this point machine.</div>';
         }
@@ -1465,8 +1478,10 @@ function abortPmIndicationRequest() {
         rows.forEach(function (r) {
             var dc = r.direction === 'Reverse' ? 'pm-hist-dir-R' : 'pm-hist-dir-N';
             html += '<tr><td>' + hms(r.ms) + '</td><td class="' + dc + '">' + r.direction + '</td>' +
-                '<td>' + histNum(r.A.CMax, 2, '-') + ' / ' + histNum(r.A.CAvg, 2, '-') + '</td><td>' + histNum(r.A.VAvg, 2, '-') + '</td><td>' + histNum(r.A.COperationTime, 0, '-') + '</td>' +
-                '<td>' + histNum(r.B.CMax, 2, '-') + ' / ' + histNum(r.B.CAvg, 2, '-') + '</td><td>' + histNum(r.B.VAvg, 2, '-') + '</td><td>' + histNum(r.B.COperationTime, 0, '-') + '</td></tr>';
+                '<td>' + histLink(histNum(r.A.CMax, 2, '-') + ' / ' + histNum(r.A.CAvg, 2, '-'), assetId, r, 'A', 'C', histHas(r.A.CMax) || histHas(r.A.CAvg)) + '</td>' +
+                '<td>' + histLink(histNum(r.A.VAvg, 2, '-'), assetId, r, 'A', 'V', histHas(r.A.VAvg)) + '</td><td>' + histNum(r.A.COperationTime, 0, '-') + '</td>' +
+                '<td>' + histLink(histNum(r.B.CMax, 2, '-') + ' / ' + histNum(r.B.CAvg, 2, '-'), assetId, r, 'B', 'C', histHas(r.B.CMax) || histHas(r.B.CAvg)) + '</td>' +
+                '<td>' + histLink(histNum(r.B.VAvg, 2, '-'), assetId, r, 'B', 'V', histHas(r.B.VAvg)) + '</td><td>' + histNum(r.B.COperationTime, 0, '-') + '</td></tr>';
         });
         return html + '</tbody></table>';
     }
@@ -1514,7 +1529,7 @@ function abortPmIndicationRequest() {
                 body.innerHTML = '<div style="padding:30px;text-align:center;color:var(--e7-red, #fb7185);">Failed to load history data: ' + esc(r.error) + '</div>';
                 return;
             }
-            body.innerHTML = renderInlineHistory(sameDay(buildDayHistoryRows((r && r.Data) ? r.Data : []), start, now));
+            body.innerHTML = renderInlineHistory(sameDay(buildDayHistoryRows((r && r.Data) ? r.Data : []), start, now), assetId);
         }, function () {
             if (my !== _inlineReq[assetId] || !panel.parentNode) return;
             body.innerHTML = '<div style="padding:30px;text-align:center;color:var(--e7-red, #fb7185);">Failed to load history data. Please try again.</div>';
@@ -1548,7 +1563,7 @@ function abortPmIndicationRequest() {
     var _origRenderInd = fn('renderPmIndicationFromApi');
     function renderPmIndicationFromApi616(data, filterIds, end, rangeStart, rangeEnd) {
         if (!_origRenderInd) return;
-        _origRenderInd(data, filterIds, end, rangeStart);
+        _origRenderInd(data, filterIds, end, rangeStart, rangeEnd);
         var el = document.getElementById('pmIndChartDiv');
         if (!el || !window.echarts || typeof window.echarts.getInstanceByDom !== 'function') return;
         var chart = window.echarts.getInstanceByDom(el);

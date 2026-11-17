@@ -6060,6 +6060,50 @@
             color: var(--ok) !important;
         }
 
+    /* DataLogger pills placed in the empty last grid cell (odd attribute count) */
+    .at-dl-chips {
+        display: inline-flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 4px;
+        margin-left: 6px;
+        flex-shrink: 0;
+        max-width: 70%;
+    }
+
+    .at-dl-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1;
+        padding: 3px 7px;
+        border-radius: 4px;
+        background: var(--glass-1);
+        color: var(--text-2);
+        white-space: nowrap;
+    }
+
+        .at-dl-chip.pickup {
+            background: var(--e7-green-soft);
+            color: var(--ok);
+        }
+
+            .at-dl-chip.pickup::after {
+                content: '\2191';
+            }
+
+        .at-dl-chip.drop {
+            background: var(--e7-amber-soft);
+            color: var(--e7-amber);
+        }
+
+            .at-dl-chip.drop::after {
+                content: '\2193';
+            }
+
     .at-card-foot {
         display: flex;
         align-items: center;
@@ -10798,6 +10842,52 @@
     body[data-aurora="light"] #modalalertlogs .table tbody tr:nth-child(even) {
         background: var(--e7-surface-2) !important;
     }
+    /* PM card data table: inset frame. The table ran flush to the card edges
+       (no gutter, square corners, purple B block bleeding into the card
+       border). Give it the same 12px gutter as the rows above, its own
+       rounded border, and line the inline history panel up with it. */
+    .pm-card-wrapper > .table-responsive {
+        margin: 10px 12px 12px;
+        width: auto;
+        border: 1px solid var(--e7-border, rgba(255,255,255,0.10));
+        border-radius: 10px;
+        overflow: hidden;
+        overflow-x: auto;
+    }
+    .pm-card-wrapper > .table-responsive > .pm-data-table { margin: 0; }
+    .pm-card-wrapper > .pm-hist-inline { margin: 0 12px 12px; }
+
+    /* Values that open a graph must read as hyperlinks at rest, not only on
+       hover: card IPT / VPT 110 (pm-current-link / pm-voltage-link), table
+       view and operation-history cells (pm-table-array-link). Value colour is
+       kept; a dotted underline marks it clickable, solid + accent on hover. */
+    .pm-current-link, .pm-voltage-link, a.pm-table-array-link {
+        cursor: pointer;
+    }
+    .pm-current-link .pm-current-val,
+    .pm-current-link .pm-current-val-b,
+    .pm-voltage-link .pm-voltage-val,
+    a.pm-table-array-link {
+        text-decoration: underline dotted !important;
+        text-decoration-thickness: 1px !important;
+        text-underline-offset: 3px;
+    }
+    .pm-current-link:hover .pm-current-val,
+    .pm-current-link:hover .pm-current-val-b,
+    .pm-voltage-link:hover .pm-voltage-val,
+    a.pm-table-array-link:hover {
+        text-decoration: underline solid !important;
+        color: var(--e7-accent-ink, var(--e7-accent, #0891b2)) !important;
+    }
+    .pm-current-link:hover, .pm-voltage-link:hover { opacity: 1; }
+
+    /* Track table: cell for an attribute this asset is not configured with
+       (DL-only asset under an RDPMS column, or RDPMS-only asset's DL cell). */
+    #wsLiveTable td.tl-attr-nc {
+        background: var(--e7-surface-2, rgba(148,163,184,0.06)) !important;
+        color: transparent !important;
+        cursor: default;
+    }
 </style>
 <div class="modal fade" id="modalalertlogs" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered" style="max-width: 95%; width: 95%;">
@@ -11190,7 +11280,7 @@
         var $search = $('#atpSearch');
 
         // ── Build / rebuild pills from the hidden <select> options ───
-        var ATP_VISIBLE_COUNT = 4; // Show first N pills inline, rest behind + icon
+        // Pills shown inline are decided by available width — see atpFitPills().
 
         // Auto-select the Track pill by default once a station is chosen.
         // Debounced (the observer fires several times); guarded so it only
@@ -11341,28 +11431,86 @@
 
                 if (val === currentVal) $pill.addClass('active');
 
-                if (pillCount >= ATP_VISIBLE_COUNT) {
-                    $pill.addClass('atp-pill-overflow');
-                }
                 pillCount++;
                 $pillBox.append($pill);
             });
 
-            var $expandBtn = $('#atpExpandBtn');
-            var overflowCount = pillCount - ATP_VISIBLE_COUNT;
-            if (overflowCount > 0) {
-                $expandBtn.show().attr('title', 'Show ' + overflowCount + ' more type' + (overflowCount > 1 ? 's' : ''));
-                if ($pillBox.find('.atp-pill-overflow.active').length > 0) {
-                    $pillBox.addClass('atp-expanded');
-                    $expandBtn.addClass('expanded');
-                }
-            } else {
-                $expandBtn.hide();
-            }
+            $pillBox.removeClass('atp-expanded');
+            $('#atpExpandBtn').removeClass('expanded');
+            atpFitPills(true);
 
             //atpUpdateCount();
             atpAutoPickTrack();
-        }        // ── Expand/Collapse button click ──────────────────────────────
+        }
+
+        // ── Width-aware overflow: show as many pills as fit on one line;
+        // the +/− toggle appears only when some pills genuinely don't fit.
+        // Re-runs on resize so the + disappears when there is room.
+        function atpFitPills(fromRebuild) {
+            var $expandBtn = $('#atpExpandBtn');
+            var $pills = $pillBox.find('.atp-pill');
+            var box = $pillBox[0];
+            if (!box || !$pills.length) { $expandBtn.hide(); return; }
+
+            var wasExpanded = $pillBox.hasClass('atp-expanded');
+
+            // Measure with every pill shown on a single (nowrap) line.
+            $pills.removeClass('atp-pill-overflow');
+            $pillBox.removeClass('atp-expanded');
+            $expandBtn.hide();
+
+            var avail = box.clientWidth;
+            if (!avail) { // strip not laid out yet — retry on next resize
+                if (wasExpanded) $pillBox.addClass('atp-expanded');
+                return;
+            }
+            // Pills wrap on their own (narrow-screen CSS) → nothing hidden.
+            if (box.scrollWidth <= avail + 1 || getComputedStyle(box).flexWrap === 'wrap') {
+                $expandBtn.removeClass('expanded');
+                return;
+            }
+
+            // Reserve room for the toggle button (22px + 4px gap).
+            var limit = avail - 26;
+            var boxLeft = box.getBoundingClientRect().left;
+            var hidden = 0;
+            $pills.each(function (i) {
+                var right = this.getBoundingClientRect().right - boxLeft;
+                if (i > 0 && (hidden > 0 || right > limit)) {
+                    $(this).addClass('atp-pill-overflow');
+                    hidden++;
+                }
+            });
+
+            if (!hidden) { $expandBtn.removeClass('expanded'); return; }
+
+            $expandBtn.show().attr('title', 'Show ' + hidden + ' more type' + (hidden > 1 ? 's' : ''));
+            var expand = wasExpanded ||
+                (fromRebuild && $pillBox.find('.atp-pill-overflow.active').length > 0);
+            $pillBox.toggleClass('atp-expanded', expand);
+            $expandBtn.toggleClass('expanded', expand);
+        }
+
+        (function () {
+            var raf = 0, lastW = -1;
+            function schedule() {
+                if (raf) return;
+                raf = requestAnimationFrame(function () {
+                    raf = 0;
+                    var strip = document.getElementById('atpStrip');
+                    var w = strip ? strip.clientWidth : 0;
+                    if (w === lastW) return;
+                    lastW = w;
+                    atpFitPills(false);
+                });
+            }
+            $(window).on('resize.atpFit', schedule);
+            var strip = document.getElementById('atpStrip');
+            if (strip && window.ResizeObserver) new ResizeObserver(schedule).observe(strip);
+            if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { lastW = -1; schedule(); });
+        })();
+
+        // ── Expand/Collapse button click ──────────────────────────────
 
         // ── Expand/Collapse button click ──────────────────────────────
         $('#atpExpandBtn').on('click', function () {
@@ -11669,25 +11817,25 @@
 
 </script>
 
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive.js?v=618.57"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive.js?v=618.66"></script>
 <!-- IPS + Point Machine graph panels. Must load after telemetrylive.js:
      it wraps fnSearchView / _tlApplyViewMode to add the Graph view. -->
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-graphs.js?v=618.57"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-graphs.js?v=618.58"></script>
 <!-- Point Machine vibration table, per-end resolution and event graph.
      Must load after telemetrylive.js: it replaces fnUpdateVibrationModal. -->
 <link href="~/Areas/FRS25/assets/css/telemetrylive-pmvibration.css?v=618.27" rel="stylesheet" />
 <script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-pmvibration.js?v=618.57"></script>
 <!-- Telemetry Live extensions (v616 ports, IPS card v2, interactive graph views). Must load after the scripts above. -->
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-ext.js?v=618.57"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-ext.js?v=618.59"></script>
 <!-- v618.7 Health view (separate view in Live Asset Data; reads wsLiveData only) -->
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-health.js?v=618.51"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-health.js?v=618.53"></script>
 <script>
     /* Ask AI (drawer) engine: same source as the ChatBot page -- the IsDefault engine and the engine
        list from AiModelConfig/GetAllWithKeys (id + label only, no keys). */
     window.E7_DEFAULT_ENGINE = @Html.Raw(E7.AiCore.AiModelConfig.JsString(E7.AiCore.AiModelConfig.DefaultEngine("quantum10")));
     window.E7_ENGINES = @Html.Raw(E7.AiCore.AiModelConfig.EngineListJson());
 </script>
-<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-drawer.js?v=618.56"></script>
+<script src="~/Areas/FRS25/assets/PageJs/TelemetryLive/telemetrylive-drawer.js?v=618.65"></script>
 <script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=618.21"></script>
 <script src="~/Areas/FRS25/assets/sip/js/sip-asset-popup.js?v=618.25"></script>
 

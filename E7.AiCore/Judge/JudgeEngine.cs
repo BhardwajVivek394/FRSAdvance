@@ -245,9 +245,42 @@ namespace E7.AiCore.Judge
             //     raised by AlertV3 but have no CauseDef): reviewers decided those too.
             JudgeLearnedResult learned = JudgeLearned.Check(card, req.CardRaw ?? req.Card, cfg, log);
             outcome.Learned = learned;
-            bool learnedDecides = learned.Enforced && learned.WouldDecide != null
-                               && summary.Valid && opt.Mode != "rules"
-                               && !(match != null && !match.Match) && !priorRejects;
+            // 1.0.208.0 -- an asset under maintenance is SUPPRESSED before every other check: the
+            //     card/catalogue mismatch and the prior-discard branches no longer come first.
+            //     It also comes before the card validity check: only the asset id is needed.
+            bool maintDecides = learned.Enforced && learned.InMaintenance
+                             && opt.Mode != "rules";
+            // 1.0.208.0 -- THE RAIN RULE. Rain at the site explains the Learned.RainCauses causes
+            //     (TC TR VOLT LOW, TC BALST/SLPR RES LOW), so the alert is real and is PASSED. It
+            //     comes after maintenance and before the past cases. A weather fault gives no answer.
+            bool rainDecides = false;
+            string rainMode = (cfg.LearnedRainMode ?? "").Trim().ToLowerInvariant();
+            if (!maintDecides && summary.Valid && opt.Mode != "rules"
+                && (rainMode == "enforce" || rainMode == "report")
+                && JudgeWeather.Applies(card.CauseCode, cfg))
+            {
+                learned.Rain = await JudgeWeather.CheckAsync(mcp, card, cfg, log, ct).ConfigureAwait(false);
+                if (learned.Rain.Checked && learned.Rain.Rain)
+                {
+                    if (rainMode == "enforce")
+                    {
+                        learned.WouldDecide = "PASS";
+                        learned.WouldDecideBy = "rain";
+                        learned.Enforced = true;
+                        rainDecides = true;
+                        log.Add("learned: rain -> PASS (ENFORCED)");
+                    }
+                    else
+                    {
+                        log.Add("learned: rain -> PASS (report only, verdict not changed)");
+                    }
+                }
+            }
+
+            bool learnedDecides = maintDecides || rainDecides
+                               || (learned.Enforced && learned.WouldDecide != null
+                                   && summary.Valid && opt.Mode != "rules"
+                                   && !(match != null && !match.Match) && !priorRejects);
 
             JudgeVerifierOutcome v;
             JudgeEvidenceBundle ev;
@@ -272,7 +305,7 @@ namespace E7.AiCore.Judge
                 JudgeVerifier.StampTiming(v, card, def);   // 1.0.192.3 -- else alertState/evalMode/sustainSec ship as initialisers
                 ai = new JudgeAiVerdict();
             }
-            else if (match != null && !match.Match)
+            else if (!maintDecides && !rainDecides && !cfg.CardMismatchVerifies && match != null && !match.Match)
             {
                 ev = new JudgeEvidenceBundle();
                 ev.From = card.TriggeredAt;
@@ -290,7 +323,7 @@ namespace E7.AiCore.Judge
                 ai = new JudgeAiVerdict();
                 ai.Error = "not run: card/catalog mismatch";
             }
-            else if (priorRejects)
+            else if (!cfg.DataCheckFirst && !maintDecides && !rainDecides && priorRejects)
             {
                 // A reviewer already judged this exact asset + cause not a real alert. Nothing the
                 // history or the model could add changes that, so neither is spent.
@@ -311,8 +344,10 @@ namespace E7.AiCore.Judge
                 ai.Error = "not run: a reviewer already discarded this cause on this asset as not valid";
                 log.Add("flow: short-circuited by a prior human discard -- history and AI skipped");
             }
-            else if (learnedDecides)
+            else if (maintDecides || (!cfg.DataCheckFirst && learnedDecides))
             {
+                // 1.0.208.0 -- with Flow.DataCheckFirst only MAINTENANCE stops here. Rain, the past
+                // cases and a prior discard decide AFTER the alert-time data check (JudgePolicy).
                 // 1.0.202.0 -- decided by the maintenance window or by the similar past cases.
                 // Nothing is fetched: the gates are reported as not run, never as passed.
                 ev = new JudgeEvidenceBundle();
@@ -341,6 +376,23 @@ namespace E7.AiCore.Judge
                 // 5. gates: relay (DataLogger) decides FAILURE; relay AND analog for PREDICTIVE; adjacency for TC
                 v = JudgeVerifier.Verify(card, def, ev, stage2, log, cfg);
                 v.CardMatch = match;
+                v.NotFound = ev.NotFound;   // 1.0.208.0 -- named in the no-data reason
+
+                // 1.0.208.0 -- CARD-DATA VALIDATION. The card prints each measured value WITH its
+                // own timestamp ("v1 at t1"); every pair is checked against the value history shows
+                // at that very instant. A card whose values the history does not show is suppressed
+                // in the policy (card-data); tags already resolved by the rule fetch are reused.
+                v.CardData = await JudgeCardDataCheck.RunAsync(card, evidence, ev, cfg, log, ct).ConfigureAwait(false);
+
+                // 1.0.208.0 -- NO CATALOGUE RULE IS NOT THE END. The alert card carries its own
+                // conditions (enabling + triggered, with thresholds). When the catalogue has no rule
+                // for the cause, those conditions are verified against the data of the alert time
+                // frame by the live re-check below, instead of stopping at "no-catalog".
+                if (def == null && cfg.LiveEnabled)
+                {
+                    v.FlowResult = "PROCEED";
+                    log.Add("catalog: no rule for this cause -- verifying the card's own conditions against the alert time frame instead");
+                }
 
                 // 6. live re-check of every card condition (2.0) -- only worth doing when the gates passed
                 // 2.2: an externally determined cause has no condition set to re-check -- the
@@ -349,6 +401,13 @@ namespace E7.AiCore.Judge
                 if (def != null && def.ExternallyDetermined)
                 {
                     log.Add("live: skipped (" + def.Cause + " is determined outside RDPMS - no re-derivable condition)");
+                }
+                else if (cfg.LiveEnabled && cfg.LiveOnlyWhenNoRule && def != null)
+                {
+                    // 1.0.208.0 -- ONE DATA CHECK. The cause has a catalogue rule and that rule was
+                    // just checked against the alert-time data. The card's own conditions are a
+                    // second copy of the same question and are used only when there is no rule.
+                    log.Add("live: not run (the catalogue rule is the data check; card conditions are checked only for a cause with no rule)");
                 }
                 else if (cfg.LiveEnabled && v.FlowResult == "PROCEED")
                 {
@@ -388,7 +447,15 @@ namespace E7.AiCore.Judge
                     log.Add("live: " + live.Result + " carried on — closed alert corroborated by its own reset card (Live.ClosedConfirmedNoData=PASS)");
                 }
 
-                if (opt.UseAi && v.FlowResult == "PROCEED" && livePassed)
+                // 1.0.208.0 -- the data check passed and rain / past cases / a prior discard will
+                // decide next (JudgePolicy), so the AI call is not spent.
+                bool postDecides = cfg.DataCheckFirst && (learnedDecides || priorRejects);
+                if (postDecides && v.FlowResult == "PROCEED" && livePassed)
+                {
+                    ai = new JudgeAiVerdict();
+                    ai.Error = "not run: decided by " + (learnedDecides ? learned.WouldDecideBy : "prior-discard") + " after the data check";
+                }
+                else if (opt.UseAi && v.FlowResult == "PROCEED" && livePassed)
                 {
                     JudgeAi reasoner = new JudgeAi(cfg, modelCall);
                     ai = await reasoner.ReasonAsync(card, def, v, ev, live, prior, opt.Engine, log, ct).ConfigureAwait(false);

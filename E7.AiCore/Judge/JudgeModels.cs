@@ -308,6 +308,14 @@ namespace E7.AiCore.Judge
 
     internal sealed class JudgeVerifierOutcome
     {
+        /// <summary>1.0.208.0 -- the attributes whose tag was not found, for the no-data reason.</summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public List<string> NotFound = new List<string>();
+
+        /// <summary>1.0.208.0 -- the card's printed (value, time) pairs validated against history.</summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public JudgeCardDataResult CardData;
+
         public string AlertState = "SET_ONLY";
         public DateTimeOffset SetTime;
         public DateTimeOffset? ResetTime;
@@ -385,6 +393,10 @@ namespace E7.AiCore.Judge
         /// <summary>2.3 -- attids skipped because they are DERIVED (computed, no sensor).
         /// Distinct from TagPresent==false, which means the asset really has no such tag.</summary>
         public HashSet<int> Derived = new HashSet<int>();
+
+        /// <summary>1.0.208.0 -- "attid 'name'" for every attribute whose tag was not found.</summary>
+        [Newtonsoft.Json.JsonIgnore]
+        public List<string> NotFound = new List<string>();
 
         public DateTimeOffset From;
         public DateTimeOffset To;

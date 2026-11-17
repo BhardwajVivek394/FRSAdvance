@@ -537,7 +537,7 @@ namespace E7.AiCore.Judge
         /// discarded -> SUPPRESSED; more approved -> PASS; a tie goes with the single nearest.
         /// decidedBefore: only cases a person had already decided by then are used.
         /// </summary>
-        internal static JudgeCaseMatch Match(JudgeCaseSet set, string cause, int asset, JudgeCaseFeatures f, DateTime decidedBefore, long excludeId, int k, double assetWeight)
+        internal static JudgeCaseMatch Match(JudgeCaseSet set, string cause, int asset, JudgeCaseFeatures f, DateTime decidedBefore, long excludeId, int k, double assetWeight, double maxDistance = 0)
         {
             JudgeCaseMatch m = new JudgeCaseMatch();
             JudgeCauseCases cc;
@@ -557,6 +557,14 @@ namespace E7.AiCore.Judge
                 JudgeCaseNeighbor n = new JudgeCaseNeighbor();
                 n.Case = c;
                 n.Distance = Distance(f, asset, c, cc.Scale, assetWeight);
+
+                // 1.0.208.0 -- only a past case with the SAME CONDITION counts: farther than
+                // Learned.MaxDistance is a different situation and gives no answer.
+                if (maxDistance > 0 && n.Distance > maxDistance)
+                {
+                    continue;
+                }
+
                 all.Add(n);
             }
 

@@ -53,6 +53,51 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         }
 
         /*
+         * Stand-alone live SIP (yard schematic) for ONE site, without the
+         * Telemetry Live page around it. Shown full screen in an overlay by
+         * the favourite-site feature (e7-favourite-site.js), inside an iframe,
+         * so it is independent of whatever page is underneath and its live
+         * socket closes when the overlay is closed. Same Telemetry access
+         * rule as Index ([Authenticate] on this controller).
+         */
+        public ActionResult SipLive(int siteId = 0)
+        {
+            Domain.Site site = null;
+            try
+            {
+                site = (_siteService.GetAll() ?? new List<Domain.Site>()).FirstOrDefault(s => s != null && s.Id == siteId);
+            }
+            catch (Exception)
+            {
+                // site list unavailable: fall through to the "not available" message
+            }
+
+            ViewBag.SiteId = site == null ? 0 : site.Id;
+            ViewBag.SiteName = site == null ? "" : site.Name;
+
+            // Live WebSocket of the site's own server (dbo.Site.ServerType 2 = B, else A),
+            // the same choice Telemetry Live makes in getWsBaseUrlForSite(). HTTPS only (616).
+            bool secure = Request.IsSecureConnection;
+            string wsBase;
+            if (secure)
+            {
+                var wsSsl = ConfigurationManager.AppSettings["WebSocketBaseUrlSSL"];
+                int serverType;
+                bool serverB = site != null && GetSiteServerTypeMap().TryGetValue(site.Id, out serverType) && serverType == 2;
+                wsBase = serverB
+                    ? (ConfigurationManager.AppSettings["WebSocketBaseUrlServerB"] ?? wsSsl)
+                    : (ConfigurationManager.AppSettings["WebSocketBaseUrlServerA"] ?? wsSsl);
+            }
+            else
+            {
+                wsBase = ConfigurationManager.AppSettings["WebSocketBaseUrl"];
+            }
+            ViewBag.WebSocketBaseUrl = wsBase ?? "";
+            ViewBag.WebSocketAuthToken = secure ? (ConfigurationManager.AppSettings["WebSocketAuthToken"] ?? "") : "";
+            return View();
+        }
+
+        /*
          * dbo.Site.ServerType for every site that has one (same source as
          * Telemetry History proxy routing). Sites missing from the map, a
          * missing E7MRIV2DB_SQL connection string or a DB failure (empty map)

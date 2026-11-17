@@ -330,8 +330,21 @@ function atBuildTrackCard(aid) {
 
     // ── Grid of attribute values (same as before) ─────────────────
     var grid = '';
+    var gridCells = 0;   // cell count, so the DataLogger pills can fill an empty last cell
     var attrList = (window.wsAttributeNames && window.wsAttributeNames.length) ? window.wsAttributeNames : Object.keys(attrs);
+    // Configured-only binding: wsAttributeNames is the station-wide column
+    // list; a card shows only the RDPMS attributes this asset's own config
+    // (GetBulkAssetMetadata assetAttributes) lists. A DL-only asset gets none.
+    if (typeof tlAssetHasRdpmsAttr === 'function') {
+        attrList = attrList.filter(function (an) {
+            var ad0 = attrs[an];
+            return tlAssetHasRdpmsAttr(aid, an, ad0 ? (ad0.AttrId || ad0.AssetAttributeId) : null);
+        });
+    }
+    var _hasRdpms = (typeof tlAssetHasRdpms !== 'function') || tlAssetHasRdpms(aid);
+    var _hasDl = (typeof tlAssetHasDatalogger !== 'function') || tlAssetHasDatalogger(aid);
     for (var i = 0; !isAxc && i < attrList.length; i++) {
+        gridCells++;
         var an = attrList[i];
         var ad = attrs[an];
         var raw = ad ? ad.Value : null;
@@ -354,7 +367,8 @@ function atBuildTrackCard(aid) {
 
     // Derived values for Track only (skipped for AXC and every non-Track type)
     var _isTrackType = tlIsAssetTypeKind(null, 'track') || tlIsAssetTypeKind(a.AssetTypeId, 'track');
-    if (!isAxc && _isTrackType && typeof window.calculateDerivedValues === 'function') {
+    // Derived values come from RDPMS readings: none for a DL-only asset.
+    if (!isAxc && _isTrackType && _hasRdpms && typeof window.calculateDerivedValues === 'function') {
         var derived = window.calculateDerivedValues(attrs);
         var fmtD = window.formatDerivedValue || function (v) { return (v === null || v === undefined || isNaN(v)) ? '-' : v.toFixed(2); };
         grid += '<div class="z2"><span class="at-tdg-lbl" title="ITC BATT CHARG (mA)">ITC BATT CHARG (mA)</span><span class="at-tdg-val">' + fmtD(derived.itcBattCharg, 'itcBattCharg') + '</span></div>';
@@ -364,13 +378,15 @@ function atBuildTrackCard(aid) {
         grid += '<div class="z3"><span class="at-tdg-lbl" title="VTC TR (V)">VTC TR (V)</span><span class="at-tdg-val">' + fmtD(derived.vtcTr) + '</span></div>';
         grid += '<div class="z1"><span class="at-tdg-lbl" title="IBALST (mA)">IBALST (mA)</span><span class="at-tdg-val">' + fmtD(derived.ibalst) + '</span></div>';
         grid += '<div class="z1"><span class="at-tdg-lbl" title="RRAIL (Ω)">RRAIL (Ω)</span><span class="at-tdg-val">' + fmtD(derived.rrail) + '</span></div>';
+        gridCells += 7;
     }
 
     // ── DataLogger pills ──────────────────────────────────────────
     // Arrow (up=pickup / down=drop) and green/amber colour come from CSS
     // (.at-pill.pickup/.drop ::after) so every badge family stays consistent.
     var pills = '';
-    var dlKeys = Object.keys(dlRelays);
+    // No DataLogger configured (RDPMS-only asset): no relay pills.
+    var dlKeys = _hasDl ? Object.keys(dlRelays) : [];
 
     // Dedicated TPR status badge for tracks: pickup = green up (track clear),
     // drop = amber down (track occupied). Shown first; the raw TPR relay (if
@@ -390,6 +406,30 @@ function atBuildTrackCard(aid) {
     }
     if (otherKeys.length > 5) pills += '<span class="at-pill">+' + (otherKeys.length - 5) + ' more</span>';
 
+    // Odd number of grid cells leaves the last row's right cell empty: show the
+    // DataLogger pills there instead of adding a separate footer row.
+    var pillsInGrid = !!pills && (gridCells % 2 === 1);
+    // Rendered like a normal value cell: label on the left, compact chips on the right.
+    if (pillsInGrid) {
+        var dlChips = '';
+        if (tpr) {
+            dlChips += '<span class="at-dl-chip ' + tpr.state + '" title="TPR ' +
+                (tpr.state === 'pickup' ? 'Pickup - track clear' : 'Drop - track occupied') + '">' +
+                (tpr.state === 'pickup' ? 'Pickup' : 'Drop') + '</span>';
+        }
+        for (var c = 0; c < Math.min(otherKeys.length, 5); c++) {
+            var rc = dlRelays[otherKeys[c]];
+            dlChips += '<span class="at-dl-chip ' + (rc.isPickup ? 'pickup' : 'drop') + '" title="' +
+                (rc.isPickup ? 'Pickup' : 'Drop') + '">' + (rc.displayName || otherKeys[c]) + '</span>';
+        }
+        if (otherKeys.length > 5) dlChips += '<span class="at-dl-chip">+' + (otherKeys.length - 5) + '</span>';
+        var dlLbl = tpr ? (otherKeys.length ? 'TPR / DL' : 'TPR') : 'DATALOGGER';
+        grid += '<div class="at-tdg-dl">' +
+            '<span class="at-tdg-lbl" title="' + dlLbl + '">' + dlLbl + '</span>' +
+            '<span class="at-dl-chips">' + dlChips + '</span>' +
+            '</div>';
+    }
+
     // ── Assemble the card HTML ────────────────────────────────────
     return '<div class="at-asset-card" data-state="live" data-id="' + aid + '" style="position:relative;">' +
         actionsHtml +
@@ -397,8 +437,9 @@ function atBuildTrackCard(aid) {
         '<div><div class="at-card-name">' + (isAxc ? 'AXLE COUNTER : ' : 'TRACK : ') + name + '</div>' +
         '<div class="at-card-sub"><span class="at-live-dot"></span> ' + (isAxc ? 'Axle Counter' : 'Track Circuit') + ' \u00B7 ' + ts + '</div></div>' +
         '</div>' +
-        '<div class="at-track-grid">' + grid + '</div>' +
-        (pills ? '<div class="at-card-foot">' + pills + '</div>' : '') +
+        // DL-only asset: no value grid at all, just the relay pills.
+        (grid ? '<div class="at-track-grid">' + grid + '</div>' : '') +
+        (pills && !pillsInGrid ? '<div class="at-card-foot">' + pills + '</div>' : '') +
         '</div>';
 }
 // ===== MODERN TRACK CARD RENDERER (GLOBAL) =====
@@ -6750,7 +6791,8 @@ function renderApiTable(data, assetTypeId) {
     h += '</tr></thead><tbody>';
     Object.keys(map).forEach(function (aid) {
         var asset = map[aid];
-        h += '<tr><td class="asset-name">' + asset.AssetName + '</td>';
+        // data-id + data-attr let tlMaskUnconfiguredCells blank attributes this asset is not configured for.
+        h += '<tr data-id="' + aid + '"><td class="asset-name">' + asset.AssetName + '</td>';
         var ifMa = 0, irMa = 0, tprV = 0;
         attrs.forEach(function (a) {
             var v = asset.attrs[a] ? parseFloat(asset.attrs[a].Value) : NaN;
@@ -6764,7 +6806,7 @@ function renderApiTable(data, assetTypeId) {
             else if (a === 'Choke V' && v > 1.8) cls = 'val-danger';
             var _tip = _getValueTooltip(a, v, cls);
             var _marks = _getCellMarkers(cls);
-            h += '<td class="' + cls + '"' + (_tip ? ' title="' + _tip + '"' : '') + '>' + disp + _marks + '</td>';
+            h += '<td class="' + cls + '" data-attr="' + a + '"' + (_tip ? ' title="' + _tip + '"' : '') + '>' + disp + _marks + '</td>';
         });
         if (isTrack) {
             // Calculate and add derived values
@@ -7511,11 +7553,15 @@ function _gPop(aid, gd) {
     }
 
     var ci = 0, a = wsLiveData[aid];
+    // Configured-only binding (Track): same rule as the table / cards / drawer.
+    var _gHasRdpms = (typeof tlAssetHasRdpms !== 'function') || tlAssetHasRdpms(aid);
+    var _gHasDl = (typeof tlAssetHasDatalogger !== 'function') || tlAssetHasDatalogger(aid);
 
     // ── Analog attrs ──
     if (a && a.attrs && Object.keys(a.attrs).length > 0) {
         for (var k in a.attrs) {
             var at = a.attrs[k], id = parseInt(at.AttrId || at.AssetAttributeId || 0); if (!id) continue;
+            if (typeof tlAssetHasRdpmsAttr === 'function' && !tlAssetHasRdpmsAttr(aid, k, id)) continue;
             var dn = (typeof getAttrDisplayNamePlain === 'function') ? getAttrDisplayNamePlain(k, id) : (fb[id] || k);
             var v = parseFloat(at.Value), vs = isNaN(v) ? '--' : tlZeroFloor(v).toFixed(2);
             var c = _gColorMap[dn] || (_gColorMap[dn] = _gC[ci % _gC.length]); ci++;
@@ -7541,7 +7587,7 @@ function _gPop(aid, gd) {
     // Never scan history gd for DataLogger entries: history API marks some analog mV
     // sensors as DataType='DataLogger' which are NOT relays and should NOT appear here.
     var dlRendered = false;
-    if (a && a.dlRelays && Object.keys(a.dlRelays).length > 0) {
+    if (_gHasDl && a && a.dlRelays && Object.keys(a.dlRelays).length > 0) {
         var dk = Object.keys(a.dlRelays);
         dk.sort(function (x, y) { var rx = a.dlRelays[x], ry = a.dlRelays[y]; return (rx.isPickup && !ry.isPickup) ? -1 : (!rx.isPickup && ry.isPickup) ? 1 : 0; });
         for (var i = 0; i < dk.length; i++) {
@@ -7553,10 +7599,11 @@ function _gPop(aid, gd) {
         }
         dlRendered = true;
     }
-    if (!dlRendered) { $d.append('<span style="color:var(--e7-text, #cbd5e1);font-size:12px;padding:4px 6px;display:block;">--</span>'); }
+    // No DataLogger configured: leave the column empty so it is hidden below.
+    if (!dlRendered && _gHasDl) { $d.append('<span style="color:var(--e7-text, #cbd5e1);font-size:12px;padding:4px 6px;display:block;">--</span>'); }
 
-    // ── Derived Values panel (Track only) ──
-    if (window._gIsTrack && $dv.length) {
+    // ── Derived Values panel (Track only; none for a DL-only asset) ──
+    if (window._gIsTrack && _gHasRdpms && $dv.length) {
         var liveAttrs = (a && a.attrs) || {};
         // FIX: If no live attrs yet (e.g. after asset switch), build a snapshot
         // from the latest values in history data (gd) so derived panel isn't all 0
@@ -7704,6 +7751,11 @@ function _gRender(data, aid, filter) {
         // Collect all valid values into valueMap {ms -> value}
         var valueMap = {};
         var allVals = [];
+        // 616: the API's first row carries the value in effect at From, with an
+        // older device time. Hold the latest such value and plot it AT From;
+        // drawing it at its own time put it left of the axis (clip:false) and
+        // the in-window line only started at the first change.
+        var seedTs = -Infinity, seedVal = null;
         for (var key in at.Values) {
             var e = at.Values[key];
             if (!e) continue;
@@ -7725,9 +7777,18 @@ function _gRender(data, aid, filter) {
             var ms = new Date(ts).getTime();
             if (isNaN(ms) || ms <= 0) continue;
             val = tlZeroFloor(val);
+            if (_gReqStart !== null && ms < _gReqStart) {
+                if (ms > seedTs) { seedTs = ms; seedVal = val; }
+                continue;
+            }
             valueMap[ms] = val;
             allVals.push(val);
             allTimestamps[ms] = true;
+        }
+        if (seedVal !== null && valueMap[_gReqStart] === undefined) {
+            valueMap[_gReqStart] = seedVal;
+            allVals.push(seedVal);
+            allTimestamps[_gReqStart] = true;
         }
 
         if (!Object.keys(valueMap).length) return;
@@ -7809,6 +7870,15 @@ function _gRender(data, aid, filter) {
 
         if (!points.length) return;
 
+        // 616: hold the last value flat to the right edge (To, capped at now)
+        // instead of stopping at the last change.
+        if (_gReqEnd !== null && lastVal !== null) {
+            var _gEndAnchor = Math.min(_gReqEnd, Date.now());
+            if (points[points.length - 1].value[0] < _gEndAnchor) {
+                points.push({ value: [_gEndAnchor, lastVal], symbol: 'none', symbolSize: 0 });
+            }
+        }
+
         // Track stats
         var actVals = actualPts.map(function (p) { return p[1]; });
         var serMax = actVals.length ? Math.max.apply(null, actVals) : 0;
@@ -7830,7 +7900,7 @@ function _gRender(data, aid, filter) {
             type: 'line', smooth: false, step: 'end',
             connectNulls: true,
             showSymbol: true,
-            clip: false,
+            clip: true,   // zoom keeps all points (filterMode 'none'); clip them to the grid
             yAxisIndex: yIdx,
             lineStyle: { width: isDL ? 2 : 1.6, color: co, type: 'solid' },
             itemStyle: { color: co },
@@ -8039,6 +8109,9 @@ function _gRender(data, aid, filter) {
         dataZoom: [
             {
                 type: 'slider', height: 22, start: 0, end: 100, bottom: 4,
+                // 616: keep points outside the zoom window, or step lines
+                // between sparse change points vanish when zoomed in.
+                filterMode: 'none', minValueSpan: 60 * 1000,
                 backgroundColor: 'rgba(255,255,255,0.03)',
                 borderColor: 'rgba(255,255,255,0.09)',
                 handleStyle: { color: '#22d3ee', borderColor: '#22d3ee', borderWidth: 2 },
@@ -8046,7 +8119,7 @@ function _gRender(data, aid, filter) {
                 textStyle: { fontSize: 11, color: 'rgba(255,255,255,0.42)', fontFamily: 'JetBrains Mono,monospace' },
                 labelFormatter: function (v) { var d = new Date(v); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); }
             },
-            { type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }
+            { type: 'inside', filterMode: 'none', minValueSpan: 60 * 1000, zoomOnMouseWheel: true, moveOnMouseMove: true }
         ],
         color: _gC, series: sr
     });
@@ -10007,61 +10080,114 @@ function loadPmIndicationByRange(assetId, startDate, endDate, filterIds, end) {
     });
 }
 
-function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
+/*
+ * Real-time X-axis hover for the Point Machine indication chart (616): the
+ * axis pointer does not snap, so its label follows the cursor's real time,
+ * and values are read at that time (latest point at or before the cursor).
+ */
+function _pmAxisPointerTimeLabel(params) {
+    var d = new Date(Number(params.value));
+    if (isNaN(d.getTime())) return '';
+    return String(d.getDate()).padStart(2, '0') + '/' +
+        String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear() + ' ' +
+        String(d.getHours()).padStart(2, '0') + ':' +
+        String(d.getMinutes()).padStart(2, '0') + ':' +
+        String(d.getSeconds()).padStart(2, '0');
+}
+
+function _pmTrackActualHover(chart) {
+    chart._pmHoverMs = null;
+    chart.off('updateAxisPointer');
+    chart.on('updateAxisPointer', function (event) {
+        var axesInfo = event && event.axesInfo;
+        if (!axesInfo || !axesInfo.length) return;
+        var v = Number(axesInfo[0].value);
+        if (!isNaN(v)) chart._pmHoverMs = v;
+    });
+    chart.getZr().off('globalout');
+    chart.getZr().on('globalout', function () { chart._pmHoverMs = null; });
+}
+
+function _pmHoverMsFromParams(chart, params) {
+    if (chart && chart._pmHoverMs !== null && chart._pmHoverMs !== undefined) return chart._pmHoverMs;
+    var p0 = (params && params[0]) || {};
+    if (p0.axisValue !== undefined && p0.axisValue !== null) return Number(p0.axisValue);
+    return Number(p0.value && p0.value[0]);
+}
+
+// pts: ascending [[ts, value], ...]. Returns the value active at ms, or null.
+function _pmValueAtTime(pts, ms) {
+    if (!pts || !pts.length || isNaN(ms)) return null;
+    var lo = 0, hi = pts.length - 1, idx = -1;
+    while (lo <= hi) {
+        var mid = (lo + hi) >> 1;
+        if (pts[mid][0] <= ms) { idx = mid; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    return idx >= 0 ? pts[idx][1] : null;
+}
+
+function _pmSeriesLookup(series) {
+    var map = {};
+    series.forEach(function (s) {
+        map[s.name] = (s.data || []).map(function (d) { return d && d.value ? d.value : d; });
+    });
+    return map;
+}
+
+/*
+ * 616 port. The indication voltages only change on a point operation, so the
+ * raw series is a few change points hours apart. 617 drew just those points
+ * with the default zoom filter: zooming into a window with no change point
+ * dropped the step line and left lone dots (or nothing). As in 616:
+ *  - the latest value from before From is seeded at From;
+ *  - 30 s carry-forward fill points, plus an anchor at To, so every zoom
+ *    window has points to draw;
+ *  - axis runs exactly From..To, Y pinned 0..max, zoom filterMode 'none'.
+ * rangeStart / rangeEnd are ms (or Date).
+ */
+function renderPmIndicationFromApi(data, filterIds, end, rangeStart, rangeEnd) {
     var el = document.getElementById('pmIndChartDiv');
     if (!el) return;
 
-    // Define order based on end: NWKR, NWKR(Loc), RWKR, RWKR(Loc)
-    var displayOrder = (end === 'A') ? [25, 576, 26, 577] : [27, 578, 28, 579];
+    var startMs = (rangeStart instanceof Date) ? rangeStart.getTime() : (typeof rangeStart === 'number' ? rangeStart : NaN);
+    var endMs = (rangeEnd instanceof Date) ? rangeEnd.getTime() : (typeof rangeEnd === 'number' ? rangeEnd : NaN);
+    var hasStart = !isNaN(startMs), hasEnd = !isNaN(endMs);
 
-    // Colors
+    // Order: NWKR, NWKR(Loc), RWKR, RWKR(Loc)
+    var displayOrder = (end === 'A') ? [25, 576, 26, 577] : [27, 578, 28, 579];
     var colorMap = {
-        25: '#2563eb',   // NWKR - Blue
-        576: '#7c3aed',  // NWKR Loc - Purple
-        26: '#059669',   // RWKR - Green
-        577: '#0891b2',  // RWKR Loc - Teal
-        27: '#2563eb',   // NWKR - Blue
-        578: '#7c3aed',  // NWKR Loc - Purple
-        28: '#059669',   // RWKR - Green
-        579: '#0891b2'   // RWKR Loc - Teal
+        25: '#2563eb', 576: '#7c3aed', 26: '#059669', 577: '#0891b2',
+        27: '#2563eb', 578: '#7c3aed', 28: '#059669', 579: '#0891b2'
     };
 
-    // Step 1: Collect ALL unique timestamps from all attributes
+    // Step 1: every change timestamp across the four attributes
     var allTimestamps = {};
     var attrDataMap = {};
-
     displayOrder.forEach(function (attrId) {
         for (var i = 0; i < data.length; i++) {
-            if (data[i].AttributeId === attrId) {
-                attrDataMap[attrId] = data[i];
-
-                if (data[i].Values) {
-                    for (var key in data[i].Values) {
-                        var entry = data[i].Values[key];
-                        if (!entry || !entry.Timestamp || entry.Value === undefined) continue;
-
-                        var ts = entry.Timestamp.TimestampDevice;
-                        if (!ts || ts.indexOf('0001') >= 0) continue;
-
-                        var timestamp = pmParseDeviceTs(ts);
-                        if (isNaN(timestamp) || timestamp <= 0) continue;
-
-                        allTimestamps[timestamp] = true;
-                    }
+            if (data[i].AttributeId !== attrId) continue;
+            attrDataMap[attrId] = data[i];
+            if (data[i].Values) {
+                for (var key in data[i].Values) {
+                    var entry = data[i].Values[key];
+                    if (!entry || !entry.Timestamp || entry.Value === undefined) continue;
+                    var ts = entry.Timestamp.TimestampDevice;
+                    if (!ts || ts.indexOf('0001') >= 0) continue;
+                    var timestamp = pmParseDeviceTs(ts);
+                    if (isNaN(timestamp) || timestamp <= 0) continue;
+                    // Carry-forward records from before From are pinned to From
+                    if (hasStart && timestamp < startMs) timestamp = startMs;
+                    allTimestamps[timestamp] = true;
                 }
-                break;
             }
+            break;
         }
     });
 
-    // Anchor the series to the start of the selected day so that values which
-    // last changed BEFORE the selected date still render as a flat line from
-    // 00:00 of that day (carry-forward), rather than starting mid-day.
-    var _hasRangeStart = (typeof rangeStart === 'number' && !isNaN(rangeStart));
-    if (_hasRangeStart) allTimestamps[rangeStart] = true;
-
-    // Convert to sorted array
-    var sortedTimestamps = Object.keys(allTimestamps).map(function (t) { return parseInt(t); }).sort(function (a, b) { return a - b; });
+    var sortedTimestamps = Object.keys(allTimestamps).map(function (t) { return parseInt(t, 10); }).sort(function (a, b) { return a - b; });
+    if (hasStart && (sortedTimestamps.length === 0 || sortedTimestamps[0] !== startMs)) {
+        if (sortedTimestamps.length) sortedTimestamps.unshift(startMs);
+    }
 
     if (sortedTimestamps.length === 0) {
         $('#pmIndChartDiv').hide();
@@ -10069,9 +10195,39 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
         return;
     }
 
-    // Step 2: For each attribute, build data array with values at all timestamps
+    // Densify to 30 s so carry-forward always has a point in any zoom window
+    var FILL_INTERVAL_MS = 30 * 1000;
+    if (sortedTimestamps.length >= 2) {
+        var dens = [sortedTimestamps[0]];
+        for (var di = 1; di < sortedTimestamps.length; di++) {
+            var gap = sortedTimestamps[di] - sortedTimestamps[di - 1];
+            if (gap > FILL_INTERVAL_MS) {
+                var steps = Math.ceil(gap / FILL_INTERVAL_MS), stepSize = gap / steps;
+                for (var si = 1; si < steps; si++) dens.push(Math.round(sortedTimestamps[di - 1] + si * stepSize));
+            }
+            dens.push(sortedTimestamps[di]);
+        }
+        sortedTimestamps = dens;
+    }
+    if (hasEnd) {
+        var lastRealTs = sortedTimestamps[sortedTimestamps.length - 1];
+        if (endMs - lastRealTs > FILL_INTERVAL_MS) {
+            var tailSteps = Math.ceil((endMs - lastRealTs) / FILL_INTERVAL_MS), tailStep = (endMs - lastRealTs) / tailSteps;
+            for (var ti = 1; ti <= tailSteps; ti++) sortedTimestamps.push(Math.round(lastRealTs + ti * tailStep));
+        }
+    }
+
+    var dataMinTs = sortedTimestamps[0];
+    var dataMaxTs = sortedTimestamps[sortedTimestamps.length - 1];
+    var axisMin = hasStart ? startMs : dataMinTs;
+    var axisMax = hasEnd ? endMs : dataMaxTs;
+
+    // Step 2: one carry-forward series per attribute
     var series = [];
     var legends = [];
+    var maxY = 0;
+    // Real value changes; the tooltip header shows the latest at/before the cursor.
+    var pmIndChangeTimes = [];
 
     displayOrder.forEach(function (attrId) {
         var attrData = attrDataMap[attrId];
@@ -10079,46 +10235,52 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
 
         var displayName = PM_INDICATION_NAMES[attrId] || ('Attr ' + attrId);
         var shortName = displayName.replace('A End - ', '').replace('B End - ', '');
-
         if (legends.indexOf(shortName) > -1) return;
 
         var color = colorMap[attrId] || '#64748b';
 
-        // Build a map of timestamp -> value for this attribute
         var valueMap = {};
         var originalTimestamps = {};
+        var boundaryLatestTs = -Infinity, boundaryLatestVal = null;
         if (attrData.Values) {
             for (var key in attrData.Values) {
                 var entry = attrData.Values[key];
                 if (!entry || !entry.Timestamp || entry.Value === undefined) continue;
-
                 var ts = entry.Timestamp.TimestampDevice;
                 if (!ts || ts.indexOf('0001') >= 0) continue;
-
                 var timestamp = pmParseDeviceTs(ts);
                 if (isNaN(timestamp) || timestamp <= 0) continue;
-
                 var value = parseFloat(entry.Value);
-                if (!isNaN(value)) {
+                if (isNaN(value)) continue;
+                value = tlZeroFloor(value);   // <= 0 plots as 0
+
+                if (hasStart && timestamp < startMs) {
+                    // Keep the LATEST pre-window value as the seed at From
+                    if (timestamp > boundaryLatestTs) { boundaryLatestTs = timestamp; boundaryLatestVal = value; }
+                } else {
                     valueMap[timestamp] = value;
                     originalTimestamps[timestamp] = true;
                 }
             }
         }
+        if (boundaryLatestVal !== null && hasStart && valueMap[startMs] === undefined) {
+            valueMap[startMs] = boundaryLatestVal;
+        }
 
-        // Create data points for ALL timestamps, using last known value.
-        // Timestamps BEFORE the selected day are consumed only to seed the
-        // baseline value (carry-forward); the first plotted point lands on the
-        // day-start tick so the line begins at 00:00 of the selected date.
+        var chgPrev = null;
+        Object.keys(valueMap).map(Number).sort(function (a, b) { return a - b; }).forEach(function (t) {
+            var v = valueMap[t];
+            if (chgPrev !== null && v === chgPrev) return;
+            chgPrev = v;
+            pmIndChangeTimes.push([t, t]);
+        });
+
         var points = [];
         var lastValue = null;
-
         sortedTimestamps.forEach(function (ts) {
             if (valueMap[ts] !== undefined) {
                 lastValue = valueMap[ts];
-            }
-            if (_hasRangeStart && ts < rangeStart) {
-                return; // baseline only — don't plot pre-day points
+                if (lastValue > maxY) maxY = lastValue;
             }
             if (lastValue !== null) {
                 points.push({
@@ -10128,11 +10290,14 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
                 });
             }
         });
-
         if (points.length === 0) return;
 
-        legends.push(shortName);
+        // Extend the carry-forward line to To
+        if (lastValue !== null && hasEnd && points[points.length - 1].value[0] < endMs) {
+            points.push({ value: [endMs, lastValue], symbol: 'none', symbolSize: 0 });
+        }
 
+        legends.push(shortName);
         var isLoc = shortName.indexOf('Loc') > -1;
 
         series.push({
@@ -10140,21 +10305,22 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
             type: 'line',
             smooth: false,
             step: 'end',
-            showSymbol: true,
-            lineStyle: {
-                width: isLoc ? 2 : 2.5,
-                color: color,
-                type: isLoc ? [5, 3] : 'solid'
-            },
-            itemStyle: {
-                color: color,
-                borderWidth: 2,
-                borderColor: '#fff'
-            },
-            emphasis: {
-                scale: 1.5,
-                lineStyle: { width: isLoc ? 3 : 4 }
-            },
+            connectNulls: true,
+            showSymbol: false,
+            clip: false,
+            z: 2,
+            // No sampling / progressive chunks / animation: rapid wheel zoom
+            // otherwise paints half-drawn frames and the line looks broken.
+            sampling: 'none',
+            hoverAnimation: false,
+            animation: false,
+            progressive: 0,
+            progressiveThreshold: 100000,
+            large: false,
+            lineStyle: { width: isLoc ? 2 : 2.5, color: color, type: isLoc ? [5, 3] : 'solid', opacity: 0.95 },
+            itemStyle: { color: color, borderWidth: 2, borderColor: tlTc('#0a1228', '#fff') },
+            emphasis: { disabled: true },
+            blur: { lineStyle: { opacity: 0.95 }, itemStyle: { opacity: 1 } },
             data: points
         });
     });
@@ -10169,9 +10335,16 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
     if (existingChart) existingChart.dispose();
 
     var chart = echarts.init(el);
+    var pmIndSeriesPts = _pmSeriesLookup(series);
+    var axisTxt = tlTc('rgba(255,255,255,0.55)', 'rgba(15,23,42,0.70)');
+    var axisLn = tlTc('rgba(255,255,255,0.16)', 'rgba(15,23,42,0.25)');
+    var gridLn = tlTc('rgba(255,255,255,0.06)', 'rgba(15,23,42,0.08)');
 
     chart.setOption({
         backgroundColor: 'transparent',
+        stateAnimation: { duration: 0 },
+        animation: false,
+        animationDurationUpdate: 0,
         tooltip: {
             trigger: 'axis',
             backgroundColor: 'rgba(5,9,24,0.97)',
@@ -10179,24 +10352,46 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
             borderWidth: 1,
             padding: [12, 16],
             textStyle: { color: 'rgba(255,255,255,0.86)', fontSize: 12 },
+            axisPointer: {
+                type: 'cross',
+                snap: false,
+                lineStyle: { color: '#94a3b8', width: 1, type: 'dashed' },
+                label: { backgroundColor: '#6a7985' }
+            },
             formatter: function (params) {
                 if (!params || !params.length) return '';
-                var t = new Date(params[0].value[0]);
+                var hoverMs = _pmHoverMsFromParams(chart, params);
+                if (!pmIndChangeTimes._sorted) {
+                    pmIndChangeTimes.sort(function (a, b) { return (a[0] - b[0]) || (a[1] - b[1]); });
+                    pmIndChangeTimes._sorted = true;
+                }
+                var headerMs = null;
+                var lo = 0, hi = pmIndChangeTimes.length - 1, idx = -1;
+                while (lo <= hi) {
+                    var mid = (lo + hi) >> 1;
+                    if (pmIndChangeTimes[mid][0] <= hoverMs) { idx = mid; lo = mid + 1; } else { hi = mid - 1; }
+                }
+                if (idx >= 0) headerMs = pmIndChangeTimes[idx][1];
+                if (headerMs === null) headerMs = hoverMs;
+
+                var t = new Date(headerMs);
                 var timeStr = String(t.getHours()).padStart(2, '0') + ':' +
                     String(t.getMinutes()).padStart(2, '0') + ':' +
                     String(t.getSeconds()).padStart(2, '0');
                 var dateStr = String(t.getDate()).padStart(2, '0') + '/' +
                     String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
 
+                // Theme CSS vars, not fixed white: the theme hook gives the
+                // tooltip a light surface in light mode (white text vanished).
                 var html = '<div style="font-weight:700;margin-bottom:10px;color:var(--e7-accent, #22d3ee);padding-bottom:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));">' + dateStr + ' ' + timeStr + '</div>';
-
-                // Show all 4 attributes
                 params.forEach(function (p) {
+                    var v = _pmValueAtTime(pmIndSeriesPts[p.seriesName], hoverMs);
+                    var vTxt = v === null ? '—' : Number(v).toFixed(2);
                     html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;">' +
                         '<div style="display:flex;align-items:center;">' +
                         '<span style="display:inline-block;width:12px;height:3px;border-radius:1px;background:' + p.color + ';margin-right:10px;"></span>' +
                         '<span style="color:var(--e7-text, rgba(255,255,255,0.72));">' + p.seriesName + '</span></div>' +
-                        '<span style="font-weight:700;color:var(--e7-heading, rgba(255,255,255,0.94));margin-left:15px;">' + tlZeroFloor(p.value[1]).toFixed(2) + ' V</span></div>';
+                        '<span style="font-weight:700;color:var(--e7-heading, rgba(255,255,255,0.94));margin-left:15px;">' + vTxt + ' V</span></div>';
                 });
                 return html;
             }
@@ -10205,12 +10400,13 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
             data: legends,
             top: 8,
             left: 'center',
-            textStyle: { fontSize: 12, color: 'rgba(255,255,255,0.72)' },
+            textStyle: { fontSize: 12, color: tlTc('rgba(255,255,255,0.72)', 'rgba(15,23,42,0.72)') },
             itemGap: 20,
             itemWidth: 20,
-            itemHeight: 10
+            itemHeight: 10,
+            selectedMode: 'multiple'
         },
-        grid: { top: 50, left: 50, right: 15, bottom: 70 },
+        grid: { top: 50, left: 60, right: 20, bottom: 85 },
         toolbox: {
             right: 10,
             top: 5,
@@ -10219,39 +10415,71 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart) {
                 restore: {},
                 saveAsImage: { pixelRatio: 2 }
             },
-            iconStyle: { borderColor: 'rgba(255,255,255,0.55)' }, emphasis: { iconStyle: { borderColor: '#22d3ee' } }
+            iconStyle: { borderColor: tlTc('rgba(255,255,255,0.55)', 'rgba(15,23,42,0.55)') },
+            emphasis: { iconStyle: { borderColor: '#22d3ee' } }
         },
         xAxis: {
             type: 'time',
             boundaryGap: false,
-            min: _hasRangeStart ? rangeStart : undefined,
+            min: axisMin,
+            max: axisMax,
+            axisPointer: { snap: false, label: { formatter: _pmAxisPointerTimeLabel } },
             axisLabel: {
                 fontSize: 10,
-                color: 'rgba(255,255,255,0.55)',
+                color: axisTxt,
+                lineHeight: 14,
                 formatter: function (v) {
+                    var spanMs = axisMax - axisMin;
                     var d = new Date(v);
-                    return String(d.getDate()).padStart(2, '0') + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()] + '\n' +
-                        String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
-                },
-                lineHeight: 14
+                    var hh = String(d.getHours()).padStart(2, '0');
+                    var mm = String(d.getMinutes()).padStart(2, '0');
+                    var ss = String(d.getSeconds()).padStart(2, '0');
+                    var dd = String(d.getDate()).padStart(2, '0');
+                    var mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+                    if (spanMs <= 2 * 3600 * 1000) return hh + ':' + mm + ':' + ss;
+                    if (spanMs <= 24 * 3600 * 1000) return hh + ':' + mm;
+                    return dd + ' ' + mon + '\n' + hh + ':' + mm;
+                }
             },
-            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.16)' } },
-            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+            axisLine: { lineStyle: { color: axisLn } },
+            splitLine: { show: true, lineStyle: { color: gridLn } }
         },
         yAxis: {
             type: 'value',
             name: 'Voltage (V)',
-            nameTextStyle: { fontSize: 11, color: 'rgba(255,255,255,0.60)' },
-            axisLabel: { fontSize: 10, color: 'rgba(255,255,255,0.55)', formatter: function (v) { return v.toFixed(2); } },
-            axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.16)' } },
-            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.06)' } }
+            nameTextStyle: { fontSize: 11, color: tlTc('rgba(255,255,255,0.60)', 'rgba(15,23,42,0.6)') },
+            // Pinned to the full-range max so zooming never rescales a line out of view
+            min: 0,
+            max: maxY > 0 ? Math.ceil(maxY * 1.15) : 30,
+            axisLabel: { fontSize: 10, color: axisTxt, formatter: function (v) { return v.toFixed(2); } },
+            axisLine: { show: true, lineStyle: { color: axisLn } },
+            splitLine: { show: true, lineStyle: { color: gridLn } }
         },
         dataZoom: [
-            { type: 'slider', height: 22, bottom: 8, borderColor: tlTc('rgba(255,255,255,0.14)', 'rgba(15,23,42,0.14)'), backgroundColor: tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)'), fillerColor: 'rgba(34,211,238,0.20)', handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' }, textStyle: { fontSize: 10, color: 'rgba(255,255,255,0.50)' } },
-            { type: 'inside' }
+            {
+                type: 'slider', height: 22, bottom: 8, start: 0, end: 100,
+                filterMode: 'none',
+                minValueSpan: 60 * 1000,
+                borderColor: tlTc('rgba(255,255,255,0.14)', 'rgba(15,23,42,0.14)'),
+                backgroundColor: tlTc('rgba(15,23,42,0.70)', 'rgba(241,245,249,0.95)'),
+                fillerColor: 'rgba(34,211,238,0.20)',
+                handleStyle: { color: '#22d3ee', borderColor: '#22d3ee' },
+                textStyle: { fontSize: 10, color: tlTc('rgba(255,255,255,0.50)', 'rgba(15,23,42,0.5)') }
+            },
+            {
+                type: 'inside',
+                filterMode: 'none',
+                minValueSpan: 60 * 1000,
+                throttle: 70,
+                zoomOnMouseWheel: true,
+                moveOnMouseMove: false,
+                moveOnMouseWheel: false
+            }
         ],
         series: series
     });
+
+    _pmTrackActualHover(chart);
 
     $(window).off('resize.pmIndChart').on('resize.pmIndChart', function () { chart.resize(); });
 
@@ -10737,6 +10965,11 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
         }
 
         var points = [];
+        // Latest reading from BEFORE From. Change-of-value telemetry only
+        // reports on change, so this is the value in effect at From. It used
+        // to be discarded: an attribute that did not change inside the window
+        // vanished, and the rest started part-way across the chart.
+        var seedTs = -Infinity, seedVal = null;
 
         for (var key in attrData.Values) {
             var entry = attrData.Values[key];
@@ -10752,15 +10985,24 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
             var time = getTimestampDeviceMs(entry);
             if (time === null || time === undefined) continue;
 
-            // Keep only selected hour range.
-            if (time < axisMin || time > axisMax) continue;
+            if (time < axisMin) {
+                if (time > seedTs) { seedTs = time; seedVal = tlZeroFloor(val); }
+                continue;
+            }
+            if (time > axisMax) continue;
 
             points.push([time, tlZeroFloor(val)]);
         }
 
-        if (!points.length) return;
-
         points.sort(function (a, b) { return a[0] - b[0]; });
+
+        // Seed the carried-in value at From (axis left edge), unless a real
+        // reading already sits exactly there.
+        if (seedVal !== null && (!points.length || points[0][0] > axisMin)) {
+            points.unshift([axisMin, seedVal]);
+        }
+
+        if (!points.length) return;
 
         // Remove duplicate TimestampDevice points.
         // Duplicate timestamp with different value causes vertical spikes.
@@ -16083,22 +16325,20 @@ function loadSingleArrayData(startDate, endDate) {
 
             console.log('[PM] Found', operations.length, 'unique operations for attr', p.attrId);
 
-            $ch.show();
-            if (operations.length > 0) {
-                var firstOp = new Date(operations[0].timestamp);
-                var lastOp = new Date(operations[operations.length - 1].timestamp);
-                var fmtOp = function (d) {
-                    return String(d.getDate()).padStart(2, '0') + '/' +
-                        String(d.getMonth() + 1).padStart(2, '0') + ' ' +
-                        String(d.getHours()).padStart(2, '0') + ':' +
-                        String(d.getMinutes()).padStart(2, '0') + ':' +
-                        String(d.getSeconds()).padStart(2, '0');
-                };
-                var timeLabel = operations.length === 1
-                    ? fmtOp(firstOp)
-                    : fmtOp(firstOp) + '  →  ' + fmtOp(lastOp);
-                $('#singleArrTimeRange').text(timeLabel);
+            // 616 parity: the PM chart shows ONLY the latest operation in the
+            // window, never several overlaid.
+            if (operations.length > 1) {
+                operations = [operations[operations.length - 1]];
             }
+
+            $ch.show();
+            var latestOp = new Date(operations[0].timestamp);
+            $('#singleArrTimeRange').text(
+                String(latestOp.getDate()).padStart(2, '0') + '/' +
+                String(latestOp.getMonth() + 1).padStart(2, '0') + ' ' +
+                String(latestOp.getHours()).padStart(2, '0') + ':' +
+                String(latestOp.getMinutes()).padStart(2, '0') + ':' +
+                String(latestOp.getSeconds()).padStart(2, '0'));
             renderSingleArrayByTimestamp(operations, p.title, p.unit, p.color);
         },
         error: function (xhr, status, error) {
@@ -16139,13 +16379,32 @@ function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) 
     var series = [];
     var legends = [];
 
+    // 616 parity: elapsed-ms axis sized to the longest operation, with a
+    // "nice" step giving ~7 labels (20, 40, 100, 200, 500, 1000 ... ms).
+    var maxLenSamples = 0;
+    operations.forEach(function (op) {
+        if (op && op.array && op.array.length > maxLenSamples) maxLenSamples = op.array.length;
+    });
+    var maxDurationMs = Math.max(0, (maxLenSamples - 1) * sampleIntervalMs);
+    var xAxisStepMs = (function (totalMs, targetTicks) {
+        if (totalMs <= 0) return 20;
+        var raw = totalMs / targetTicks;
+        var niceSteps = [20, 40, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
+        for (var i = 0; i < niceSteps.length; i++) {
+            if (niceSteps[i] >= raw) return niceSteps[i];
+        }
+        return niceSteps[niceSteps.length - 1];
+    })(maxDurationMs, 7);
+
     operations.forEach(function (op, idx) {
         // FIX 10: Guard null/missing array
         if (!op || !op.array || op.array.length === 0) return;
 
-        var baseTime = op.timestamp;
+        /* X = elapsed ms since the operation started (not wall-clock);
+           _absTs keeps the device time of each sample for the tooltip. */
+        var opStartTs = op.timestamp;
         var data = op.array.map(function (val, i) {
-            return [baseTime + (i * sampleIntervalMs), val];
+            return { value: [i * sampleIntervalMs, val], _absTs: opStartTs + (i * sampleIntervalMs) };
         });
 
         var t = new Date(op.timestamp);
@@ -16167,11 +16426,14 @@ function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) 
             smooth: false,
             symbol: 'circle',
             symbolSize: dotSize,
-            showSymbol: op.array.length <= 200,  // hide dots on dense data for performance
+            // 616: a dot on EVERY 20 ms sample, joined by a dashed line, so each
+            // sample (and the 20 ms step between them) is visible.
+            showSymbol: true,
+            showAllSymbol: true,
             lineStyle: {
-                width: idx === 0 ? 2.5 : 1.8,
+                width: 2.5,
                 color: opColor,
-                type: idx > 0 ? 'dashed' : 'solid'  // FIX 3: first series solid, others dashed
+                type: 'dashed'
             },
             // FIX 5b: areaStyle uses rgba() not hex alpha
             areaStyle: idx === 0 ? {
@@ -16194,7 +16456,7 @@ function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) 
         backgroundColor: tlTc('#0a1228', '#ffffff'),
         title: {
             text: title,
-            subtext: series.length + ' operation(s) plotted',
+            subtext: series.length + ' operation(s) found  ·  Δt 20 ms  ·  span ' + maxDurationMs + ' ms',
             left: 'center',
             top: 10,
             textStyle: { fontSize: 16, fontWeight: '700', color: tlTc('rgba(255,255,255,0.94)', 'rgba(15,23,42,0.94)') },
@@ -16208,22 +16470,26 @@ function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) 
             padding: [12, 16],
             formatter: function (params) {
                 if (!params || !params.length) return '';
-                var t = new Date(params[0].value[0]);
-                var timeStr = String(t.getHours()).padStart(2, '0') + ':' +
-                    String(t.getMinutes()).padStart(2, '0') + ':' +
-                    String(t.getSeconds()).padStart(2, '0') + '.' +
-                    String(t.getMilliseconds()).padStart(3, '0');
-                var dateStr = String(t.getDate()).padStart(2, '0') + '/' +
-                    String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
+                var elapsedMs = params[0].value[0];
                 var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding-bottom:6px;">' +
-                    dateStr + ' ' + timeStr + '</div>';
+                    elapsedMs + ' ms <span style="opacity:0.6;font-weight:400;">(' + (elapsedMs / 1000).toFixed(3) + ' s)</span></div>';
                 params.forEach(function (p) {
                     if (p.value !== undefined && p.value[1] !== undefined) {
+                        var absTs = p.data && p.data._absTs;
+                        var absStr = '';
+                        if (absTs) {
+                            var t = new Date(absTs);
+                            absStr = ' <span style="opacity:0.55;font-size:10px;margin-left:6px;">@ ' +
+                                String(t.getHours()).padStart(2, '0') + ':' +
+                                String(t.getMinutes()).padStart(2, '0') + ':' +
+                                String(t.getSeconds()).padStart(2, '0') + '.' +
+                                String(t.getMilliseconds()).padStart(3, '0') + '</span>';
+                        }
                         html += '<div style="display:flex;align-items:center;padding:3px 0;">' +
                             '<span style="display:inline-block;width:10px;height:3px;background:' + p.color + ';margin-right:8px;border-radius:2px;"></span>' +
                             '<span style="flex:1;font-size:11px;color:var(--e7-text-2, rgba(255,255,255,0.62));">Value:</span>' +
                             '<span style="font-weight:700;margin-left:10px;color:var(--e7-heading, rgba(255,255,255,0.94));">' +
-                            tlZeroFloor(p.value[1]).toFixed(2) + ' ' + unit + '</span></div>';
+                            tlZeroFloor(p.value[1]).toFixed(2) + ' ' + unit + '</span>' + absStr + '</div>';
                     }
                 });
                 return html;
@@ -16248,20 +16514,18 @@ function renderSingleArrayByTimestamp(operations, title, unit, color, targetId) 
             }
         },
         xAxis: {
-            type: 'time',
-            name: 'Time (ms)',
+            type: 'value',
+            name: 'Elapsed Time (ms)',
             nameLocation: 'center',
             nameGap: 32,
+            min: 0,
+            max: maxDurationMs > 0 ? maxDurationMs : null,
+            interval: xAxisStepMs,
             nameTextStyle: { fontSize: 12, fontWeight: '600', color: tlTc('rgba(255,255,255,0.60)', 'rgba(15,23,42,0.6)') },
             axisLabel: {
                 fontSize: 10,
                 color: tlTc('rgba(255,255,255,0.55)', 'rgba(15,23,42,0.55)'),
-                formatter: function (v) {
-                    var d = new Date(v);
-                    return String(d.getHours()).padStart(2, '0') + ':' +
-                        String(d.getMinutes()).padStart(2, '0') + ':' +
-                        String(d.getSeconds()).padStart(2, '0');
-                }
+                formatter: function (v) { return v + ' ms'; }
             },
             axisLine: { lineStyle: { color: tlTc('rgba(255,255,255,0.16)', 'rgba(15,23,42,0.16)') } },
             splitLine: { show: true, lineStyle: { color: tlTc('rgba(255,255,255,0.06)', 'rgba(15,23,42,0.08)') } }
@@ -16991,10 +17255,11 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
     var sampleIntervalMs = 20;
 
     // Add A operations - each operation's array plotted at its TimestampDevice
+    /* X = ms since each operation started (not wall-clock), so A/B
+       operations hours apart overlay instead of collapsing to lines. */
     aOperations.forEach(function (op, idx) {
-        var baseTime = op.timestamp;
         var data = op.array.map(function (val, i) {
-            return [baseTime + (i * sampleIntervalMs), val];
+            return [i * sampleIntervalMs, val];
         });
 
         var t = new Date(op.timestamp);
@@ -17021,9 +17286,8 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
 
     // Add B operations
     bOperations.forEach(function (op, idx) {
-        var baseTime = op.timestamp;
         var data = op.array.map(function (val, i) {
-            return [baseTime + (i * sampleIntervalMs), val];
+            return [i * sampleIntervalMs, val];
         });
 
         var t = new Date(op.timestamp);
@@ -17066,14 +17330,7 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
             padding: [12, 16],
             formatter: function (params) {
                 if (!params || !params.length) return '';
-                var t = new Date(params[0].value[0]);
-                var timeStr = String(t.getHours()).padStart(2, '0') + ':' +
-                    String(t.getMinutes()).padStart(2, '0') + ':' +
-                    String(t.getSeconds()).padStart(2, '0') + '.' +
-                    String(t.getMilliseconds()).padStart(3, '0');
-                var dateStr = String(t.getDate()).padStart(2, '0') + '/' + String(t.getMonth() + 1).padStart(2, '0') + '/' + t.getFullYear();
-
-                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding-bottom:6px;">' + dateStr + ' ' + timeStr + '</div>';
+                var html = '<div style="font-weight:600;margin-bottom:8px;border-bottom:1px solid var(--e7-border, rgba(255,255,255,0.10));padding-bottom:6px;">+' + params[0].value[0] + ' ms from operation start</div>';
                 params.forEach(function (p) {
                     if (p.value !== undefined && p.value[1] !== undefined && !isNaN(p.value[1])) {
                         html += '<div style="display:flex;align-items:center;padding:3px 0;">' +
@@ -17104,20 +17361,17 @@ function renderCombinedArrayByTimestamp(aOperations, bOperations, aLabel, bLabel
             }
         },
         xAxis: {
-            type: 'time',
-            name: 'Time (TimestampDevice)',
+            type: 'value',
+            name: 'Time from operation start (ms)',
             nameLocation: 'center',
             nameGap: 30,
+            min: 0,
+            max: 'dataMax',
             nameTextStyle: { fontSize: 12, fontWeight: '600', color: tlTc('rgba(255,255,255,0.60)', 'rgba(15,23,42,0.6)') },
             axisLabel: {
                 fontSize: 10,
                 color: tlTc('rgba(255,255,255,0.55)', 'rgba(15,23,42,0.55)'),
-                formatter: function (v) {
-                    var d = new Date(v);
-                    return String(d.getHours()).padStart(2, '0') + ':' +
-                        String(d.getMinutes()).padStart(2, '0') + ':' +
-                        String(d.getSeconds()).padStart(2, '0');
-                }
+                formatter: function (v) { return v + ''; }
             },
             axisLine: { lineStyle: { color: tlTc('rgba(255,255,255,0.16)', 'rgba(15,23,42,0.16)') } },
             splitLine: { show: true, lineStyle: { color: tlTc('rgba(255,255,255,0.06)', 'rgba(15,23,42,0.08)') } }
@@ -22130,17 +22384,140 @@ function tlBulkNormalizeIncomingItem(d) {
     return copy;
 }
 
+/*
+ * CONFIGURED-ONLY BINDING (Track).
+ * GetBulkAssetMetadata says per asset what it really has: RDPMS attributes in
+ * assetAttributes, DataLogger relays in mAssetInfoDataloggers. Many track
+ * assets are DL-only (assetAttributes: [], e.g. 124T -> TPR) and some are
+ * RDPMS-only (CCLAT, CCLBT). The shared table showed every asset with both
+ * kinds. An asset now binds only what its own config lists. Assets without
+ * bulk config (not loaded yet / other types) are left untouched.
+ */
+function tlCfgAsset(assetId) {
+    var aid = tlBulkStr(assetId);
+    if (!aid || typeof bulkAssetMap === 'undefined' || !bulkAssetMap) return null;
+    var a = bulkAssetMap[aid];
+    if (!a) return null;
+    var typeId = a.AssetTypeId || wsCurrentAssetTypeId;
+    if (typeof tlIsAssetTypeKind === 'function' ? !tlIsAssetTypeKind(typeId, 'track') : parseInt(typeId, 10) !== 1) return null;
+    return a;
+}
+function tlCfgRdpmsAttrs(a) { return (a && (a.assetAttributes || a.AssetAttributes)) || []; }
+function tlCfgDataloggers(a) { return (a && (a.mAssetInfoDataloggers || a.MAssetInfoDataloggers)) || []; }
+
+// true when the asset's config lists this RDPMS attribute (by id, or by name/alias).
+function tlAssetHasRdpmsAttr(assetId, attrKey, attrId) {
+    var a = tlCfgAsset(assetId);
+    if (!a) return true;
+    var list = tlCfgRdpmsAttrs(a);
+    if (!list.length) return false;
+    var id = tlBulkStr(attrId).trim();
+    var key = tlBulkStr(attrKey).trim().toLowerCase();
+    for (var i = 0; i < list.length; i++) {
+        var c = list[i];
+        if (!c) continue;
+        if (id && tlBulkStr(c.Id || c.AssetAttributeId || c.AttributeId).trim() === id) return true;
+        if (key) {
+            var names = [c.Title, c.AliasName, c.AttributeName, c.Name];
+            for (var n = 0; n < names.length; n++) {
+                if (names[n] && String(names[n]).trim().toLowerCase() === key) return true;
+            }
+        }
+    }
+    return false;
+}
+function tlAssetHasRdpms(assetId) { var a = tlCfgAsset(assetId); return !a || tlCfgRdpmsAttrs(a).length > 0; }
+function tlAssetHasDatalogger(assetId) { var a = tlCfgAsset(assetId); return !a || tlCfgDataloggers(a).length > 0; }
+window.tlAssetHasRdpmsAttr = tlAssetHasRdpmsAttr;
+window.tlAssetHasRdpms = tlAssetHasRdpms;
+window.tlAssetHasDatalogger = tlAssetHasDatalogger;
+
+// Drop live values the asset is not configured for (RDPMS attr not in its
+// assetAttributes, or a DL frame for an asset with no mAssetInfoDataloggers).
+function tlCfgKeepIncoming(d) {
+    if (!d || d.AssetId === undefined || d.AssetId === null) return true;
+    if (!tlCfgAsset(d.AssetId)) return true;
+    if (String(d.DataType || '').toLowerCase() === 'datalogger') return tlAssetHasDatalogger(d.AssetId);
+    return tlAssetHasRdpmsAttr(d.AssetId, d.RawAssetAttributeName || d.AssetAttributeName, d.AssetAttributeId);
+}
+
 function tlBulkNormalizeIncomingItems(items) {
     if (!items || !items.length) return items;
 
-    var out = new Array(items.length);
+    var out = [];
 
     for (var i = 0; i < items.length; i++) {
-        out[i] = tlBulkNormalizeIncomingItem(items[i]);
+        var it = tlBulkNormalizeIncomingItem(items[i]);
+        if (tlCfgKeepIncoming(it)) out.push(it);
     }
 
     return out;
 }
+
+/*
+ * Display side of configured-only binding: the table's columns are shared,
+ * so a cell for an attribute the row's asset does not have is shown blank
+ * (not "-", which reads as "no reading yet"). Also blanks the derived cells
+ * of a DL-only asset and the DataLogger cell of an RDPMS-only asset.
+ * Runs after any (re)render via an observer, since several renderers and
+ * per-cell updaters write this table.
+ */
+var TL_NC_TITLE = 'Not configured for this asset';
+function tlMarkNotConfigured(td) {
+    if (!td) return;
+    if (td.textContent !== '') td.textContent = '';
+    if (td.className.indexOf('tl-attr-nc') === -1) td.className = 'tl-attr-nc';
+    if (td.title !== TL_NC_TITLE) td.title = TL_NC_TITLE;
+}
+function tlMaskUnconfiguredCells(root) {
+    if (!root || !root.querySelectorAll) return;
+    if (!(typeof tlIsAssetTypeKind === 'function' ? tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track') : parseInt(wsCurrentAssetTypeId, 10) === 1)) return;
+    var rows = root.querySelectorAll('tr[data-id]');
+    for (var r = 0; r < rows.length; r++) {
+        var row = rows[r];
+        var aid = row.getAttribute('data-id');
+        if (!tlCfgAsset(aid)) continue;
+        var cells = row.querySelectorAll('td[data-attr]');
+        for (var c = 0; c < cells.length; c++) {
+            var an = cells[c].getAttribute('data-attr');
+            if (!an || an === 'LastUpdate') continue;
+            var ad = (wsLiveData[aid] && wsLiveData[aid].attrs) ? wsLiveData[aid].attrs[an] : null;
+            var id = ad ? (ad.AssetAttributeId || ad.AttrId) : null;
+            if (!tlAssetHasRdpmsAttr(aid, an, id)) tlMarkNotConfigured(cells[c]);
+        }
+        if (!tlAssetHasRdpms(aid)) {
+            var dv = row.querySelectorAll('td.derived-val');
+            for (var d = 0; d < dv.length; d++) tlMarkNotConfigured(dv[d]);
+        }
+        if (!tlAssetHasDatalogger(aid)) {
+            var dl = row.querySelector('td.dl-cell');
+            if (dl) { tlMarkNotConfigured(dl); dl.className = 'dl-cell tl-attr-nc'; }
+        }
+    }
+}
+window.tlMaskUnconfiguredCells = tlMaskUnconfiguredCells;
+
+(function tlWatchTableForConfig() {
+    if (typeof MutationObserver !== 'function') return;
+    var pending = false;
+    function run() {
+        pending = false;
+        var host = document.getElementById('divTelemetryLive');
+        if (host) tlMaskUnconfiguredCells(host);
+    }
+    function start() {
+        var host = document.getElementById('divTelemetryLive');
+        if (!host) return;
+        new MutationObserver(function () {
+            if (pending) return;
+            pending = true;
+            (window.requestAnimationFrame || setTimeout)(run);
+        }).observe(host, { childList: true, subtree: true, characterData: true });
+        run();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
+})();
 
 function tlBulkRenderCurrentViewFromPlaceholders() {
     // Point Machine view is rendered by dedicated PM renderer, not bulk placeholders.

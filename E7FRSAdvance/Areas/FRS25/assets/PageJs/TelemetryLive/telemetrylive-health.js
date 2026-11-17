@@ -390,6 +390,18 @@
                 if (!x.relay && ad && String(ad.DataType || '').toLowerCase() === 'datalogger') x.ipsTab = 'digital';
             });
         }
+        /* Configured-only binding (Track, same rule as the Telemetry Live table,
+           cards and drawer): keep only RDPMS attributes the asset's
+           GetBulkAssetMetadata assetAttributes lists. tlAssetHasRdpmsAttr
+           returns true for assets without bulk config / non-track types. */
+        var cfgHasRdpms = typeof window.tlAssetHasRdpms !== 'function' || window.tlAssetHasRdpms(aid);
+        var cfgHasDl = typeof window.tlAssetHasDatalogger !== 'function' || window.tlAssetHasDatalogger(aid);
+        if (!pmm && typeof window.tlAssetHasRdpmsAttr === 'function') {
+            rows = rows.filter(function (x) {
+                if (x.relay) return cfgHasDl;
+                return window.tlAssetHasRdpmsAttr(aid, x.k, x.attrId) || window.tlAssetHasRdpmsAttr(aid, x.title, x.attrId);
+            });
+        }
         if (isTrackType()) {
             rows.sort(function (x, y) {
                 var ix = TRACK_ORDER.indexOf(x.key), iy = TRACK_ORDER.indexOf(y.key);
@@ -434,15 +446,20 @@
             else if (r.st === 'near') near++;
             r.pos = Math.max(1, Math.min(99, ((r.v - r.lo) / (r.hi - r.lo)) * 100));
         }
-        var status = !have ? 'nodata' : outs >= 3 ? 'fault' : outs ? 'watch' : 'ok';
-        var score = !have ? 0 : Math.max(0, Math.round(100 - outs * 18 - near * 6 - stale * 4));
         var relays = pmm ? pmm.relays : [];
-        var dl = pmm ? {} : (e.dlRelays || {});
+        var dl = pmm ? {} : (cfgHasDl ? (e.dlRelays || {}) : {});   /* no relays for an asset with no DL configured */
         for (var dk in dl) {
             if (dl.hasOwnProperty(dk)) relays.push({ name: dl[dk].displayName || dk, up: !!dl[dk].isPickup });
         }
+        /* DL-only asset (no RDPMS configured): its relays ARE its live data, so
+           it is not "No data" -- healthy while it reports, no readings or
+           calculated values to show. */
+        var dlOnly = !pmm && isTrackType() && !cfgHasRdpms && relays.length > 0;
+        if (dlOnly) have = relays.length;
+        var status = !have ? 'nodata' : outs >= 3 ? 'fault' : outs ? 'watch' : 'ok';
+        var score = !have ? 0 : Math.max(0, Math.round(100 - outs * 18 - near * 6 - stale * 4));
         var derived = [];
-        if (isTrackType() && typeof window.calculateDerivedValues === 'function') {
+        if (isTrackType() && cfgHasRdpms && typeof window.calculateDerivedValues === 'function') {
             var dv = null;
             try { dv = window.calculateDerivedValues(attrs, aid); } catch (ex) { dv = null; }
             if (dv) {
@@ -462,7 +479,7 @@
         return {
             aid: aid, name: e.AssetName || ('Asset ' + aid), rows: rows, derived: derived, occ: occ, outs: outs, near: near,
             pmDir: pmm ? pmm.dir : '', pmWhen: pmm ? pmm.when : '',
-            stale: stale, have: have, status: status, score: score, relays: relays,
+            stale: stale, have: have, status: status, score: score, relays: relays, dlOnly: dlOnly,
             sev: (status === 'fault' ? 3000 : status === 'watch' ? 2000 : status === 'nodata' ? 0 : 1000) + outs * 50 + near * 10 + stale
         };
     }
@@ -777,6 +794,12 @@
             return base + ': ' + A.pmDir + ' at ' + A.pmWhen;
         }
         if (!A.have) return 'Waiting for live values';
+        if (A.dlOnly) {   /* DataLogger-only track: state of its relays */
+            return A.relays.map(function (r) {
+                var tpr = /^TPR$/i.test(String(r.name || '').replace(/[^A-Za-z]/g, ''));
+                return tpr ? (r.up ? 'Track clear' : 'Track occupied') : (r.name + (r.up ? ' Pickup' : ' Drop'));
+            }).join(', ');
+        }
         var p = [];
         if (A.outs) p.push(A.outs + ' outside safe range');
         if (A.near) p.push(A.near + ' near a limit');
@@ -1475,10 +1498,12 @@
             }
             html += '</div>';
         } else {
-            html += '<div class="hv-rows hv-tiles">';
-            for (var j = 0; j < A.rows.length; j++) html += rowHtml(A, A.rows[j]);
-            if (!A.rows.length) html += '<div class="hv-sum">No live readings yet.</div>';
-            html += '</div>';
+            if (!A.dlOnly) {   /* DL-only: the relay pills above are its readings */
+                html += '<div class="hv-rows hv-tiles">';
+                for (var j = 0; j < A.rows.length; j++) html += rowHtml(A, A.rows[j]);
+                if (!A.rows.length) html += '<div class="hv-sum">No live readings yet.</div>';
+                html += '</div>';
+            }
         }
         if (A.derived && A.derived.length) {
             html += '<div class="hv-derived">';
@@ -1536,9 +1561,12 @@
             '<th scope="col" class="hv-sticky">Asset</th><th scope="col">Health</th>' + (isPmType() ? '<th scope="col">Direction</th>' : '') + '<th scope="col">Relays</th>';
         cols.forEach(function (c) {
             var g = c.range;
-            h += '<th scope="col" class="' + (c.derived ? 'dv' : '') + '"><div>' + esc(c.label) + '</div>' +
-                (c.sub ? '<small>' + esc(c.sub) + '</small>' : '') +
-                (g && g.min !== null && g.max !== null ? '<small class="rg">' + fmt(g.min) + ' to ' + fmt(g.max) + '</small>' : '') + '</th>';
+            /* Safe range moved from a second header line into the tooltip: the
+               "23.00 TO 40.00" line crowded the header (cells still flag
+               out-of-range values). */
+            var rgTip = (g && g.min !== null && g.max !== null) ? ' title="' + esc(c.label + ' -- safe range ' + fmt(g.min) + ' to ' + fmt(g.max)) + '"' : '';
+            h += '<th scope="col" class="' + (c.derived ? 'dv' : '') + '"' + rgTip + '><div>' + esc(c.label) + '</div>' +
+                (c.sub ? '<small>' + esc(c.sub) + '</small>' : '') + '</th>';
         });
         h += '</tr></thead><tbody>';
         function assetRow(A, child) {
@@ -1643,9 +1671,13 @@
             if (H.filter === 'occ') return A.occ === true;
             return true;
         });
+        /* Group by what the asset carries: assets with readings (RDPMS, with or
+           without DataLogger) first, DataLogger-only assets after them, so the
+           two card shapes are not interleaved. Name / worst order inside a group. */
+        var grp = function (A) { return A.dlOnly ? 1 : 0; };
         shown.sort(H.sort === 'worst'
-            ? function (a, b) { return (b.sev - a.sev) || a.name.localeCompare(b.name, undefined, { numeric: true }); }
-            : function (a, b) { return a.name.localeCompare(b.name, undefined, { numeric: true }); });
+            ? function (a, b) { return (grp(a) - grp(b)) || (b.sev - a.sev) || a.name.localeCompare(b.name, undefined, { numeric: true }); }
+            : function (a, b) { return (grp(a) - grp(b)) || a.name.localeCompare(b.name, undefined, { numeric: true }); });
 
         /* cheap signature: only rebuild DOM when something visible changed */
         var sig = H.view + (H.ipsTab || '') + (H.ipsTableTab || '') + JSON.stringify(H.gopen) + H.sort + H.filter + q + JSON.stringify(H.trendKey) + JSON.stringify(H.circ) + JSON.stringify(H.circOff) + H.circAll +

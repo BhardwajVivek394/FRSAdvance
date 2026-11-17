@@ -79,32 +79,125 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     .ToList();
             }
 
+            // 616 parity: drop Distant Signal and add the Calling / Route / Shunt Signal cards
+            // (virtual ids -101/-102/-103) right after Main Signal.
+            ViewBag.FRSAssetType = Helper.SignalAspect.AddStaticAssetTypes(ViewBag.FRSAssetType as List<AssetType>);
+
             return View();
         }
 
+        public class AssetTypeCount
+        {
+            public int AssetTypeId { get; set; }
+            public int Count { get; set; }
+        }
+
+        // Ported from 616: the raw GetAssetCount numbers are recounted from the RDPMS health
+        // data — Point Machine = 2 per full / 1 per half machine, Main Signal = signals that
+        // have a Main aspect, plus virtual Calling / Route / Shunt Signal rows, IPS / ELD = sites.
         public JsonResult GetAssetList(Domain.SearchCriteria mSearchCriteria)
         {
             var data = new object();
             try
             {
+                if (mSearchCriteria == null) mSearchCriteria = new Domain.SearchCriteria();
                 mSearchCriteria.UserId = ClsHttpContent.LoginUser.Id;
                 mSearchCriteria.RoleId = ClsHttpContent.LoginUser.RoleId;
 
                 if (ClsHttpContent.LoginUser.IsSiteKeeping)
                     mSearchCriteria.RoleId = (int)E7FRSAdvance.Utility.Utility.Role.Admin;
 
-                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                // Cached API call (RailwayBordDashbord/GetAssetCount) — 45 s per user + role + filter
+                string jsonString = GetAssetCountJson(mSearchCriteria);
+
+                if (!string.IsNullOrWhiteSpace(jsonString))
                 {
-                    var jsonStr = JsonConvert.SerializeObject(mSearchCriteria);
-                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
-                    var response = hcf.client.PostAsync(String.Format("RailwayBordDashbord/GetAssetCount"), str).Result;
-                    if (response.StatusCode == HttpStatusCode.OK)
+                    List<AssetTypeCount> items = JsonConvert.DeserializeObject<List<AssetTypeCount>>(jsonString)
+                                                 ?? new List<AssetTypeCount>();
+                    var extraItems = new List<AssetTypeCount>();
+
+                    var health = BindDashboardHealthData(mSearchCriteria);
+
+                    if (health != null && health.mAssets != null && health.mAssetInfos != null && health.mAssetInfos.Count > 0)
                     {
-                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        int mainType = (int)E7FRSAdvance.Utility.Utility.AttributeType.Main;
+                        int routeType = (int)E7FRSAdvance.Utility.Utility.AttributeType.Route;
+                        int callingType = (int)E7FRSAdvance.Utility.Utility.AttributeType.Calling;
+                        int shuntType = (int)E7FRSAdvance.Utility.Utility.AttributeType.Shunt;
 
-                        data = new { Status = "success", Record = jsonString };
+                        var infosByAsset = health.mAssetInfos
+                            .Where(x => x != null && x.AttributeType != null)
+                            .GroupBy(x => x.AssetId)
+                            .ToDictionary(g => g.Key, g => g.ToList());
 
+                        foreach (var item in items)
+                        {
+                            if (item.AssetTypeId == Helper.SignalAspect.SignalAssetTypeId)
+                            {
+                                item.Count = 0;
+                                int routCount = 0, callCount = 0, shuntCount = 0;
+
+                                foreach (var asset in health.mAssets.Where(x => x != null && x.AssetTypeId == item.AssetTypeId))
+                                {
+                                    List<AssetInfo> rows;
+                                    if (!infosByAsset.TryGetValue(asset.AssetId, out rows)) continue;
+
+                                    // Main
+                                    if (rows.Any(x => x.AttributeType == mainType))
+                                        item.Count++;
+
+                                    // Route — each AUG..FUG aspect on this signal counts once
+                                    var routeNames = rows
+                                        .Where(x => x.AttributeType == routeType && x.AttributeName != null)
+                                        .Select(x => x.AttributeName)
+                                        .ToList();
+                                    foreach (var code in Helper.SignalAspect.RouteCodes)
+                                    {
+                                        if (routeNames.Any(n => n.IndexOf(code, StringComparison.OrdinalIgnoreCase) >= 0))
+                                            routCount++;
+                                    }
+
+                                    // Calling
+                                    if (rows.Any(x => x.AttributeType == callingType))
+                                        callCount++;
+
+                                    // Shunt
+                                    if (rows.Any(x => x.AttributeType == shuntType))
+                                        shuntCount++;
+                                }
+
+                                if (callCount > 0) extraItems.Add(new AssetTypeCount { AssetTypeId = Helper.SignalAspect.Calling, Count = callCount });
+                                if (routCount > 0) extraItems.Add(new AssetTypeCount { AssetTypeId = Helper.SignalAspect.Route, Count = routCount });
+                                if (shuntCount > 0) extraItems.Add(new AssetTypeCount { AssetTypeId = Helper.SignalAspect.Shunt, Count = shuntCount });
+                            }
+                            else if (item.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.IPS
+                                  || item.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.ELD)
+                            {
+                                // One IPS / ELD per station
+                                item.Count = health.mAssets
+                                    .Where(x => x != null)
+                                    .Select(x => x.SiteId)
+                                    .Distinct()
+                                    .Count();
+                            }
+                            else if (item.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)
+                            {
+                                // Half point machine = 1, full point machine = 2
+                                item.Count = 0;
+                                foreach (var asset in health.mAssets.Where(x => x != null && x.AssetTypeId == item.AssetTypeId))
+                                {
+                                    if (asset.IsHalfPointMachine != null && asset.IsHalfPointMachine.Value)
+                                        item.Count++;
+                                    else
+                                        item.Count += 2;
+                                }
+                            }
+                        }
+
+                        items.AddRange(extraItems);
                     }
+
+                    data = new { Status = "success", Record = JsonConvert.SerializeObject(items) };
                 }
             }
             catch (Exception)
@@ -113,6 +206,172 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             var jsonResult = Json(data, JsonRequestBehavior.AllowGet);
             jsonResult.MaxJsonLength = int.MaxValue;
             return jsonResult;
+        }
+
+        private const int AssetCountCacheSeconds = 45;
+
+        /// <summary>
+        /// Raw JSON from RailwayBordDashbord/GetAssetCount, cached per user + role + filter.
+        /// The string is cached (not the list) so callers can freely modify the deserialized list.
+        /// </summary>
+        private string GetAssetCountJson(Domain.SearchCriteria searchCriteria)
+        {
+            // Starts with "FRS25_" so FilterCacheHelper's prefix sweep can see it
+            string cacheKey = "FRS25_AssetCount_"
+                + searchCriteria.RoleId
+                + "_" + (searchCriteria.ZoneIds != null ? string.Join(",", searchCriteria.ZoneIds) : "")
+                + "_" + (searchCriteria.DivisionIds != null ? string.Join(",", searchCriteria.DivisionIds) : "")
+                + "_" + (searchCriteria.SiteIds != null ? string.Join(",", searchCriteria.SiteIds) : "")
+                + "_" + ClsHttpContent.LoginUser.Id;
+
+            string cached = MemoryCache.Default.Get(cacheKey) as string;
+            if (cached != null)
+                return cached;
+
+            string jsonString = null;
+            using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+            {
+                var jsonStr = JsonConvert.SerializeObject(searchCriteria);
+                StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                var response = hcf.client.PostAsync("RailwayBordDashbord/GetAssetCount", str).Result;
+                if (response.StatusCode == HttpStatusCode.OK)
+                    jsonString = response.Content.ReadAsStringAsync().Result;
+            }
+
+            if (!string.IsNullOrWhiteSpace(jsonString) && jsonString.Trim() != "[]" && jsonString.Trim() != "null")
+                MemoryCache.Default.Set(cacheKey, jsonString, DateTimeOffset.UtcNow.AddSeconds(AssetCountCacheSeconds));
+
+            return jsonString;
+        }
+
+        // ── Dashboard health data (616's AssetInfo/GetRDPMSHealthLive feed) ──────────────
+        // Separate from GetRDPMSHealthLive below (Asset/GetRDPMSHealthLiveDetails, used by
+        // GetIOTCount) because the signal-aspect and half-point-machine counts need the
+        // AttributeType / IsHalfPointMachine fields of the AssetInfo feed, for every role.
+        private const int HealthCacheMinutes = 10;
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _healthLocks =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, object>();
+
+        private RDPMSHealthLiveLister GetAllDashboardHealthCached()
+        {
+            string cacheKey = "FRS25_RDPMSHealthAll_" + ClsHttpContent.LoginUser.RoleId
+                              + "_" + ClsHttpContent.LoginUser.Id;
+
+            RDPMSHealthLiveLister cached = MemoryCache.Default.Get(cacheKey) as RDPMSHealthLiveLister;
+            if (cached != null)
+                return cached;
+
+            object lockObj = _healthLocks.GetOrAdd(cacheKey, k => new object());
+            lock (lockObj)
+            {
+                cached = MemoryCache.Default.Get(cacheKey) as RDPMSHealthLiveLister;
+                if (cached != null)
+                    return cached;
+
+                RDPMSHealthLiveLister data = FetchDashboardHealth();
+                if (data != null && data.mAssets != null && data.mAssets.Count > 0)
+                    MemoryCache.Default.Set(cacheKey, data, DateTimeOffset.UtcNow.AddMinutes(HealthCacheMinutes));
+                return data;
+            }
+        }
+
+        private RDPMSHealthLiveLister FetchDashboardHealth()
+        {
+            var lister = new RDPMSHealthLiveLister();
+            try
+            {
+                lister.Pager.Take = -1;
+                lister.SearchCriteria.RoleId = ClsHttpContent.LoginUser.RoleId;
+                lister.SearchCriteria.UserId = ClsHttpContent.LoginUser.Id;
+
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(lister);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("AssetInfo/GetRDPMSHealthLive", str).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        lister = JsonConvert.DeserializeObject<RDPMSHealthLiveLister>(jsonString) ?? new RDPMSHealthLiveLister();
+                        RemoveExcludedAssetTypes(lister);
+                        if (lister.mAssetInfos != null)
+                        {
+                            foreach (var assetInfo in lister.mAssetInfos)
+                            {
+                                if (assetInfo != null && assetInfo.AttributeAliasName.IsNotNullOrEmpty())
+                                    assetInfo.AttributeName = assetInfo.AttributeAliasName;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+            }
+            return lister;
+        }
+
+        /// <summary>Health data filtered by Zone / Division / Site from the cached all-sites copy.</summary>
+        private RDPMSHealthLiveLister BindDashboardHealthData(Domain.SearchCriteria searchCriteria)
+        {
+            RDPMSHealthLiveLister all = GetAllDashboardHealthCached();
+            if (all == null || all.mAssets == null)
+                return all ?? new RDPMSHealthLiveLister();
+
+            HashSet<int> siteIds = ResolveSiteIds(searchCriteria);
+            if (siteIds == null)
+                return all;
+
+            var assets = all.mAssets.Where(x => x != null && siteIds.Contains(x.SiteId)).ToList();
+            var assetIds = new HashSet<int>(assets.Select(x => x.AssetId));
+
+            var result = new RDPMSHealthLiveLister();
+            result.mAssets = assets;
+            result.mAssetInfos = all.mAssetInfos != null
+                ? all.mAssetInfos.Where(x => x != null && assetIds.Contains(x.AssetId)).ToList()
+                : new List<AssetInfo>();
+            return result;
+        }
+
+        /// <summary>Filter → SiteIds. Priority: Site → Division → Zone. Null when nothing is selected.</summary>
+        private HashSet<int> ResolveSiteIds(Domain.SearchCriteria sc)
+        {
+            if (sc == null)
+                return null;
+
+            if (sc.SiteIds != null && sc.SiteIds.Count > 0)
+                return new HashSet<int>(sc.SiteIds);
+
+            if (sc.DivisionIds != null && sc.DivisionIds.Count > 0)
+            {
+                var set = new HashSet<int>();
+                foreach (var divisionId in sc.DivisionIds)
+                {
+                    var sites = Helper.FilterCacheHelper.GetSitesByDivisionId(_siteService, divisionId);
+                    if (sites == null) continue;
+                    foreach (var s in sites) set.Add(s.Id);
+                }
+                return set;
+            }
+
+            if (sc.ZoneIds != null && sc.ZoneIds.Count > 0)
+            {
+                var set = new HashSet<int>();
+                foreach (var zoneId in sc.ZoneIds)
+                {
+                    var divisions = Helper.FilterCacheHelper.GetDivisionsByZoneId(_divisionService, zoneId);
+                    if (divisions == null) continue;
+                    foreach (var d in divisions)
+                    {
+                        var sites = Helper.FilterCacheHelper.GetSitesByDivisionId(_siteService, d.Id);
+                        if (sites == null) continue;
+                        foreach (var s in sites) set.Add(s.Id);
+                    }
+                }
+                return set;
+            }
+
+            return null;
         }
 
         public JsonResult GetWithOutAcknowledgementAlert(Domain.FRSAlertLister mFRSAlertLister)
@@ -128,6 +387,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts.Count > 0)
             {
+                // 616 parity: Signal alerts move to the Calling / Route / Shunt card by CauseCode
+                foreach (var fRSAlert in mFRSAlertLister.mFRSAlerts)
+                    fRSAlert.AssetTypeId = Helper.SignalAspect.ResolveAlertAssetTypeId(fRSAlert.AssetTypeId, fRSAlert.CauseCode);
+
                 // One row per asset AND alert type, so an asset with both a Failure and a
                 // Predictive alert keeps both (grouping by AssetId alone dropped the Predictive one).
                 mFRSAlerts = mFRSAlertLister.mFRSAlerts.GroupBy(x => new { x.AssetId, x.AlertTypeId }).Select(g => g.First()).ToList();
@@ -717,7 +980,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         public JsonResult GetAlertDetails(Domain.FRSAlertLister mFRSAlertLister)
         {
             var mFRSAlerts = new List<Domain.FRSAlert>();
+            int requestedTypeId = mFRSAlertLister.SearchCriteria.AssetTypeId;
             mFRSAlertLister.SearchCriteria.AlertStatus = (int)E7FRSAdvance.Utility.Utility.AlertStatus.Active;
+            // Calling / Route / Shunt cards (virtual ids) query the API as SIGNAL
+            mFRSAlertLister.SearchCriteria.AssetTypeId = Helper.SignalAspect.ToApiAssetTypeId(requestedTypeId);
             // Same source as the cards (and 616), so the popup lists what the card counts
             if (mFRSAlertLister.Pager == null) mFRSAlertLister.Pager = new Domain.Pager();
             mFRSAlertLister.Pager.Take = -1;
@@ -725,6 +991,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
             if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts.Count > 0)
             {
+                foreach (var fRSAlert in mFRSAlertLister.mFRSAlerts)
+                    fRSAlert.AssetTypeId = Helper.SignalAspect.ResolveAlertAssetTypeId(fRSAlert.AssetTypeId, fRSAlert.CauseCode);
+
+                if (requestedTypeId != 0)
+                    mFRSAlertLister.mFRSAlerts = mFRSAlertLister.mFRSAlerts.Where(x => x.AssetTypeId == requestedTypeId).ToList();
+
                 // One row per asset AND alert type, so the popup lists both the Failure and the
                 // Predictive alert of an asset that has both (grouping by AssetId alone hid the Predictive one).
                 mFRSAlerts = mFRSAlertLister.mFRSAlerts.GroupBy(x => new { x.AssetId, x.AlertTypeId }).Select(g => g.First()).ToList();

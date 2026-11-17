@@ -117,11 +117,12 @@ namespace E7.AiCore.Judge
                     continue;
                 }
 
-                long? tagId = await ResolveTagAsync(card.SiteId, card.AssetId, card.AssetName, a.Attid, role, log, ct).ConfigureAwait(false);
+                long? tagId = await ResolveTagAsync(card.SiteId, card.AssetId, card.AssetName, a.Attid, role, log, ct, a.Name).ConfigureAwait(false);
                 b.TagPresent[a.Attid] = tagId != null;
                 if (tagId == null)
                 {
                     log.Add("evidence: attid " + a.Attid + " '" + a.Name + "' not on asset → SKIPPED");
+                    b.NotFound.Add(a.Attid + " '" + a.Name + "'");
                     continue;
                 }
 
@@ -264,6 +265,34 @@ namespace E7.AiCore.Judge
         }
 
         /// <summary>
+        /// 1.0.208.0 -- the value in effect at one instant, for the card-data validation
+        /// (JudgeCardDataCheck). knownTag != 0 skips the tag search (already resolved by the
+        /// rule fetch). Returns the last sample recorded at or before t, or null.
+        /// </summary>
+        internal async Task<JudgeSample?> ValueAtAsync(string label, int siteId, int assetId, string assetName, string attrName, int attid, char role, DateTimeOffset t, long knownTag, List<string> log, CancellationToken ct)
+        {
+            long tagId = knownTag;
+            if (tagId == 0)
+            {
+                long? resolved = await ResolveTagAsync(siteId, assetId, assetName, attid, role, log, ct, attrName).ConfigureAwait(false);
+                if (resolved == null)
+                {
+                    return null;
+                }
+
+                tagId = resolved.Value;
+            }
+
+            List<JudgeSample> rows = await HistoryAsync(label, tagId, t.AddHours(-cfg.LookbackHours), t, ct, true, 1, log).ConfigureAwait(false);
+            if (rows == null || rows.Count == 0)
+            {
+                return null;
+            }
+
+            return rows.OrderByDescending(x => x.Ts).First();
+        }
+
+        /// <summary>
         /// 2.3 -- resolve one attid to its historian TagID.
         ///
         /// THE FIX. search_tags does NOT filter on AttributeId or RoleType: the MCP server
@@ -279,7 +308,7 @@ namespace E7.AiCore.Judge
         /// AttributeName must be the REAL tag Title ("Ir mA"), never the card's label
         /// ("ITC RELAY END(mA)") -- an ILIKE on the label filters the correct tag out.
         /// </summary>
-        private async Task<long?> ResolveTagAsync(int siteId, int assetId, string assetName, int attid, char role, List<string> log, CancellationToken ct)
+        private async Task<long?> ResolveTagAsync(int siteId, int assetId, string assetName, int attid, char role, List<string> log, CancellationToken ct, string attrName = null, string forceTitle = null)
         {
             // 2.3 -- a derived attribute has no sensor of its own; never ask the historian for one.
             if (JudgeAttrFacts.IsDerived(attid))
@@ -292,6 +321,26 @@ namespace E7.AiCore.Judge
             JObject args = new JObject();
             args[cfg.ArgSiteId] = siteId;
             args[cfg.ArgAssetId] = assetId;
+
+            // 1.0.208.0 -- THE SERVER DOES FILTER ON THE ATTRIBUTE ID. MCPHelper.Discovery.cs
+            // (v1.5.55.1, the deployed version) reads AssetAttributeId as an exact filter; the old
+            // comment below ("search_tags does NOT filter on AttributeId") described pre-1.5.55
+            // behaviour. Without this filter the server returned its DEFAULT 3 ROWS, alphabetical
+            // ("01656-PM-01001-Array", ...), and PPTA's point relays -- which ARE mapped, attid 283
+            // = 'Combined-RWCR' (confirmed by SQL on the Tags table, 14.11.2026) -- were reported
+            // "not on asset". 14 of 26 alerts in the 10-12 Nov log fell to NO_DATA this way.
+            if (attid > 0)
+            {
+                args["AssetAttributeId"] = attid;
+                args["Limit"] = 10;
+
+                // Three filters go to the server: AssetId + AssetAttributeId + RoleType.
+                // DataLogger = exactly 'd'. RDPMS = anything that is NOT 'd'; the server's
+                // RoleType filter is exact-match, so the RDPMS role char from the settings
+                // ('c') is sent, and the client-side pick below still treats ANY non-'d'
+                // row as RDPMS in case the server answer carries another role.
+                args["RoleType"] = role == cfg.RoleDataLogger[0] ? cfg.RoleDataLogger : cfg.RoleRdpms;
+            }
 
             // the filters the server actually honours
             if (!string.IsNullOrWhiteSpace(assetName))
@@ -308,6 +357,28 @@ namespace E7.AiCore.Judge
             if (title == null)
             {
                 JudgeAttrFacts.TagTitle.TryGetValue(attid, out title);
+            }
+
+            // 1.0.208.0 -- an attid with no known tag title (every point and signal relay: RWCR,
+            // RWKR, NWCR, NWKR, UECR ...) used to go out with NO name filter, and the server
+            // answered with 3 unrelated rows (PPTA, 10-12 Nov 2026: 14 of 26 alerts ended NO_DATA
+            // this way). Now the catalogue name is tried as the filter first; when that finds
+            // nothing, the old unfiltered call still runs, so the result is never worse than before.
+            if (forceTitle != null)
+            {
+                title = forceTitle;
+            }
+            else if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(attrName))
+            {
+                string guess = attrName.Trim();
+                log.Add("evidence: attid " + attid + " has no known tag title -- trying the catalogue name '" + guess + "' as AttributeName");
+                long? byName = await ResolveTagAsync(siteId, assetId, assetName, attid, role, log, ct, null, guess).ConfigureAwait(false);
+                if (byName != null)
+                {
+                    return byName;
+                }
+
+                log.Add("evidence: attid " + attid + " not found by name '" + guess + "' -- trying without a name filter");
             }
 
             if (!string.IsNullOrWhiteSpace(title))
@@ -398,6 +469,19 @@ namespace E7.AiCore.Judge
 
                     JToken dt = JudgeUtil.Prop(e, "DataType") ?? JudgeUtil.Prop(e, "dataType");
                     string type = dt != null ? dt.ToString().Trim().ToUpperInvariant() : null;
+
+                    // 1.0.208.0 -- search_tags answers with RoleType ('d' DataLogger, 'c' RDPMS,
+                    // 'p' PM operations), not DataType. Read it, so a relay that exists in BOTH
+                    // families (267 'Combined-NWKR' d AND 25 'A End - NWKR' c on PPTA 1656) resolves
+                    // to the family the check asked for instead of whichever row came first.
+                    JToken rtT = JudgeUtil.Prop(e, "RoleType") ?? JudgeUtil.Prop(e, "roleType");
+                    string rt = rtT != null ? rtT.ToString().Trim().ToLowerInvariant() : null;
+                    if (!string.IsNullOrEmpty(rt))
+                    {
+                        // 'd' = DataLogger; ANY other role ('c', ...) = RDPMS.
+                        type = rt == "d" ? "DATALOGGER" : "RDPMS";
+                    }
+
                     if (type == null || type == wantType)
                     {
                         log.Add("evidence: search_tags asset=" + assetId + " attid=" + attid + " role=" + role
@@ -428,7 +512,7 @@ namespace E7.AiCore.Judge
                 log.Add("evidence: search_tags asset=" + assetId + " attid=" + attid + " role=" + role
                     + " -> " + rows + " row(s), " + otherAsset + " for another asset, " + otherAttr
                     + " for another attribute -> no tag"
-                    + (narrowed ? "" : "  [no AttributeName filter sent: attid " + attid
+                    + (narrowed ? "  [AttributeName='" + title + "' sent, AssetName='" + (assetName ?? "") + "']" : "  [no AttributeName filter sent: attid " + attid
                         + " has no JudgeAttrFacts.TagTitle entry, so this page is whatever the server chose]")
                     + (present.Count > 0 ? "; this asset reported attids " + string.Join(", ", present.ToArray()) : ""));
                 return null;

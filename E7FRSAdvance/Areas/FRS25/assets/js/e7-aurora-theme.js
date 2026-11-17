@@ -31,12 +31,16 @@ var E7Theme = (function () {
 
     // ── Detect effective theme ──────────────────────────────────
     function getSystemTheme() {
-        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
-            ? 'dark' : 'light';
+        // DARK-THEME-DISABLED (re-enable: uncomment the 2 lines below and delete the "return 'light'" line)
+        // return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        //     ? 'dark' : 'light';
+        return 'light'; // DARK-THEME-DISABLED (re-enable: delete this line)
     }
 
     function getSavedTheme() {
-        try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
+        // DARK-THEME-DISABLED (re-enable: uncomment the line below and delete the "return 'light'" line)
+        // try { return localStorage.getItem(STORAGE_KEY); } catch (e) { return null; }
+        return 'light'; // DARK-THEME-DISABLED (re-enable: delete this line)
     }
 
     function saveTheme(theme) {
@@ -53,6 +57,9 @@ var E7Theme = (function () {
 
     // ── Apply theme to a wrapper ────────────────────────────────
     function applyTheme(wrapper, theme, skipSave) {
+        // DARK-THEME-DISABLED (re-enable: delete the 2 lines below) — always light, never overwrite the saved choice
+        theme = 'light';
+        skipSave = true;
         wrapper.setAttribute('data-theme', theme);
         if (!skipSave) saveTheme(theme);   // page load must not lock in the OS default
         // update any toggle buttons inside this wrapper
@@ -162,20 +169,21 @@ var E7Theme = (function () {
             });
         });
 
+        // DARK-THEME-DISABLED (re-enable: uncomment the OS-theme watcher below)
         // Watch system theme changes
-        if (window.matchMedia) {
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
-                if (!getSavedTheme()) {
-                    // No manual override — follow the system
-                    var theme = e.matches ? 'dark' : 'light';
-                    document.querySelectorAll('.e7-aurora').forEach(function (w) {
-                        if (!w.getAttribute('data-theme')) {
-                            applyTheme(w, theme);
-                        }
-                    });
-                }
-            });
-        }
+        // if (window.matchMedia) {
+        //     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (e) {
+        //         if (!getSavedTheme()) {
+        //             // No manual override — follow the system
+        //             var theme = e.matches ? 'dark' : 'light';
+        //             document.querySelectorAll('.e7-aurora').forEach(function (w) {
+        //                 if (!w.getAttribute('data-theme')) {
+        //                     applyTheme(w, theme);
+        //                 }
+        //             });
+        //         }
+        //     });
+        // }
     }
 
     // ── Toast ──────────────────────────────────────────────────

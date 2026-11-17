@@ -110,9 +110,13 @@ namespace E7.AiCore.Judge
         public string OutputMode = "json";
         public int BaselineHours = 24;
         public int InstantLookbackSec = 60;
-        public int LookbackHours = 48;
+        public int LookbackHours = 168;   // 1.0.208.0: was 48. A value that last changed days ago is still the value now.
         public int MaxFrameHours = 6;
         public int AdjacencyWindowSec = 120;
+
+        /// <summary>1.0.208.0 -- a point operation relay (NWCR/RWCR/NWKR/RWKR) must be in its required
+        /// state at some moment within this many seconds before or after the alert time.</summary>
+        public int PointOpWindowSec = 15;
         public string RoleDataLogger = "d";
         public string RoleRdpms = "c";
         public string RoleIps = "c";
@@ -157,9 +161,22 @@ namespace E7.AiCore.Judge
         public int TrendBuckets = 6;
 
         // ---- Flow ----
-        public string CardMismatch = "SUPPRESSED";
+        public string CardMismatch = "VERIFY";   // 1.0.208.0: was "SUPPRESSED"
+
+        /// <summary>1.0.208.0 -- Flow.CardMismatch = "VERIFY": a card that differs from the catalogue
+        /// does not stop the judgement. The catalogue rule is checked against the data of the alert
+        /// time first; the card is the second part. PASS / SUPPRESSED keep the old stop-here behaviour.</summary>
+        public bool CardMismatchVerifies
+        {
+            get { return string.Equals((CardMismatch ?? "").Trim(), "VERIFY", StringComparison.OrdinalIgnoreCase); }
+        }
         public string NoData = "SUPPRESSED";
         public bool AiIsFinal = true;
+
+        /// <summary>1.0.208.0 -- the alert-time data check is ONE step and comes third: maintenance,
+        /// card, DATA, then rain / past cases / prior discard, then the AI. false = the old order,
+        /// where past cases and a prior discard decided without looking at the data.</summary>
+        public bool DataCheckFirst = true;
         public string AiUnavailable = "SUPPRESSED";
 
         /// <summary>
@@ -265,6 +282,10 @@ namespace E7.AiCore.Judge
 
         // ---- Live (new in 2.0: the card-condition re-check against live data) ----
         public bool LiveEnabled = true;
+
+        /// <summary>1.0.208.0 -- true: the card's own conditions are checked against the data only when
+        /// the cause has NO catalogue rule. With a rule, the rule is the one data check.</summary>
+        public bool LiveOnlyWhenNoRule = true;
 
         /// <summary>card = card.meta.checkWindow; catalog = the cause's SustainSec; fixed = LiveWindowSec. Falls back in that order.</summary>
         public string LiveWindowSource = "card";
@@ -375,7 +396,10 @@ namespace E7.AiCore.Judge
         // ---- PriorDiscard (new in 2.1: what a reviewer already decided about this asset + cause) ----
 
         /// <summary>false = never look; the judge behaves exactly as 2.0 did.</summary>
-        public bool PriorDiscardEnabled = true;
+        // 1.0.208.0 -- off: the asset+cause repeat check is covered by the similar-cases
+        // check (point 5), which also compares the data condition. Two checks on past
+        // decisions gave two different answers for the same history.
+        public bool PriorDiscardEnabled = false;
 
         /// <summary>Name of the connectionStrings entry that reaches dbo.PendingAlertApproval.</summary>
         public string PriorDiscardConnectionName = "E7MRIV2DB_SQL";
@@ -398,10 +422,13 @@ namespace E7.AiCore.Judge
         // ---- Learned (new in 1.0.202.0: maintenance window + similar past cases; see JudgeLearned) ----
 
         /// <summary>off | report | enforce. report = looked at and written to the verdict, changes nothing.</summary>
-        public string LearnedMaintenanceMode = "report";
+        public string LearnedMaintenanceMode = "enforce";   // 1.0.208.0: was "report"
 
         /// <summary>off | report | enforce, for the similar-case check against judge-cases.json.</summary>
-        public string LearnedCaseMode = "report";
+        public string LearnedCaseMode = "enforce";   // 1.0.208.0: was "report"
+
+        /// <summary>1.0.208.0 -- a past case farther than this is not the same condition and is ignored. 0 = no limit.</summary>
+        public double LearnedMaxDistance = 0.5;
 
         /// <summary>Blank = judge-cases.json beside judge-settings.json. A relative path is taken from that folder.</summary>
         public string LearnedCasesFile = "";
@@ -420,6 +447,29 @@ namespace E7.AiCore.Judge
 
         /// <summary>SQL command timeout of the maintenance lookup.</summary>
         public int LearnedTimeoutSec = 5;
+
+        // ---- Rain rule (1.0.208.0; see JudgeWeather) ----
+
+        /// <summary>off | report | enforce. enforce = rain at the site passes the RainCauses alerts.</summary>
+        public string LearnedRainMode = "enforce";
+
+        /// <summary>The causes rain explains.</summary>
+        public List<string> LearnedRainCauses = new List<string> { "TC TR VOLT LOW", "TC BALST/SLPR RES LOW" };
+
+        /// <summary>Hours before the alert time over which rainfall is added up.</summary>
+        public int LearnedRainLookbackHours = 6;
+
+        /// <summary>Rainfall total (mm) from which it counts as rain.</summary>
+        public double LearnedRainMinMm = 1.0;
+
+        /// <summary>Time limit of the weather call.</summary>
+        public int LearnedRainTimeoutSec = 5;
+
+        /// <summary>Data server tool whose answer carries the site latitude / longitude.</summary>
+        public string LearnedRainGeoTool = "get_attribute_range_history";
+
+        /// <summary>Optional fixed site positions: "siteId" -> "lat,lon". Used before the data server.</summary>
+        public Dictionary<string, string> LearnedRainSites = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         // ---- Log (new in 1.0.203.0: what the Judge log carries and where; see JudgeBlockLog) ----
 
@@ -594,6 +644,7 @@ namespace E7.AiCore.Judge
             s.LookbackHours = Int(h, "LookbackHours", s.LookbackHours);
             s.MaxFrameHours = Int(h, "MaxFrameHours", s.MaxFrameHours);
             s.AdjacencyWindowSec = Int(h, "AdjacencyWindowSec", s.AdjacencyWindowSec);
+            s.PointOpWindowSec = Int(h, "PointOpWindowSec", s.PointOpWindowSec);
             s.RoleDataLogger = Str(h, "RoleDataLogger", s.RoleDataLogger);
             s.RoleRdpms = Str(h, "RoleRdpms", s.RoleRdpms);
             s.RoleIps = Str(h, "RoleIps", s.RoleIps);
@@ -613,6 +664,7 @@ namespace E7.AiCore.Judge
             s.CardMismatch = Str(flow, "CardMismatch", s.CardMismatch);
             s.NoData = Str(flow, "NoData", s.NoData);
             s.AiIsFinal = Bool(flow, "AiIsFinal", s.AiIsFinal);
+            s.DataCheckFirst = Bool(flow, "DataCheckFirst", s.DataCheckFirst);
             s.AiUnavailable = Str(flow, "AiUnavailable", s.AiUnavailable);
             s.AiUnavailableVerified = Str(flow, "AiUnavailableVerified", s.AiUnavailableVerified);   // 2.9
             s.AiPassMinConfidence = Int(flow, "AiPassMinConfidence", s.AiPassMinConfidence);
@@ -633,6 +685,7 @@ namespace E7.AiCore.Judge
 
             JObject live = root["Live"] as JObject;
             s.LiveEnabled = Bool(live, "Enabled", s.LiveEnabled);
+            s.LiveOnlyWhenNoRule = Bool(live, "OnlyWhenNoRule", s.LiveOnlyWhenNoRule);
             s.LiveWindowSource = Str(live, "WindowSource", s.LiveWindowSource);
             s.LiveWindowSec = Int(live, "WindowSec", s.LiveWindowSec);
             s.LiveMaxWindowSec = Int(live, "MaxWindowSec", s.LiveMaxWindowSec);
@@ -685,6 +738,48 @@ namespace E7.AiCore.Judge
             s.LearnedK = Int(learned, "K", s.LearnedK);
             s.LearnedAssetWeight = Int(learned, "AssetWeight", s.LearnedAssetWeight);
             s.LearnedMinCases = Int(learned, "MinCases", s.LearnedMinCases);
+            s.LearnedRainMode = Str(learned, "RainMode", s.LearnedRainMode);
+            s.LearnedRainLookbackHours = Int(learned, "RainLookbackHours", s.LearnedRainLookbackHours);
+            s.LearnedRainTimeoutSec = Int(learned, "RainTimeoutSec", s.LearnedRainTimeoutSec);
+            s.LearnedRainGeoTool = Str(learned, "RainGeoTool", s.LearnedRainGeoTool);
+            if (learned != null)
+            {
+                double rmm;
+                if (learned["RainMinMm"] != null
+                    && double.TryParse(learned["RainMinMm"].ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out rmm))
+                {
+                    s.LearnedRainMinMm = rmm;
+                }
+
+                JArray rc = learned["RainCauses"] as JArray;
+                if (rc != null)
+                {
+                    s.LearnedRainCauses = new List<string>();
+                    foreach (JToken t in rc)
+                    {
+                        if (t != null && !string.IsNullOrWhiteSpace(t.ToString()))
+                        {
+                            s.LearnedRainCauses.Add(t.ToString().Trim());
+                        }
+                    }
+                }
+
+                JObject rs = learned["RainSites"] as JObject;
+                if (rs != null)
+                {
+                    foreach (JProperty p in rs.Properties())
+                    {
+                        s.LearnedRainSites[p.Name] = p.Value != null ? p.Value.ToString() : "";
+                    }
+                }
+            }
+
+            double md;
+            if (learned != null && learned["MaxDistance"] != null
+                && double.TryParse(learned["MaxDistance"].ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out md))
+            {
+                s.LearnedMaxDistance = md;
+            }
             s.LearnedMaxFileAgeHours = Int(learned, "MaxFileAgeHours", s.LearnedMaxFileAgeHours);
             s.LearnedTimeoutSec = Int(learned, "TimeoutSec", s.LearnedTimeoutSec);
 

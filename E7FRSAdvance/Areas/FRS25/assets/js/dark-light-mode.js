@@ -18,6 +18,9 @@
 
     /* ── Apply theme to all host elements ── */
     function applyTheme(theme, skipPersist) {
+        // DARK-THEME-DISABLED (re-enable: delete the 2 lines below) — always light, never overwrite the saved choice
+        theme = 'light';
+        skipPersist = true;
         // 1. body — used by aurora-bridge.css selectors
         document.body.setAttribute('data-aurora', theme);
         //    legacy style.css components are scoped under body.dark-mode
@@ -59,8 +62,10 @@
     /* ── Read saved or default theme ── */
     function getSavedTheme() {
         // No saved choice → the OS scheme (same rule as the <head> flash-prevention script)
-        var fallback = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
-        try { return localStorage.getItem(STORAGE_KEY) || fallback; } catch (e) { return fallback; }
+        // DARK-THEME-DISABLED (re-enable: uncomment the 2 lines below and delete the "return 'light'" line)
+        // var fallback = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+        // try { return localStorage.getItem(STORAGE_KEY) || fallback; } catch (e) { return fallback; }
+        return 'light'; // DARK-THEME-DISABLED (re-enable: delete this line)
     }
 
     /* ── Initial apply (runs immediately, before DOM ready) ── */
@@ -68,13 +73,14 @@
 
     /* ── Wire click handler after DOM is ready ── */
     document.addEventListener('DOMContentLoaded', function () {
-        var btn = document.getElementById('toggle-btn');
-        if (btn) {
-            btn.addEventListener('click', function () {
-                var current = document.body.getAttribute('data-aurora') || 'dark';
-                applyTheme(current === 'dark' ? 'light' : 'dark');
-            });
-        }
+        // DARK-THEME-DISABLED (re-enable: uncomment the toggle click handler below)
+        // var btn = document.getElementById('toggle-btn');
+        // if (btn) {
+        //     btn.addEventListener('click', function () {
+        //         var current = document.body.getAttribute('data-aurora') || 'dark';
+        //         applyTheme(current === 'dark' ? 'light' : 'dark');
+        //     });
+        // }
 
         // Expose globally for pages that need to react
         window.applyAuroraTheme = applyTheme;

@@ -1,0 +1,109 @@
+@{
+    // Stand-alone live SIP for one site (TelemetryController.SipLive).
+    // Opened full screen inside an iframe by the favourite-site overlay
+    // (assets/js/e7-favourite-site.js); also works opened directly.
+    Layout = null;
+    int siteId = ViewBag.SiteId ?? 0;
+    string siteName = ViewBag.SiteName ?? "";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SIP · @siteName</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script>
+        /* Same theme as the app (key written by dark-light-mode.js). */
+        (function () {
+            var t;
+            /* DARK-THEME-DISABLED (re-enable: uncomment the 2 lines below and delete the "t = 'light'" line) */
+            // var osDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            // try { t = localStorage.getItem('e7-theme-pref') || (osDark ? 'dark' : 'light'); } catch (e) { t = osDark ? 'dark' : 'light'; }
+            t = 'light'; // DARK-THEME-DISABLED (re-enable: delete this line)
+            document.documentElement.setAttribute('data-aurora', t);
+            document.documentElement.setAttribute('data-theme', t);
+            /* Inside the favourite-site overlay: leave room for its Close button. */
+            if (window.parent && window.parent !== window) document.documentElement.classList.add('in-overlay');
+        })();
+
+        /* Live WebSocket of this site's own server (Server A/B), chosen on the server. */
+        var isSecure = window.location.protocol === 'https:';
+        var APP_CONFIG = {
+            WebSocketBaseUrl: '@System.Web.HttpUtility.JavaScriptStringEncode((string)ViewBag.WebSocketBaseUrl)',
+            WebSocketAuthToken: isSecure ? '@System.Web.HttpUtility.JavaScriptStringEncode((string)ViewBag.WebSocketAuthToken)' : null
+        };
+        if (isSecure && APP_CONFIG.WebSocketBaseUrl.indexOf('ws://') === 0)
+            APP_CONFIG.WebSocketBaseUrl = APP_CONFIG.WebSocketBaseUrl.replace('ws://', 'wss://');
+        window.APP_CONFIG = APP_CONFIG;
+    </script>
+    <style>
+        :root { --sip-bg: #08101c; --sip-head: rgba(15, 23, 42, .92); --sip-text: #e2e8f0; --sip-sub: #94a3b8; --sip-edge: rgba(148, 163, 184, .22); }
+        html[data-theme="light"] { --sip-bg: #f4f7fb; --sip-head: rgba(255, 255, 255, .94); --sip-text: #1d2433; --sip-sub: #5b6577; --sip-edge: rgba(29, 36, 51, .14); }
+        html, body { margin: 0; height: 100%; background: var(--sip-bg); color: var(--sip-text); font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+
+        /* The card is permanently "full screen": sip-telemetry.js then shows its zoom controls. */
+        #sipCardSection.sip-card.fullscreen { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--sip-bg); }
+        .sip-card-head { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--sip-head); border-bottom: 1px solid var(--sip-edge); }
+        html.in-overlay .sip-card-head { padding-right: 112px; }
+        .sip-title { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; min-width: 0; }
+        .sip-title .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sip-title i { color: #22d3ee; }
+        .sip-sub { margin-left: auto; font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--sip-edge); color: var(--sip-sub); white-space: nowrap; }
+        .sip-sub.ws-ok { color: #22c55e; border-color: rgba(34, 197, 94, .4); }
+        .sip-sub.ws-warn, .sip-sub.ws-replay { color: #f59e0b; border-color: rgba(245, 158, 11, .4); }
+        .sip-sub.ws-error { color: #ef4444; border-color: rgba(239, 68, 68, .4); }
+        .sip-canvas { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+        .sip-empty { display: flex; height: 100%; align-items: center; justify-content: center; flex-direction: column; gap: 10px; color: var(--sip-sub); font-size: 14px; text-align: center; padding: 24px; }
+        .sip-empty i { font-size: 28px; opacity: .5; }
+        #drpSite { display: none; }
+    </style>
+</head>
+<body id="e7Body" class="sip-live-standalone">
+    <section class="sip-card fullscreen" id="sipCardSection" aria-label="Station yard schematic">
+        <div class="sip-card-head">
+            <div class="sip-title">
+                <i class="fa-solid fa-diagram-project" aria-hidden="true"></i>
+                <span>SIP</span>
+                <span style="opacity:.5">·</span>
+                <span class="nm" id="sipSiteName">@(siteId > 0 ? siteName : "Site not available")</span>
+            </div>
+            <span class="sip-sub" id="wsStatus">@(siteId > 0 ? "Loading…" : "")</span>
+        </div>
+        <div class="sip-canvas" id="sipCanvas">
+            @if (siteId == 0)
+            {
+                <div class="sip-empty">
+                    <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+                    This site is not assigned to you, or the site list could not be loaded.
+                </div>
+            }
+        </div>
+    </section>
+
+    @* sip-telemetry.js "card mode" reads the site from #drpSite and connects ~700 ms after load. *@
+    <select id="drpSite" aria-hidden="true" tabindex="-1">
+        <option value="@siteId" selected>@siteName</option>
+    </select>
+
+    <script src="~/Areas/FRS25/assets/js/jquery.min.js"></script>
+    @if (siteId > 0)
+    {
+        <script src="~/Areas/FRS25/assets/sip/js/sip-library.js?v=618.21"></script>
+        <script src="~/Areas/FRS25/assets/sip/js/sip-asset-popup.js?v=618.25"></script>
+        <script src="~/Areas/FRS25/assets/sip/js/sip-telemetry.js?v=618.46"></script>
+    }
+    <script>
+        /* Esc: close an open asset popup first; otherwise ask the overlay (parent page) to close.
+           Capture phase, so this runs before the popup's own Esc handler. */
+        window.addEventListener('keydown', function (e) {
+            if (e.key !== 'Escape') return;
+            var pop = document.getElementById('sipAssetPopupOverlay');
+            if (pop && pop.classList.contains('sap-show')) return;
+            if (window.parent && window.parent !== window) {
+                try { window.parent.postMessage({ type: 'e7-sip-close' }, window.location.origin); } catch (err) { }
+            }
+        }, true);
+    </script>
+</body>
+</html>

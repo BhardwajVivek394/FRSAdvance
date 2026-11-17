@@ -948,11 +948,15 @@
            heads compact while allowing route/calling on any side. */
         /* (route / calling attachment is drawn before the head -- see step 1b) */
 
-        /* 5. Label — auto-positioned opposite the stand */
+        /* 5. Label — auto-positioned opposite the stand. Shown whenever the
+              asset name is set, like the shunt: a 'transparent' fill (the old
+              palette default) just means "use the default label colour". */
         const lblAttr = (cell.attrs && cell.attrs.label) || {};
         const lblText = lblAttr.text != null ? String(lblAttr.text) : '';
-        if (lblText && lblAttr.fill !== 'transparent') {
-            const lblFill = normaliseLabelFill(lblAttr.fill) || T.labelHot;
+        if (lblText) {
+            const lblFill = (lblAttr.fill && lblAttr.fill !== 'transparent')
+                ? (normaliseLabelFill(lblAttr.fill) || T.labelHot)
+                : T.labelHot;
             const lblSize = +lblAttr.fontSize || 12;
             const lp = labelSideFromStand(standPos, x, y, w, h, lblSize, sigProps.labelGap);
             /* v618.2: keep the name clear of route arms on the same side */
@@ -966,6 +970,11 @@
                     lp.ly = y + h + lblSize;
                 }
             }
+            /* canvas-coloured halo underneath (same as the shunt label) so the
+               name stays readable where it crosses the stand */
+            svg += `<text x="${lp.lx}" y="${lp.ly}" fill="${T.canvas}" stroke="${T.canvas}" stroke-width="3" ` +
+                `font-family="${T.labelFont}" font-size="${lblSize}" font-weight="700" ` +
+                `text-anchor="${lp.anchor}" dominant-baseline="central" paint-order="stroke">${escapeXml(lblText)}</text>`;
             svg += `<text x="${lp.lx}" y="${lp.ly}" fill="${lblFill}" ` +
                 `font-family="${T.labelFont}" font-size="${lblSize}" font-weight="700" ` +
                 `text-anchor="${lp.anchor}" dominant-baseline="central">${escapeXml(lblText)}</text>`;
@@ -1028,8 +1037,16 @@
         const live = cell.attrs ? cell.attrs.shuntLive : undefined;
         let v = variant;
         let blink = '';
+        // Static lamp combination: attrs.signal.shuntState (same codes as the
+        // Signal + Shunt "Shunt combination" — OFF / PROCEED / DIVERGE_RIGHT /
+        // DIVERGE_LEFT / TOP / BL / BR / ALL / custom "T,BL,BR"). Cells saved
+        // before this option existed have no shuntState and keep their variant.
+        const VARIANT_STATE = { 1: 'PROCEED', 2: 'DIVERGE_RIGHT', 3: 'OFF' };
+        const cfgState = cell.attrs && cell.attrs.signal && cell.attrs.signal.shuntState;
+        let dotSet = normaliseCombinedShuntState(cfgState || VARIANT_STATE[variant] || 'PROCEED');
         if (live !== undefined) {
             v = live === 'ON' ? 1 : live === 'OFF' ? 2 : 3;
+            dotSet = normaliseCombinedShuntState(VARIANT_STATE[v]);
         }
 
         const bw = Math.max(44, Math.min(w * 1.5, 64));
@@ -1040,6 +1057,12 @@
         const sy = bh / 23;
 
         let svg = `<g class="sip-asset sip-shunt" data-id="${cell.id}" data-type="${cell.type}">`;
+
+        // Mirror (attrs.signal.shuntMirror: H / V / HV) — flips only the shunt
+        // body + lamps about their own centre; stand and label are unchanged.
+        const mirrorTf = shuntMirrorTransform(cell.attrs && cell.attrs.signal && cell.attrs.signal.shuntMirror,
+            bx + bw / 2, by + bh / 2);
+        if (mirrorTf) svg += `<g class="sip-shunt-mirror" transform="${mirrorTf}">`;
 
         if (isLit(bodyFill)) {
             svg += `<ellipse cx="${bx + bw / 2}" cy="${by + bh / 2}" rx="${bw * 0.7}" ry="${bh * 0.7}" ` +
@@ -1069,9 +1092,9 @@
         // v3 = blank / off     → all dim
         const dotR = Math.max(3.8, 3.8 * Math.min(sx, sy));
         const dotPositions = [
-            { cx: bx + 9.5 * sx, cy: by + 7.5 * sy, lit: v === 2 },
-            { cx: bx + 7.5 * sx, cy: by + 17.5 * sy, lit: v === 1 },
-            { cx: bx + 17.5 * sx, cy: by + 17.5 * sy, lit: v === 1 || v === 2 }
+            { cx: bx + 9.5 * sx, cy: by + 7.5 * sy, lit: !!dotSet.top },
+            { cx: bx + 7.5 * sx, cy: by + 17.5 * sy, lit: !!dotSet.bl },
+            { cx: bx + 17.5 * sx, cy: by + 17.5 * sy, lit: !!dotSet.br }
         ];
         for (const d of dotPositions) {
             if (d.lit) {
@@ -1084,6 +1107,7 @@
                 svg += `<circle cx="${d.cx}" cy="${d.cy}" r="${dotR}" fill="${T.lampDark}" stroke="${T.lampRing}" stroke-width="0.8"/>`;
             }
         }
+        if (mirrorTf) svg += `</g>`;
 
         // Stand — drawn from cell.attrs.signal props, same model as the
         // composite signal so all stand-bearing elements behave consistently.
@@ -1136,6 +1160,23 @@
      *  Shunt variant is fixed at v1 (top dim, BL+BR lit) — same as the
      *  standalone Shaunt — because that's the most common combined pattern.
      * ------------------------------------------------------------------------ */
+    /* Shunt mirror: 'H' = flip left↔right, 'V' = flip top↔bottom, 'HV' = both.
+       Returns an SVG transform that flips about (cx, cy), or '' for none. */
+    function normaliseShuntMirror(value) {
+        const m = String(value || '').toUpperCase().replace(/[\s_\-+,]/g, '');
+        if (m === 'H' || m === 'HORIZONTAL' || m === 'X') return 'H';
+        if (m === 'V' || m === 'VERTICAL' || m === 'Y') return 'V';
+        if (m === 'HV' || m === 'VH' || m === 'BOTH' || m === 'XY') return 'HV';
+        return '';
+    }
+    function shuntMirrorTransform(value, cx, cy) {
+        const m = normaliseShuntMirror(value);
+        if (!m) return '';
+        const kx = m.indexOf('H') >= 0 ? -1 : 1;
+        const ky = m.indexOf('V') >= 0 ? -1 : 1;
+        return `translate(${cx} ${cy}) scale(${kx} ${ky}) translate(${-cx} ${-cy})`;
+    }
+
     function normaliseCombinedShuntSide(value) {
         const side = String(value || 'right').toLowerCase().trim();
         return /^(left|right|top|bottom|none)$/.test(side) ? side : 'right';
@@ -1383,7 +1424,10 @@
             const shCx = shX + shW / 2, shCy = shY + shH / 2;
             const symX = shCx - symW / 2, symY = shCy - symH / 2;
             if (shuntRot) svg += `<g class="sip-sigshunt-shunt-rot" transform="rotate(${shuntRot} ${shCx} ${shCy})">`;
+            const shMirrorTf = shuntMirrorTransform(sigProps.shuntMirror, shCx, shCy);
+            if (shMirrorTf) svg += `<g class="sip-shunt-mirror" transform="${shMirrorTf}">`;
             svg += renderCombinedShuntSymbol(symX, symY, symW, symH, dotSet, '#5B6168');
+            if (shMirrorTf) svg += `</g>`;
             if (shuntRot) svg += `</g>`;
             svg += `</g>`;
         }
@@ -2312,7 +2356,7 @@
                     callingGap: 6,
                     compact: true
                 },
-                label: { text: '', fill: 'transparent', fontSize: 12, fontWeight: 'bold' }
+                label: { text: '', fill: T.labelDefault, fontSize: 14, fontWeight: 'bold' }
             },
             render: renderSignalComposite,
             icon: function () {
@@ -2409,10 +2453,12 @@
             icon: function () { return ASSETS['examples.Post'].icon(); }
         },
         'examples.Shaunt': {
-            label: 'Shunt 3-Asp · Proceed', group: 'shunt',
+            // One palette entry for the 3-aspect shunt — pick Proceed / Diverge /
+            // Off / any lamp combination in the inspector ("Shunt combination").
+            label: 'Shunt 3-Asp', group: 'shunt',
             size: { width: 30, height: 30 },
             attrs: {
-                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8 },
+                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8, shuntState: 'PROCEED' },
                 body: { type: 'Path', fill: 'none', stroke: '#6a7596', strokeWidth: 3, pointerEvents: 'bounding-box' },
                 label: { text: '', fill: T.labelDefault, fontSize: 14, fontWeight: 'bold' }
             },
@@ -2428,15 +2474,16 @@
                     `<circle cx="19.4" cy="8.2" r="2.2" fill="white" fill-opacity="0.12" stroke="white" stroke-opacity="0.25" stroke-width="0.5"/>` +
                     `<circle cx="15.5" cy="18.5" r="2.2" fill="white"/>` +
                     `<circle cx="23.4" cy="18.5" r="2.2" fill="white"/>` +
-                    `<text x="28" y="32" font-family="${T.labelFont}" font-size="7" fill="#22D142" font-weight="700">PROCEED</text>` +
+                    `<text x="28" y="32" font-family="${T.labelFont}" font-size="7" fill="#22D142" font-weight="700">3-ASP</text>` +
                     `</svg>`;
             }
         },
         'examples.Shaunt2': {
-            label: 'Shunt 3-Asp · Diverge', group: 'shunt',
+            // Legacy: kept so saved layouts still render; merged into 'Shunt 3-Asp'.
+            hidden: true, label: 'Shunt 3-Asp · Diverge', group: 'shunt',
             size: { width: 30, height: 30 },
             attrs: {
-                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8 },
+                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8, shuntState: 'DIVERGE_RIGHT' },
                 body: { type: 'Path', fill: 'none', stroke: '#6a7596', strokeWidth: 3, pointerEvents: 'bounding-box' },
                 label: { text: '', fill: T.labelDefault, fontSize: 14, fontWeight: 'bold' }
             },
@@ -2457,10 +2504,11 @@
             }
         },
         'examples.Shaunt3': {
-            label: 'Shunt 3-Asp · Off', group: 'shunt',
+            // Legacy: kept so saved layouts still render; merged into 'Shunt 3-Asp'.
+            hidden: true, label: 'Shunt 3-Asp · Off', group: 'shunt',
             size: { width: 30, height: 30 },
             attrs: {
-                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8 },
+                signal: { standPos: 'R', standLength: 22, standArm: 12, standDrop: 'down', signalSide: 'up', labelGap: 8, shuntState: 'OFF' },
                 body: { type: 'Path', fill: 'none', stroke: '#6a7596', strokeWidth: 3, pointerEvents: 'bounding-box' },
                 label: { text: '', fill: T.labelDefault, fontSize: 14, fontWeight: 'bold' }
             },

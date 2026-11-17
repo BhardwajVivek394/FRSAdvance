@@ -92,12 +92,33 @@
     }
     function siteId() { return String((W.jQuery && $('#drpSite').val()) || ''); }
     function live() { return W.wsLiveData || {}; }
+    /* Configured-only binding (Track, same rule as the Telemetry Live table
+       and cards): readings limited to the asset's GetBulkAssetMetadata
+       assetAttributes, no calculated values for a DL-only asset, no relays
+       for an asset without mAssetInfoDataloggers. Other types untouched. */
+    function cfgOnly(aid, A) {
+        if (!A || typeof W.tlAssetHasRdpmsAttr !== 'function') return A;
+        var hasCfg = W.bulkAssetMap && W.bulkAssetMap[String(aid)];
+        if (!hasCfg) return A;
+        var out = {};
+        for (var k in A) if (Object.prototype.hasOwnProperty.call(A, k)) out[k] = A[k];
+        out.rows = (A.rows || []).filter(function (r) {
+            var names = [r.key, r.title, r.label, r.alias];
+            for (var i = 0; i < names.length; i++) {
+                if (names[i] && W.tlAssetHasRdpmsAttr(aid, names[i], r.attrId)) return true;
+            }
+            return !names.some(Boolean) && W.tlAssetHasRdpmsAttr(aid, '', r.attrId);
+        });
+        if (typeof W.tlAssetHasRdpms === 'function' && !W.tlAssetHasRdpms(aid)) out.derived = [];
+        if (typeof W.tlAssetHasDatalogger === 'function' && !W.tlAssetHasDatalogger(aid)) out.relays = [];
+        return out;
+    }
     function describe(aid) {
         if (W.TlHealthView && typeof W.TlHealthView.describe === 'function') {
             try {
                 var A = W.TlHealthView.describe(aid, String(aid) === D.aid ? D.typeHint : null);
                 /* point machine: live values + circuit cards bound from the site's GetUserAssetInfo */
-                return (A && String(aid) === D.aid && kind() === 'pm') ? pmDynamic(A) : A;
+                return (A && String(aid) === D.aid && kind() === 'pm') ? pmDynamic(A) : cfgOnly(aid, A);
             } catch (e) { /* fall through */ }
         }
         return null;
@@ -243,6 +264,21 @@
         '.tld-navgap{flex:1;min-width:8px;}' +
         '.tld-defan .tld-sh{margin-bottom:6px;}' +
         '.tld-body{flex:1;min-height:0;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px;}' +
+        /* v618.60 tab panes: one section at a time, no visible scrollbars */
+        '.tld-body,.tld-msgs{scrollbar-width:none;-ms-overflow-style:none;} .tld-body::-webkit-scrollbar,.tld-msgs::-webkit-scrollbar{display:none;width:0;height:0;}' +
+        '.tld-pane{display:flex;flex-direction:column;gap:12px;min-width:0;flex:1 0 auto;} .tld-pane.tld-hide{display:none !important;}' +
+        /* the section card fills the tab, so a short tab (no alerts, no roster) is not a strip above empty grey */
+        '.tld-pane>.tld-sec{flex:1;} .tld-pane>.tld-sec>div:last-child{flex:1;}' +
+        '.tld-pane .tld-empty{display:flex;align-items:center;justify-content:center;text-align:center;min-height:180px;font-size:13px;}' +
+        '.tld-pane-fill{flex:1 1 0;min-height:0;} .tld-body[data-tab="tldChatSec"]{overflow:hidden;}' +
+        '.tld-pane-fill .tld-chat{min-height:0;} .tld-pane-fill .tld-msgs{max-height:none;}' +
+        '.tld-pane .tld-tiles{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));} .tld-pane .tld-tiles.sig{grid-template-columns:repeat(4,minmax(0,1fr));}' +
+        '.tld-pane .tld-calc{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));}' +
+        /* Ask AI analysis table */
+        '.tld-antbl{margin-top:10px;} .tld-antbl tr,.tld-antbl td{background:transparent !important;background-image:none !important;}' +
+        '.tld-antbl td{color:var(--e7-text,#22303f) !important;} .tld-antbl td.k{width:110px;white-space:nowrap;font-weight:700;color:var(--e7-text-2,#415064) !important;}' +
+        '.tld-antbl tr:last-child td{border-bottom:none;}' +
+        '.tld-lv{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;} .tld-lv i{width:8px;height:8px;border-radius:50%;flex:none;}' +
         '.tld-row{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:12px;align-items:stretch;}' +
         '.tld-col{display:flex;flex-direction:column;gap:12px;min-width:0;}' +
         '.tld-sec{border:1px solid var(--e7-border,#e7ebf1);border-radius:14px;background:var(--e7-surface,#fff);padding:12px 14px;display:flex;flex-direction:column;gap:8px;min-width:0;}' +
@@ -350,7 +386,27 @@
         '.tld-fil button[aria-pressed="true"]{border-color:var(--e7-accent,#0A7C86);color:var(--e7-accent,#0A7C86);background:rgba(47,158,196,.08);}' +
         '.tld-empty{color:var(--e7-text-3,#8b98a8);font-size:12.5px;padding:8px 2px;}' +
         '.tld-pend{border:1px dashed var(--e7-border-2,#cbd5e1);border-radius:10px;padding:14px;color:var(--e7-text-2,#55657a);font-size:12.5px;line-height:1.5;}' +
-        '@media (max-width:820px){.tld-row{grid-template-columns:1fr;}.tld-tiles{grid-template-columns:repeat(2,minmax(0,1fr));}.tld-calc{grid-template-columns:repeat(2,minmax(0,1fr));}}' +
+        '@media (max-width:820px){.tld-row{grid-template-columns:1fr;}.tld-tiles{grid-template-columns:repeat(2,minmax(0,1fr));}.tld-calc{grid-template-columns:repeat(2,minmax(0,1fr));}.tld-pane .tld-tiles.sig{grid-template-columns:repeat(2,minmax(0,1fr));}}' +
+        /* DL-only asset: relay status panel (full width) */
+        '.tld-rl{display:flex;flex-direction:column;gap:12px;}' +
+        '.tld-rl-hero{display:flex;align-items:center;gap:16px;padding:18px 20px;border-radius:12px;border:1px solid rgba(31,157,85,.35);background:linear-gradient(120deg,rgba(31,157,85,.10),rgba(31,157,85,.02));}' +
+        '.tld-rl-hero.drop{border-color:rgba(224,161,0,.5);background:linear-gradient(120deg,rgba(224,161,0,.14),rgba(224,161,0,.03));}' +
+        '.tld-rl-ic{flex:none;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;font-size:24px;font-weight:800;color:#fff;background:#1F9D55;box-shadow:0 6px 16px rgba(31,157,85,.3);}' +
+        '.tld-rl-hero.drop .tld-rl-ic{background:#E0A100;box-shadow:0 6px 16px rgba(224,161,0,.3);}' +
+        '.tld-rl-main{flex:1;min-width:0;}' +
+        '.tld-rl-k{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--e7-text-3,#6B7A8C);}' +
+        '.tld-rl-st{font-size:22px;font-weight:800;line-height:1.2;color:var(--e7-green,#1F9D55);margin-top:2px;}' +
+        '.tld-rl-hero.drop .tld-rl-st{color:var(--e7-amber,#B47B00);}' +
+        '.tld-rl-sub{font-size:12.5px;color:var(--e7-text-2,#4A5868);margin-top:3px;}' +
+        '.tld-rl-big{flex:none;text-align:right;}' +
+        '.tld-rl-big b{display:block;font:700 26px "JetBrains Mono",ui-monospace,monospace;color:var(--e7-heading,#0F1B2A);}' +
+        '.tld-rl-big span{font-size:11px;color:var(--e7-text-3,#6B7A8C);}' +
+        '.tld-rl-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}' +
+        '.tld-rl-cell{border:1px solid var(--e7-border,#e7ebf1);border-radius:10px;padding:9px 11px;background:var(--e7-surface,#fff);}' +
+        '.tld-rl-cell .k{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--e7-text-3,#6B7A8C);}' +
+        '.tld-rl-cell .v{font:700 14px "JetBrains Mono",ui-monospace,monospace;color:var(--e7-heading,#0F1B2A);margin-top:3px;word-break:break-word;}' +
+        '.tld-rl-note{display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--e7-text-3,#6B7A8C);border:1px dashed var(--e7-border-2,#cbd5e1);border-radius:10px;padding:9px 12px;}' +
+        '@media (max-width:820px){.tld-rl-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.tld-rl-hero{flex-wrap:wrap;}}' +
         /* card button */
         '.tl-asset-action.tl-aa-ai,.sig-action-btn.tl-aa-ai{color:var(--e7-violet,#7C5CFF);}';
     function ensureCss() {
@@ -419,17 +475,78 @@
         list.sort(function (x, y) { return cmp(x.c, y.c) || x.i - y.i; });
         return list.map(function (x) { return tileHtml(x.r); }).join('');
     }
+    /* DataLogger relay as a reading tile (same .tld-tile format as the values):
+       label = relay, value = Pickup / Drop, status line = what it means plus the
+       device time of the last frame, footer = the configured DL channel
+       (GetBulkAssetMetadata DataloggerAssetName). Drop is amber, like an
+       out-of-band reading; TPR drop is badged OCC. (track occupied). */
+    function relayInfo(name) {
+        var a = live()[D.aid] || {}, dl = a.dlRelays || {}, r = dl[name];
+        if (!r) { for (var k in dl) if (dl.hasOwnProperty(k) && (dl[k].displayName || k) === name) { r = dl[k]; break; } }
+        var cfg = null, bm = W.bulkAssetMap && W.bulkAssetMap[String(D.aid)];
+        var dls = (bm && (bm.mAssetInfoDataloggers || bm.MAssetInfoDataloggers)) || [];
+        for (var i = 0; i < dls.length; i++) {
+            if (dls[i] && norm(dls[i].DataloggerAttribute) === norm(name)) { cfg = dls[i]; break; }
+        }
+        if (!cfg && dls.length === 1) cfg = dls[0];
+        return { ts: r && r.timestamp, ch: (cfg && cfg.DataloggerAssetName) || '', role: (cfg && (cfg.Value || cfg.value)) || '' };
+    }
+    /* DL-only asset (no RDPMS attributes configured): one full-width status
+       panel per relay instead of a lone small tile -- hero banner with the
+       state and what it means, a detail grid, and a note on why there are no
+       readings. Repaints with liveRefresh on state change / new frame. */
+    /* Relay as a reading tile (same .tld-tile format), for assets that have
+       RDPMS readings AND DataLogger relays: sits in the same grid. */
+    function relayTileHtml(rl) {
+        var isTpr = /^TPR$/i.test(String(rl.name || '').replace(/[^A-Za-z]/g, ''));
+        var t = relayTime(relayInfo(rl.name).ts);
+        var badge = rl.up ? '' : (isTpr ? 'OCC.' : 'DROP');
+        var meaning = isTpr ? (rl.up ? 'track clear' : 'track occupied') : (rl.up ? 'relay energised' : 'relay de-energised');
+        return '<div class="tld-tile ' + (rl.up ? 'ok' : 'near') + '" style="cursor:default" title="' + esc(rl.name) + ' (DataLogger relay)">' +
+            '<div class="hd"><span class="lb">' + esc(rl.name) + ' (DataLogger)</span>' + (badge ? '<span class="bg">' + badge + '</span>' : '') + '</div>' +
+            '<div class="vl">' + (rl.up ? 'Pickup' : 'Drop') + '<small>' + (rl.up ? '&#8593;' : '&#8595;') + '</small></div>' +
+            '<div class="sl">' + esc(meaning) + (t ? ' &middot; at ' + esc(t) : '') + '</div></div>';
+    }
+    function dlOnlyHtml(A) {
+        return '<div class="tld-rl">' + A.relays.map(function (rl) {
+            var isTpr = /^TPR$/i.test(String(rl.name || '').replace(/[^A-Za-z]/g, ''));
+            var inf = relayInfo(rl.name), t = relayTime(inf.ts);
+            var head = isTpr ? (rl.up ? 'Track clear' : 'Track occupied') : (rl.up ? 'Relay energised' : 'Relay de-energised');
+            return '<div class="tld-rl-hero' + (rl.up ? '' : ' drop') + '">' +
+                '<span class="tld-rl-ic">' + (rl.up ? '&#8593;' : '&#8595;') + '</span>' +
+                '<div class="tld-rl-main"><div class="tld-rl-k">' + esc(rl.name) + ' &middot; DataLogger relay</div>' +
+                '<div class="tld-rl-st">' + esc(head) + '</div>' +
+                '<div class="tld-rl-sub">' + esc(rl.name) + ' relay is <b>' + (rl.up ? 'picked up' : 'dropped') + '</b>' +
+                (isTpr ? (rl.up ? ' &mdash; no train on this track section.' : ' &mdash; a train is on this track section.') : '.') + '</div></div>' +
+                '<div class="tld-rl-big"><b>' + (rl.up ? 'Pickup' : 'Drop') + '</b><span>' + (t ? 'at ' + esc(t) : 'live') + '</span></div>' +
+                '</div>' +
+                '';
+        }).join('') +
+            '</div>';
+    }
+    function relayTime(ts) {
+        if (!ts) return '';
+        var ms = typeof W.pmParseDeviceTs === 'function' ? W.pmParseDeviceTs(ts) : new Date(ts).getTime();
+        if (typeof ms !== 'number' || isNaN(ms)) ms = new Date(ts).getTime();
+        if (isNaN(ms)) return '';
+        var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    }
     function valuesHtml(A) {
-        if (!A || !A.rows.length) return '<div class="tld-empty">Waiting for live values...</div>';
+        /* A DL-only asset has relays but no readings: its relays become the tiles. */
+        var hasRelays = !!(A && A.relays && A.relays.length);
+        if (!A || (!A.rows.length && !hasRelays)) return '<div class="tld-empty">Waiting for live values...</div>';
+        if (!A.rows.length) return dlOnlyHtml(A);
         var h = kind() === 'signal' ? '<div class="tld-tiles sig">' + signalTilesHtml(A.rows) + '</div>'
-            : '<div class="tld-tiles">' + A.rows.map(tileHtml).join('') + '</div>';
+            : '<div class="tld-tiles">' + A.rows.map(tileHtml).join('') +
+                (A.relays || []).map(relayTileHtml).join('') + '</div>';   /* relays beside the readings */
         if (kind() === 'track' && A.derived && A.derived.length) {   /* calculated values exist for track circuits only */
             h += '<div class="tld-calc">' + A.derived.map(function (r) {
                 var sel = D.sel && D.sel.key === r.key;
                 return '<button type="button" data-tld-k="' + esc(r.key) + '" aria-pressed="' + sel + '" class="' + (sel ? 'sel' : '') + '" title="' + esc(r.alias || r.label) + ' -- click for details"><span>' + esc(r.alias || r.label) + '</span><b>' + fmt(r.v) + '</b></button>';
             }).join('') + '</div>';
         }
-        if (A.relays && A.relays.length) {
+        if (kind() === 'signal' && A.relays && A.relays.length) {
             h += '<div class="tld-relays" style="margin-top:8px">' + A.relays.map(function (rl) {
                 return '<span class="tld-chip ' + (rl.up ? 'ok' : 'warn') + '">' + esc(rl.name) + ' ' + (rl.up ? '&#8593; Pickup' : '&#8595; Drop') + '</span>';
             }).join('') + '</div>';
@@ -578,22 +695,33 @@
             }
         });
     }
+    /* v618.60: Ask AI analysis as a table -- Status | Finding, then Summary / Action rows.
+       finds: [[colour, text]]; colour picks the status label (green OK, amber Watch, red Alert). */
+    var LV_TXT = { '#1F9D55': 'OK', '#E0A100': 'Watch', '#E5484D': 'Alert' };
+    function analysisTableHtml(finds, summary, action) {
+        var rows = finds.map(function (x) {
+            return '<tr><td class="k"><span class="tld-lv" style="color:' + x[0] + '"><i style="background:' + x[0] + '"></i>' + (LV_TXT[x[0]] || 'Info') + '</span></td><td>' + esc(x[1]) + '</td></tr>';
+        });
+        if (summary) rows.push('<tr><td class="k">Summary</td><td>' + esc(summary) + '</td></tr>');
+        if (action) rows.push('<tr><td class="k">Action</td><td><b>' + esc(action) + '</b></td></tr>');
+        if (!rows.length) return '';
+        /* no <thead>: the page's global table-header style paints it navy with unreadable text */
+        return '<div class="tld-tbl tld-antbl"><table><tbody>' + rows.join('') + '</tbody></table></div>';
+    }
     function apiAnalysisHtml(r) {
         var h = r.health || {}, score = Math.max(0, Math.min(100, parseInt(h.score, 10) || 0));
         var col = HCOL[String(h.color || '').toLowerCase()] || '#94A3B8', C = 2 * Math.PI * 19;
-        var f = (r.findings || []).map(function (x) {
-            return '<li><i style="background:' + (LVL[String(x.level || '').toLowerCase()] || '#94A3B8') + '"></i><span>' + esc(x.text) + '</span></li>';
-        }).join('');
+        var finds = (r.findings || []).map(function (x) {
+            return [LVL[String(x.level || '').toLowerCase()] || '#94A3B8', x.text];
+        });
         var srcBad = [];
         if (r.sources) Object.keys(r.sources).forEach(function (k) { if (String(r.sources[k]).toLowerCase() !== 'ok') srcBad.push(k + ' ' + r.sources[k]); });
         return '<div class="tld-an"><svg width="54" height="54" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19" fill="none" stroke="var(--e7-border,#E4E8EE)" stroke-width="5"></circle>' +
             '<circle cx="24" cy="24" r="19" fill="none" stroke="' + col + '" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + (score / 100 * C).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 24 24)"></circle>' +
             '<text x="24" y="29" text-anchor="middle" font-size="14" font-weight="800" fill="currentColor">' + score + '</text></svg>' +
             '<div><b style="color:' + col + '">' + esc(h.label || h.status || '') + '</b><div class="tld-note" style="font-size:12.5px">' + esc(h.headline || '') + '</div></div></div>' +
-            (f ? '<ul class="tld-find">' + f + '</ul>' : '') +
-            (r.summary ? '<p class="tld-sum">' + esc(r.summary) + '</p>' : '') +
-            (r.action ? '<div class="tld-act"><b>Action:</b> ' + esc(r.action) + '</div>' : '') +
-            '<div class="tld-note">' + (r.findingsSource === 'computed' ? 'Findings computed from the evidence (AI unavailable)' : 'AI health summary') +
+            analysisTableHtml(finds, r.summary, r.action) +
+            '<div class="tld-note" style="margin-top:8px">' + (r.findingsSource === 'computed' ? 'Findings computed from the evidence (AI unavailable)' : 'AI health summary') +
             ' &#183; 2-day data, 15-day alerts' + (kind() === 'pm' ? ', PM prediction' : kind() === 'track' ? ', track shorting' : '') +
             (r.generatedAt ? ' &#183; ' + esc(r.generatedAt) : '') + (r.cached ? ' (cached)' : '') +
             (srcBad.length ? ' &#183; <span style="color:var(--e7-amber,#B47B00)">' + esc(srcBad.join(', ')) + '</span>' : '') + '</div>';
@@ -911,7 +1039,7 @@
             '<circle cx="24" cy="24" r="19" fill="none" stroke="' + col + '" stroke-width="5" stroke-linecap="round" stroke-dasharray="' + (A.score / 100 * C).toFixed(1) + ' ' + C.toFixed(1) + '" transform="rotate(-90 24 24)"></circle>' +
             '<text x="24" y="29" text-anchor="middle" font-size="14" font-weight="800" fill="currentColor">' + A.score + '</text></svg>' +
             '<div><b style="color:' + col + '">' + esc(txt) + '</b><div class="tld-note" style="font-size:12.5px">' + rows.length + ' readings, ' + outs + ' outside safe range, ' + near + ' near a limit</div></div></div>' +
-            '<ul class="tld-find">' + finds.map(function (x) { return '<li><i style="background:' + x[0] + '"></i><span>' + esc(x[1]) + '</span></li>'; }).join('') + '</ul>';
+            analysisTableHtml(finds);
     }
 
     /* ------------------------------------------------------------------
@@ -2244,44 +2372,50 @@
         if (kind() === 'track') navItems.push(['tldSecShort', 'Track shorting']);
         else if (kind() === 'pm') navItems.push(['tldSecPattern', 'Pattern analysis']);
         navItems.push(['tldSecRoster', 'Maintenance roster'], ['tldSecGraph', 'Graph']);
-        var navHtml = navItems.map(function (n, i) {
-            return '<button type="button" class="tld-navbtn" data-tld-nav="' + n[0] + '" aria-pressed="' + (i === 0) + '">' + n[1] + '</button>';
+        /* v618.60: the nav is a tab bar -- only the selected section is shown (no long scrolling page).
+           The chosen tab is kept when moving to the previous / next asset. */
+        if (!navItems.some(function (n) { return n[0] === D.tab; })) D.tab = navItems[0][0];
+        var paneCls = function (id) { return id === D.tab ? '' : ' tld-hide'; };
+        var navHtml = navItems.map(function (n) {
+            return '<button type="button" class="tld-navbtn" role="tab" data-tld-nav="' + n[0] + '" aria-pressed="' + (n[0] === D.tab) + '" aria-selected="' + (n[0] === D.tab) + '">' + n[1] + '</button>';
         }).join('');
         return '<div class="tld-head" id="tldHead">' + headHtml(A) + '</div>' +
             '<nav class="tld-actions" aria-label="Sections">' + navHtml +
             '<span class="tld-navgap"></span>' +
             '<button type="button" class="tld-ib" data-tld-act="csv" aria-label="Export CSV" title="Export CSV"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"></path></svg></button></nav>' +
-            '<div class="tld-body">' +
-            '<div class="tld-row"><div class="tld-col" id="tldSecValues">' + sec('Live values', valuesHtml(A), '', 'tldValues') + '</div>' +
-            '<div class="tld-col"><section class="tld-sec fill tld-chatsec' + (D.chatFull ? ' full' : '') + '" id="tldChatSec"><div class="tld-sh"><h3>Ask AI</h3>' +
+            '<div class="tld-body" data-tab="' + D.tab + '">' +
+            '<div class="tld-pane' + paneCls('tldSecValues') + '" id="tldSecValues">' + sec('Live values', valuesHtml(A), '', 'tldValues') + '</div>' +
+            '<div class="tld-pane tld-pane-fill' + paneCls('tldChatSec') + '" id="tldChatPane"><section class="tld-sec fill tld-chatsec' + (D.chatFull ? ' full' : '') + '" id="tldChatSec"><div class="tld-sh"><h3>Ask AI</h3>' +
             '<button type="button" class="tld-ib" data-tld-chatclear="1" aria-label="New chat" title="New chat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></button>' +
             '<button type="button" class="tld-ib" data-tld-chatfull="1" aria-pressed="' + !!D.chatFull + '" aria-label="' + (D.chatFull ? 'Exit full screen' : 'Expand to full screen') + '" title="Full screen"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg></button></div>' +
-            '<div id="tldChat" style="display:flex;flex-direction:column;flex:1;min-height:0">' + chatHtml() + '</div></section></div></div>' +
+            '<div id="tldChat" style="display:flex;flex-direction:column;flex:1;min-height:0">' + chatHtml() + '</div></section></div>' +
             /* sections in the nav order: Alerts, Circuit, Track shorting / Pattern, Roster, Graph */
-            sec('Past alerts &#183; 30 days', alertsHtml(), '', 'tldAlerts', false, 'tldSecAlerts') +
-            (showCircuit ? sec('Circuit &#183; live', '<div id="tldCircuit">' + circuitSvg(A) + '</div>' + circuitLegend(), kind() === 'signal' ? '<span id="tldSigTabs">' + sigTabsHtml(A) + '</span>' : '<span class="tld-chip ok">Live</span>', null, false, 'tldSecCircuit') : '') +
-            (kind() === 'signal' ? '' : kind() === 'pm' ? sec('Operation pattern analysis', '<div class="tld-pend"><b>Pattern analysis API pending.</b> This section will run the point-machine pattern checks on the recent operations and show the result: ' +
-                'overall verdict (normal / watch / fault, confidence), each pattern checked (e.g. obstruction, friction / slagging, creeping, A / B end mismatch, slow throw, detection or indication low) with its status and the evidence (operations, current curve, values), and the operations that matched.</div>', '', null, false, 'tldSecPattern') :
-            sec('Track shorting (leakage) report', '<div id="tldShort" style="display:flex;flex-direction:column;gap:8px">' + shortHtml() + '</div><div id="tldShortPlots" style="margin-top:8px">' + shortPlotsHtml() + '</div>',
-                '<div style="display:flex;gap:4px">' + shortDaysHtml() + '</div>', null, false, 'tldSecShort')) +
-            sec('Maintenance roster &#183; today', rosterHtml(), '<button type="button" class="tld-btn sm" data-tld-rrefresh="1">&#8635; Refresh</button>', 'tldRoster', false, 'tldSecRoster') +
-            sec('Graph &#183; every reading', graphHtml(), '<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">' +
+            pane('tldSecAlerts', sec('Past alerts &#183; 30 days', alertsHtml(), '', 'tldAlerts')) +
+            (showCircuit ? pane('tldSecCircuit', sec('Circuit &#183; live', '<div id="tldCircuit">' + circuitSvg(A) + '</div>' + circuitLegend(), kind() === 'signal' ? '<span id="tldSigTabs">' + sigTabsHtml(A) + '</span>' : '<span class="tld-chip ok">Live</span>', null)) : '') +
+            (kind() === 'signal' ? '' : kind() === 'pm' ? pane('tldSecPattern', sec('Operation pattern analysis', '<div class="tld-pend"><b>Pattern analysis API pending.</b> This section will run the point-machine pattern checks on the recent operations and show the result: ' +
+                'overall verdict (normal / watch / fault, confidence), each pattern checked (e.g. obstruction, friction / slagging, creeping, A / B end mismatch, slow throw, detection or indication low) with its status and the evidence (operations, current curve, values), and the operations that matched.</div>', '', null)) :
+            pane('tldSecShort', sec('Track shorting (leakage) report', '<div id="tldShort" style="display:flex;flex-direction:column;gap:8px">' + shortHtml() + '</div><div id="tldShortPlots" style="margin-top:8px">' + shortPlotsHtml() + '</div>',
+                '<div style="display:flex;gap:4px">' + shortDaysHtml() + '</div>', null))) +
+            pane('tldSecRoster', sec('Maintenance roster &#183; today', rosterHtml(), '<button type="button" class="tld-btn sm" data-tld-rrefresh="1">&#8635; Refresh</button>', 'tldRoster')) +
+            pane('tldSecGraph', sec('Graph &#183; every reading', graphHtml(), '<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">' +
                 '<span class="tld-note" style="margin:0 2px 0 0">Hover</span>' +
                 [['one', 'Single', 'Show the value of the reading under the mouse only'], ['all', 'All', 'Show the value of every reading at the mouse time']].map(function (m) {
                     return '<button type="button" class="tld-btn sm" data-tld-hm="' + m[0] + '" aria-pressed="' + (hoverMode() === m[0]) + '" title="' + m[2] + '">' + m[1] + '</button>';
                 }).join(' ') +
-                '<span style="width:1px;height:18px;background:var(--e7-border,#e7ebf1);margin:0 4px"></span>' + periods + '</div>', 'tldGraph', false, 'tldSecGraph') +
+                '<span style="width:1px;height:18px;background:var(--e7-border,#e7ebf1);margin:0 4px"></span>' + periods + '</div>', 'tldGraph')) +
             '</div>';
+        function pane(id, html) { return '<div class="tld-pane' + paneCls(id) + '" id="' + id + '">' + html + '</div>'; }
     }
+    /* v618.60 tab bar: show only the selected section's pane */
     function setActiveNav(active) {
         var btns = document.querySelectorAll('[data-tld-nav]');
         for (var i = 0; i < btns.length; i++) {
             var on = btns[i] === active;
             btns[i].setAttribute('aria-pressed', String(on));
-            /* the selected section gets an accent border (Live values sits in a .tld-col wrapper) */
+            btns[i].setAttribute('aria-selected', String(on));
             var el = document.getElementById(btns[i].getAttribute('data-tld-nav'));
-            if (el && !el.classList.contains('tld-sec')) el = el.querySelector('.tld-sec');
-            if (el) el.classList.toggle('tld-sec-on', on);
+            var paneEl = el && el.closest ? el.closest('.tld-pane') : null;
+            if (paneEl) paneEl.classList.toggle('tld-hide', !on);
         }
     }
     /* v618.38 scroll-spy: highlight the nav item for the section nearest the top of the body.
@@ -2311,15 +2445,15 @@
     function navUnlock() { D.navLock = false; }
     function navTo(btn) {
         var body = document.querySelector('#tldDrawer .tld-body');
-        var sect = document.getElementById(btn.getAttribute('data-tld-nav'));
+        D.tab = btn.getAttribute('data-tld-nav');
         setActiveNav(btn);
-        if (btn.scrollIntoView) btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-        if (!body || !sect) return;
-        D.navLock = true;
-        var y = sect.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop - 4;
-        y = Math.max(0, Math.min(y, body.scrollHeight - body.clientHeight));
-        if (Math.abs(body.scrollTop - y) < 2) return;
-        try { body.scrollTo({ top: y, behavior: 'smooth' }); } catch (x) { body.scrollTop = y; }
+        if (body) { body.setAttribute('data-tab', D.tab); body.scrollTop = 0; }
+        /* Plotly charts drawn while their tab was hidden need a resize once shown */
+        if (W.Plotly && W.Plotly.Plots && body) {
+            var plots = body.querySelectorAll('.tld-pane:not(.tld-hide) .js-plotly-plot');
+            for (var i = 0; i < plots.length; i++) { try { W.Plotly.Plots.resize(plots[i]); } catch (x) { } }
+        }
+        if (D.tab === 'tldChatSec') { var box = document.getElementById('tldMsgs'); if (box) box.scrollTop = box.scrollHeight; }
     }
     function onMove(e) {
         D.lastMove = e;
@@ -2338,7 +2472,7 @@
         var A = describe(D.aid);
         var sig = A ? (A.rows.concat(A.derived || []).map(function (r) { return r.range ? 1 : 0; }).join('') + '|' +   /* repaint once the FRS ranges arrive */
             A.rows.map(function (r) { return r.v; }).join(',') + '|' + (A.derived || []).map(function (r) { return r.v; }).join(',') + '|' + A.occ + A.status + A.score + (A.pmDir || '') + (A.pmWhen || '') +
-            (A.relays || []).map(function (r) { return r.up ? 1 : 0; }).join('') + '|' + isLight()) : 'none';
+            (A.relays || []).map(function (r) { return (r.up ? 1 : 0) + String(relayInfo(r.name).ts || ''); }).join('') + '|' + isLight()) : 'none';   /* DL-only tiles show the frame time: repaint on a new frame too */
         var head = document.getElementById('tldHead');
         if (head) { var hh = headHtml(A); if (hh !== D.headHtml) { D.headHtml = hh; head.innerHTML = hh; } }
         if (sig === D.liveSig) return;
@@ -2406,8 +2540,8 @@
         }
         if (t.closest('[data-tld-unsel]')) { D.sel = null; D.liveSig = ''; liveRefresh(); return; }
         if (t.closest('[data-tld-tograph]')) {
-            var gsec = document.getElementById('tldGraph');
-            if (gsec && gsec.scrollIntoView) gsec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            var gbtn = document.querySelector('[data-tld-nav="tldSecGraph"]');
+            if (gbtn) navTo(gbtn);
             return;
         }
         var kk = t.closest('[data-tld-k]');
@@ -2513,12 +2647,7 @@
         loadAliases(D.aid);
         dr.innerHTML = shell();
         var bodyEl = dr.querySelector('.tld-body');
-        if (bodyEl) {
-            bodyEl.addEventListener('scroll', navSpy, { passive: true });
-            /* the user's own scrolling hands the highlight back to the scroll-spy */
-            ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(function (ev) { bodyEl.addEventListener(ev, navUnlock, { passive: true }); });
-            if ('onscrollend' in bodyEl) bodyEl.addEventListener('scrollend', function () { if (D.navLock) setTimeout(navUnlock, 120); });
-        }
+        /* v618.60: tabs replace the scroll-spy (navSpy is no longer attached) */
         D.liveSig = '';
         liveRefresh();
         loadAlerts();

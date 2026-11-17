@@ -52,6 +52,10 @@ namespace E7.AiCore.Judge
 
         /// <summary>True when that check's mode is enforce, i.e. WouldDecide IS the verdict.</summary>
         public bool Enforced;
+
+        // ---- rain (1.0.208.0) ----
+        [Newtonsoft.Json.JsonIgnore]
+        public JudgeRainResult Rain;
     }
 
     internal static class JudgeLearned
@@ -214,7 +218,7 @@ ORDER  BY m.ActiveTime DESC";
                 }
 
                 JudgeCaseFeatures f = JudgeCaseFeatures.FromCard(cardJson);
-                r.Match = JudgeCaseMatcher.Match(set, card.CauseCode, card.AssetId, f, at, card.AlertId, Math.Max(1, cfg.LearnedK), Math.Max(0, cfg.LearnedAssetWeight));
+                r.Match = JudgeCaseMatcher.Match(set, card.CauseCode, card.AssetId, f, at, card.AlertId, Math.Max(1, cfg.LearnedK), Math.Max(0, cfg.LearnedAssetWeight), cfg.LearnedMaxDistance);
                 r.CaseChecked = true;
                 if (r.Match.Decision != null && r.Match.Nearest.Count < Math.Max(1, cfg.LearnedMinCases))
                 {
@@ -272,6 +276,12 @@ ORDER  BY m.ActiveTime DESC";
                 return "The asset was in maintenance mode when this alert was raised (maintenance record " + r.MaintId
                     + (r.MaintFrom.HasValue ? ", on since " + r.MaintFrom.Value.ToString("dd MMM yyyy HH:mm", CultureInfo.InvariantCulture) : "")
                     + "), so the alert is not sent.";
+            }
+
+            if (r.WouldDecideBy == "rain" && r.Rain != null)
+            {
+                return "It rained at the site before this alert (" + r.Rain.Mm.ToString("0.#", CultureInfo.InvariantCulture)
+                    + " mm), and rain explains this cause, so the alert is a real one and is sent.";
             }
 
             JudgeCaseMatch m = r.Match;

@@ -41,6 +41,14 @@ namespace E7.AiCore.Judge
                 return Set(o, JudgeUtil.MapDecision(cfg.CardUnreadable), "card-invalid", "card problems: " + string.Join("; ", summary.Problems), log);
             }
 
+            // 0a. (1.0.208.0) MAINTENANCE IS THE FIRST CHECK. An asset under maintenance at the alert
+            //     time is suppressed before the card is even validated; only the asset id is needed.
+            if (learned != null && learned.WouldDecide != null
+                && (learned.WouldDecideBy == "maintenance" || (!cfg.DataCheckFirst && learned.WouldDecideBy == "rain")))
+            {
+                return Set(o, JudgeUtil.MapDecision(learned.WouldDecide), learned.WouldDecideBy, JudgeLearned.Reason(learned), log);
+            }
+
             if (!summary.Valid)
             {
                 return Set(o, JudgeUtil.MapDecision(cfg.NoData), "card-invalid", "card problems: " + string.Join("; ", summary.Problems), log);
@@ -51,12 +59,14 @@ namespace E7.AiCore.Judge
             //     catalogue AND no reviewer marked this cause not valid (JudgeEngine.learnedDecides);
             //     otherwise it is null here and the ladder below runs exactly as before. It sits above
             //     the no-catalog step because reviewers also decided causes the catalogue lacks.
-            if (learned != null && learned.WouldDecide != null)
+            if (!cfg.DataCheckFirst && learned != null && learned.WouldDecide != null)
             {
                 return Set(o, JudgeUtil.MapDecision(learned.WouldDecide), learned.WouldDecideBy, JudgeLearned.Reason(learned), log);
             }
 
-            if (v.Verdict == "NO_RULE")
+            // 1.0.208.0 -- with no catalogue rule the card's own conditions are still verified by
+            // the live re-check (JudgeEngine). Only when that check did not run does it stop here.
+            if (v.Verdict == "NO_RULE" && live == null)
             {
                 return Set(o, JudgeUtil.MapDecision(cfg.NoData), "no-catalog", "no CauseDef for this cause", log);
             }
@@ -84,6 +94,16 @@ namespace E7.AiCore.Judge
                     + ", so the card could not be cross-checked against the catalogue at all.";
                 log.Add("policy: card<->catalogue recognised nothing — carrying on, not treating it as a mismatch");
             }
+            else if (v.CardMatch != null && !v.CardMatch.Match && cfg.CardMismatchVerifies)
+            {
+                // 1.0.208.0 -- THE DATA DECIDES FIRST, THE CARD IS THE SECOND PART. Each cause has its
+                // rule in the catalogue; that rule is checked against the data of the alert time by
+                // the gates below. A card that prints the rule differently is noted, not obeyed.
+                unrecognised = " The card differs from the catalogue rule (" + string.Join("; ", v.CardMatch.Disagree)
+                    + "); the catalogue rule was checked against the data of the alert time instead.";
+                log.Add("policy: card<->catalogue differ (" + string.Join("; ", v.CardMatch.Disagree)
+                    + ") — not decisive, the catalogue rule is verified against the data (Flow.CardMismatch=VERIFY)");
+            }
             else if (v.CardMatch != null && !v.CardMatch.Match)
             {
                 return Set(o, JudgeUtil.MapDecision(cfg.CardMismatch), "card-match",
@@ -91,10 +111,27 @@ namespace E7.AiCore.Judge
                     + string.Join("; ", v.CardMatch.Disagree) + ".", log);
             }
 
+            // 1c. (1.0.208.0) the card's printed values against history at the card's OWN times.
+            //     The card says "v1 at t1" for each condition; history was read at t1. A card whose
+            //     printed values the recorded data does not show is not describing real data.
+            if (v.CardData != null && v.CardData.Mismatch)
+            {
+                return Set(o, "SUPPRESSED", "card-data",
+                    "The values printed on the card are not what the history shows at the card's own times: "
+                    + v.CardData.DifferText()
+                    + ". The card does not match the recorded data, so the alert is suppressed.", log);
+            }
+
+            if (v.CardData != null && v.CardData.Agree > 0)
+            {
+                log.Add("policy: card data confirmed -- " + v.CardData.Agree
+                    + " printed value(s) match history at the card's own times");
+            }
+
             // 1b. (2.1) a person has already ruled on this asset + cause. Their answer outranks the
             //     machine gates below, which is why this sits above them: a reviewer who inspected the
             //     equipment and recorded "the alert was not valid" has information the telemetry does not.
-            if (prior != null && prior.RejectedBy != null)
+            if (!cfg.DataCheckFirst && prior != null && prior.RejectedBy != null)
             {
                 JudgePriorDiscard d = prior.RejectedBy;
                 string when = JudgeUtil.T(d.DiscardedAt, "dd MMM yyyy HH:mm");
@@ -141,7 +178,12 @@ namespace E7.AiCore.Judge
             {
                 return Set(o, JudgeUtil.MapDecision(cfg.NoData), "no-data",
                     "There is not enough history to confirm or rule out this alert (relay check " + v.Relay.Result
-                    + ", reading check " + v.Analog.Result + "), and an alert that cannot be verified is not delivered.", log);
+                    + ", reading check " + v.Analog.Result + "), and an alert that cannot be verified is not delivered."
+                    // 1.0.208.0 -- name what was missing, so the log line alone says what to fix.
+                    + (v.NotFound != null && v.NotFound.Count > 0
+                        ? " NOT FOUND on asset " + card.AssetId + ": " + string.Join(", ", v.NotFound)
+                          + ". Fix: map these attributes to the asset, or add their tag title to JudgeAttrFacts.TagTitle."
+                        : " The tags were found but returned no rows for the alert time."), log);
             }
 
             // 3b. THE CARD AGAINST ITSELF (2.7). The set card printed a number and a threshold; if
@@ -272,6 +314,27 @@ namespace E7.AiCore.Judge
                 }
             }
 
+            // 4b. (1.0.208.0) THE DATA CHECK PASSED. Only now do rain, the past cases and a prior
+            //     discard decide (Flow.DataCheckFirst): the alert-time data is checked in one place
+            //     and comes before them.
+            if (cfg.DataCheckFirst)
+            {
+                if (learned != null && learned.WouldDecide != null)
+                {
+                    return Set(o, JudgeUtil.MapDecision(learned.WouldDecide), learned.WouldDecideBy,
+                        "The alert-time data check passed. " + JudgeLearned.Reason(learned), log);
+                }
+
+                if (prior != null && prior.RejectedBy != null)
+                {
+                    JudgePriorDiscard pd = prior.RejectedBy;
+                    return Set(o, JudgeUtil.MapDecision(cfg.PriorDiscardRejected), "prior-discard",
+                        "The alert-time data check passed, but a reviewer already discarded this same alert on this asset on "
+                        + JudgeUtil.T(pd.DiscardedAt, "dd MMM yyyy HH:mm")
+                        + " and recorded that the alert was not valid. (Approval record " + pd.Id + ".)", log);
+                }
+            }
+
             // 5. gates (and live) passed -> the AI confirms logic + data
             o.Decision = "ACCEPT";
             // 2.2: never let an externally determined cause read as if the judge verified it.
@@ -291,7 +354,9 @@ namespace E7.AiCore.Judge
             string liveText = live == null || live.Result != "PASS" ? ""
                 : anyHeld ? ", and the card's conditions still hold on live data: " + live.Detail
                 : ", and nothing in the live data contradicts the card: " + live.Detail;
-            string gatesText = "Every history check passed"
+            string gatesText = (v.Verdict == "NO_RULE"
+                    ? "The catalogue has no rule for this cause, so the card's own conditions were checked against the alert time frame"
+                    : "Every history check passed")
                 + (v.ReclassifiedCause != null ? ", reclassified as " + v.ReclassifiedCause : "")
                 + liveText
                 + ".";

@@ -38,6 +38,7 @@ namespace Domain
         public decimal PersentageIoTSensors { get; set; }
         public decimal PersentageNetworkSensors { get; set; }
         public decimal PersentageStnGateway { get; set; }
+        public Nullable<bool> IsHalfPointMachine { get; set; }
 
         public List<int> ZoneIds { get; set; }
         public List<int> DivisionIds { get; set; }
