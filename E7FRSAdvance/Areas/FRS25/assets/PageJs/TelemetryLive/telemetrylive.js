@@ -26153,6 +26153,23 @@ function ipsGroupCurrentRows(rows) {
     for (var j = 0; j < out.length; j++) {
         var o = out[j];
         if (!o || !o._agg) { continue; }
+        /* A battery "group" with a single bank is just that one reading -- wrapping it
+           in an expandable group whose only child is identical to the total is
+           redundant (616 only groups when there are 2+ banks to sum). Emit the single
+           member as a plain amp row instead. */
+        if (!o.members || o.members.length < 2) {
+            var _m = (o.members && o.members[0]) || null;
+            out[j] = _m ? {
+                assetId: _m.assetId, assetName: _m.assetName, attr: ipsBattAmpLabel(_m.attr), attrKey: _m.attrKey,
+                value: ipsBattFormatAmps(_m.value, '\u2014'), ts: _m.ts, dlClass: _m.dlClass || '',
+                isDataLogger: false, ipsTab: 'current', isStale: !!_m.isStale, staleTitle: _m.staleTitle || ''
+            } : {
+                assetId: o.assetId, assetName: o.assetName, attr: ipsBattAmpLabel(o.attr), attrKey: o.attrKey,
+                value: (o.count > 0) ? ipsBattFormatAmpsValue(o.sum, '\u2014') : '\u2014', ts: o.ts,
+                dlClass: '', isDataLogger: false, ipsTab: 'current', isStale: false, staleTitle: ''
+            };
+            continue;
+        }
         var v = (o.count > 0) ? ipsBattFormatAmpsValue(o.sum, '\u2014') : '\u2014';
         out[j] = {
             assetId: o.assetId, assetName: o.assetName, attr: ipsBattAmpLabel(o.attr), attrKey: o.attrKey,
@@ -26163,6 +26180,10 @@ function ipsGroupCurrentRows(rows) {
     return out;
 }
 window.ipsGroupCurrentRows = ipsGroupCurrentRows;
+/* Unique name ext cannot clobber (it reassigns the global) -- the Health view's
+   grid uses this so single-bank batteries render as a plain row, not a redundant
+   1-child group. */
+window.ipsGroupCurrentRowsLocal = ipsGroupCurrentRows;
 
 // Expand/collapse state for aggregated BATT rows, keyed by synthetic assetId.
 var ipsExpandedGroups = {};
@@ -26342,7 +26363,8 @@ window.ipsBuildFullRows = function () {
     /* always-flatten (see ipsExpandRowsForDisplayAlways) so BATT groups carry their
        member rows for the Health view's expandable breakdown */
     var expand = window.ipsExpandRowsForDisplayAlways || ipsExpandRowsForDisplay;
-    return expand(ipsGroupCurrentRows(buildIpsTableRowModels()));
+    var group = window.ipsGroupCurrentRowsLocal || ipsGroupCurrentRows;
+    return expand(group(buildIpsTableRowModels()));
 };
 
 // Real flat-table incremental updater (handles DL badges + stale cells)

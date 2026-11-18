@@ -763,6 +763,19 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             List<Domain.Datalogger> mDataloggers = new List<Domain.Datalogger>();
 
+            /* 616 parity: the datepicker posts SearchDate as "d/M/yyyy" (e.g. 18/11/2026),
+               but the API expects "d-M-yyyy". Without this conversion a PREVIOUS date never
+               bound (today worked only because GetEventLog builds today's date with dashes). */
+            if (searchCriteria.SearchDate.IsNotNullOrEmpty())
+            {
+                var sdateTime = ExtensionMethod.ConvertToDateTimeFormat(searchCriteria.SearchDate, "d/M/yyyy");
+                searchCriteria.SearchDate = sdateTime.ToString("d-M-yyyy");
+            }
+            else
+            {
+                searchCriteria.SearchDate = DateTime.Now.ToString("d-M-yyyy");
+            }
+
             try
             {
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
