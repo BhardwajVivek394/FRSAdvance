@@ -252,10 +252,9 @@ function abortPmIndicationRequest() {
             PMH('') + '{background:var(--e7-surface-2,#f1f5fb) !important;background-image:none !important;color:var(--e7-heading,#0f172a) !important;font-size:11px !important;font-weight:700 !important;letter-spacing:.05em !important;text-transform:uppercase !important;line-height:1.35 !important;padding:8px 12px 10px !important;vertical-align:bottom !important;text-align:center !important;white-space:nowrap;border:0 !important;border-right:1px solid var(--pm-grid) !important;border-bottom:1px solid var(--pm-grid) !important;}',
             PMH(':first-child') + '{border-left:0 !important;}',
             PMH(':last-child') + '{border-right:0 !important;}',
-            PMH('.col-a:not(.col-a + .col-a)') + '{border-left:2px solid var(--e7-accent,#259dab) !important;}',
-            PMH('.col-b:not(.col-b + .col-b)') + '{border-left:2px solid var(--e7-violet,#8b5cf6) !important;}',
-            PMH('.col-a') + '{background:var(--e7-accent-soft,rgba(37,157,171,.10)) !important;color:var(--e7-accent-ink,#0e7490) !important;box-shadow:inset 0 2px 0 var(--e7-accent,#259dab) !important;}',
-            PMH('.col-b') + '{background:var(--e7-violet-soft,rgba(139,92,246,.10)) !important;color:var(--e7-violet,#7c3aed) !important;box-shadow:inset 0 2px 0 var(--e7-violet,#8b5cf6) !important;}',
+            /* A / B groups: neutral grey divider, no coloured rails or tints */
+            PMH('.col-a:not(.col-a + .col-a)') + ',' + PMH('.col-b:not(.col-b + .col-b)') + '{border-left:1px solid var(--pm-frame) !important;}',
+            PMH('.col-a') + ',' + PMH('.col-b') + '{background:var(--e7-surface-2,#f6f8fa) !important;color:var(--e7-text-2,#475569) !important;box-shadow:none !important;}',
             PMH('', ' sub') + '{font-size:.78em;text-transform:none;letter-spacing:0;color:inherit !important;}',
             /* (Avg) caption: a quiet chip above the column title */
             PMH('', ' .pm-avg-label') + '{display:inline-flex !important;align-items:baseline;gap:4px;margin:0 auto 6px !important;padding:2px 10px !important;border-radius:6px;background:var(--e7-surface,#fff) !important;border:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;color:var(--e7-text-3,#64748b) !important;font-size:10px !important;font-weight:500 !important;letter-spacing:0 !important;text-transform:none !important;white-space:nowrap;box-shadow:0 1px 1px rgba(15,23,42,.04);}',
@@ -264,16 +263,20 @@ function abortPmIndicationRequest() {
             PMH('.col-a', ' .pm-avg-label > span[id]') + '{color:var(--e7-accent-ink,#0e7490) !important;}',
             PMH('.col-b', ' .pm-avg-label > span[id]') + '{color:var(--e7-violet,#7c3aed) !important;}',
             /* --- PM card outline: framed card, framed table, A/B group rails --- */
-            CW('') + '{--pm-grid:var(--e7-border,rgba(15,23,42,.12));border:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;border-radius:12px !important;box-shadow:0 1px 3px rgba(15,23,42,.06) !important;overflow:hidden;margin-bottom:16px !important;min-height:0 !important;}',
-            CW('', ' > .table-responsive') + '{margin:0 !important;border:0 !important;border-top:1px solid var(--e7-border,rgba(15,23,42,.12)) !important;border-radius:0 !important;overflow-x:auto !important;background:var(--e7-surface,#fff);}',
+            CW('') + '{--pm-grid:color-mix(in srgb,var(--e7-text-3,#64748b) 30%,transparent);--pm-frame:color-mix(in srgb,var(--e7-text-3,#64748b) 50%,transparent);border:1px solid var(--pm-frame) !important;border-radius:12px !important;box-shadow:0 1px 3px rgba(15,23,42,.06) !important;overflow:hidden;margin-bottom:16px !important;min-height:0 !important;}',
+            CW('', ' > .table-responsive') + '{margin:0 !important;border:0 !important;border-top:1px solid var(--pm-frame) !important;border-radius:0 !important;overflow-x:auto !important;background:var(--e7-surface,#fff);}',
             CW('', ' table.pm-data-table') + '{border-collapse:separate !important;border-spacing:0 !important;width:100%;margin:0 !important;border:0 !important;}',
             [CW('', ' table.pm-data-table > thead > tr > td'), CW('', ' table.pm-data-table > thead > tr > th'), CW('', ' table.pm-data-table > tbody > tr > td')].join(',') +
                 '{border-top:0 !important;border-left:0 !important;border-right:1px solid var(--pm-grid) !important;border-bottom:1px solid var(--pm-grid) !important;}',
             CW('', ' table.pm-data-table tr > :last-child') + '{border-right:0 !important;}',
             CW('', ' table.pm-data-table > tbody > tr:last-child > td') + '{border-bottom:0 !important;}',
-            /* A / B group rails: coloured left edge on the first cell of each end */
-            CW('', ' table.pm-data-table tr > :not(.col-a) + .col-a') + ',' + CW('', ' table.pm-data-table tr > .col-a:first-child') + '{border-left:2px solid var(--e7-accent,#259dab) !important;}',
-            CW('', ' table.pm-data-table tr > :not(.col-b) + .col-b') + ',' + CW('', ' table.pm-data-table tr > .col-b:first-child') + '{border-left:2px solid var(--e7-violet,#8b5cf6) !important;}',
+            /* A / B groups: one slightly darker neutral divider, no coloured rails */
+            CW('', ' table.pm-data-table tr > :not(.col-a) + .col-a') + ',' + CW('', ' table.pm-data-table tr > .col-a:first-child') + ',' +
+                CW('', ' table.pm-data-table tr > :not(.col-b) + .col-b') + ',' + CW('', ' table.pm-data-table tr > .col-b:first-child') + '{border-left:1px solid var(--pm-frame) !important;}',
+            /* neutral header backgrounds instead of the blue / violet tints */
+            CW('', ' .pm-dir-header-cell') + ',' + CW('', ' .pm-dir-header-cell.col-a') + ',' + CW('', ' .pm-dir-header-cell.col-b') + '{background:var(--e7-surface-2,#f6f8fa) !important;box-shadow:none !important;}',
+            CW('', ' .pm-voltage-subheader') + ',' + CW('', ' .pm-voltage-subheader.col-a') + ',' + CW('', ' .pm-voltage-subheader.col-b') + '{background:var(--e7-surface,#fff) !important;box-shadow:none !important;}',
+            CW('', ' table.pm-data-table > tbody > tr > td.col-a') + ',' + CW('', ' table.pm-data-table > tbody > tr > td.col-b') + '{background-color:var(--e7-surface,#fff) !important;}',
             CW('', ' .pm-name-merged-cell') + '{font-weight:700 !important;font-size:15px !important;letter-spacing:.02em;background:var(--e7-surface,#fff) !important;}',
             /* header strip keeps its accent bar inside the rounded corner */
             CW('', ' > .pm-card-header') + '{border-radius:0 !important;}',
@@ -1165,7 +1168,6 @@ function abortPmIndicationRequest() {
             '<div style="padding:10px 16px;background:var(--e7-surface-2, rgba(255,255,255,0.04));border:1px solid var(--e7-border, rgba(255,255,255,0.08));border-radius:10px;display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">' +
             '<i class="fas fa-clock" style="color:var(--e7-accent, #22d3ee);font-size:13px;"></i>' +
             '<span style="font-size:13px;font-weight:600;color:var(--e7-heading, rgba(255,255,255,0.85));" id="singleArrTimeRange">Loading...</span>' +
-            '<span style="font-size:12px;color:var(--e7-text-3, rgba(255,255,255,0.5));">&nbsp;·&nbsp;operation on ' + opDayLabel + '</span>' +
             '</div>' +
             '<div id="singleArrLoading" style="display:flex;align-items:center;justify-content:center;height:450px;color:var(--e7-text-2, rgba(255,255,255,0.6));gap:10px;">' +
             '<i class="fas fa-spinner fa-spin fa-lg"></i> Loading array data...</div>' +
@@ -1216,7 +1218,7 @@ function abortPmIndicationRequest() {
                 if (!ops.length) ops = window.tlPmParseArrayOps(response, altAttrId);
                 ops.forEach(function (op) { op.array = op.array.map(function (v) { return Number(zf(v)); }); });
                 if (!ops.length) {
-                    $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No array data found for this operation<br><small>Attribute ID: ' + p.attrId + '</small>').show();
+                    $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data found').show();
                     return;
                 }
                 ops.sort(function (a, b) { return a.timestamp - b.timestamp; });
@@ -1228,7 +1230,7 @@ function abortPmIndicationRequest() {
                 var TOL = 5000;
                 var d = new Date(matched.timestamp);
                 $ch.show();
-                $tr.text(pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()) +
+                $tr.text(pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()) +
                     (minDiff > TOL ? '  (nearest match, Δ' + Math.round(minDiff / 1000) + 's)' : ''));
                 if (fn('renderSingleArrayByTimestamp')) window.renderSingleArrayByTimestamp([matched], p.title, p.unit, p.color);
             },
@@ -2424,9 +2426,17 @@ function abortPmIndicationRequest() {
             }
             rows += '</tr>';
         }
-        if ($tbody.length && rows) $tbody.html(rows);
+        /* Rewrite the rows only when they changed: an identical rewrite on every
+           live batch made the row blink and reset hover / open detail. */
+        var rowsChanged = false;
+        if ($tbody.length && rows && ($tbody.data('pmRows') !== rows || !$tbody.children().length)) {
+            $tbody.html(rows);
+            $tbody.data('pmRows', rows);
+            rowsChanged = true;
+        }
         syncWaveFlags(assetId, sorted[0] || null);
-        if (typeof window._pmSyncPlusIcons === 'function') { try { window._pmSyncPlusIcons(); } catch (e) { } }
+        if (rowsChanged && typeof window._pmSyncPlusIcons === 'function') { try { window._pmSyncPlusIcons(); } catch (e) { } }
+        return rowsChanged;
     }
     window.buildPmDataRow = buildPmDataRow616;
     PM616.buildDataRow = buildPmDataRow616;
@@ -2469,8 +2479,11 @@ function abortPmIndicationRequest() {
         $('#pmVptAvgB_' + assetId).text(d.BV.Avg ? F(d.BV.Avg.value, 1) : DASH);
         $('#pmTptAvgB_' + assetId).text(d.BC.OperationTime ? FI(d.BC.OperationTime.value) : DASH);
 
-        buildPmDataRow616(assetId, pm);
+        var rowsChanged = buildPmDataRow616(assetId, pm);
 
+        /* Flash the card only when its data row actually changed (was: every
+           batch, so the whole card pulsed continuously). */
+        if (!rowsChanged) return;
         $card.removeClass('pm-card-flash-anim');
         if ($card[0]) {
             void $card[0].offsetWidth;
@@ -5505,7 +5518,8 @@ try {
             G + '.ips-asset-card.ipsv2.ipsv2-discharging{--ipsv2-accent:var(--e7-amber, #fbbf24);}' +
             G + '.ipsv2 .ips-card-head{display:flex;align-items:center;gap:8px;padding:11px 12px 8px;background:transparent;border-bottom:0;}' +
             G + '.ipsv2 .ips-card-head .ips-asset-name{flex:1 1 auto;min-width:0;color:var(--e7-heading,#fff);font-size:12.5px;font-weight:800;letter-spacing:.03em;' +
-            'text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+            /* full asset name: wraps instead of being cut with "..." */
+            'text-transform:uppercase;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.3;}' +
             G + '.ipsv2 .ipsv2-title{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:4px;}' +
             G + '.ipsv2 .ipsv2-title .ips-asset-name{max-width:100%;}' +
             G + '.ipsv2 .ipsv2-kind{flex:0 0 auto;font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;' +
@@ -9167,7 +9181,9 @@ try {
     // ---- asset chooser popover --------------------------------------
     function buildChooser() {
         var $p = $('#mgPop');
-        var cur = {}; mgG.assetIds.forEach(function (id) { cur[id] = true; });
+        /* single-asset view (Track / Signal): the chosen set is the selector's list, not the one shown */
+        var chosen = (mgG.single && mgG.allIds && mgG.allIds.length) ? mgG.allIds : mgG.assetIds;
+        var cur = {}; chosen.forEach(function (id) { cur[id] = true; });
         var h = '<div class="tlmg-pop-head"><input type="search" class="tlgv-search" data-mg-pop-search placeholder="Search asset…" aria-label="Search asset"/>' +
             '<button type="button" class="tlmg-mini" data-mg-pop-all="1">All</button><button type="button" class="tlmg-mini" data-mg-pop-all="0">None</button></div>' +
             '<div class="tlmg-pop-list">';
@@ -9175,7 +9191,7 @@ try {
             h += '<label class="tlmg-pop-item"><input type="checkbox" value="' + esc(a.id) + '" ' + (cur[a.id] ? 'checked' : '') + '/><span>' + esc(a.name) + '</span></label>';
         });
         if (!mgG.pool.length) h += '<div class="tlgv-empty" style="padding:16px;">No asset list available</div>';
-        h += '</div><div class="tlmg-pop-foot"><span data-mg-pop-n>' + mgG.assetIds.length + '</span>&nbsp;selected · max ' + MAX_HARD +
+        h += '</div><div class="tlmg-pop-foot"><span data-mg-pop-n>' + chosen.length + '</span>&nbsp;selected · max ' + MAX_HARD +
             '<span class="tlgv-spacer"></span><button type="button" class="tlmg-btn tlmg-primary" data-mg-pop-apply><i class="fas fa-check"></i> Apply</button></div>';
         $p.html(h);
     }
@@ -9187,6 +9203,13 @@ try {
     function togglePop(open) {
         var $p = $('#mgPop'), isOpen = $p.hasClass('open');
         if (open === undefined) open = !isOpen;
+        /* single-asset view hides the Assets block (selector in the header instead), and
+           the popover lives inside it: "Choose assets…" opened it invisibly. Show the
+           block only while the chooser is open, with its own Assets button kept hidden. */
+        if (mgG.single) {
+            $('#mgAssetsBtn').hide();
+            $('#mgRange .tlmg-assets').css('display', open ? '' : 'none');
+        }
         $p.toggleClass('open', open);
         $('#mgAssetsBtn').attr('aria-expanded', open ? 'true' : 'false');
         if (open) { popCount(); setTimeout(function () { $p.find('[data-mg-pop-search]').trigger('focus'); }, 10); }

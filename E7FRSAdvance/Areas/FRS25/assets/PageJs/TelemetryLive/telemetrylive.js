@@ -343,6 +343,9 @@ function atBuildTrackCard(aid) {
     }
     var _hasRdpms = (typeof tlAssetHasRdpms !== 'function') || tlAssetHasRdpms(aid);
     var _hasDl = (typeof tlAssetHasDatalogger !== 'function') || tlAssetHasDatalogger(aid);
+    // Config (GetBulkAssetMetadata) not loaded yet: no grid rather than the
+    // station-wide attribute list; the real attributes appear once it arrives.
+    if (typeof tlTrackCfgPending === 'function' && tlTrackCfgPending()) { attrList = []; _hasRdpms = false; }
     for (var i = 0; !isAxc && i < attrList.length; i++) {
         gridCells++;
         var an = attrList[i];
@@ -392,6 +395,10 @@ function atBuildTrackCard(aid) {
     // drop = amber down (track occupied). Shown first; the raw TPR relay (if
     // any) is skipped below so it is not duplicated.
     var tpr = (!isAxc) ? trackTprStatus(a) : null;
+    // Only a real TPR DataLogger relay gets the pill. A state worked out from
+    // the RDPMS TPR V reading (or a 0/1 flag) looked like DataLogger data on
+    // tracks with no DataLogger at all; that reading stays in the value grid.
+    if (tpr && tpr.src !== 'relay') tpr = null;
     if (tpr) {
         pills += '<span class="at-pill ' + tpr.state + '" title="TPR ' +
             (tpr.state === 'pickup' ? 'Pickup - track clear' : 'Drop - track occupied') + '">TPR ' +
@@ -406,9 +413,13 @@ function atBuildTrackCard(aid) {
     }
     if (otherKeys.length > 5) pills += '<span class="at-pill">+' + (otherKeys.length - 5) + ' more</span>';
 
-    // Odd number of grid cells leaves the last row's right cell empty: show the
-    // DataLogger pills there instead of adding a separate footer row.
-    var pillsInGrid = !!pills && (gridCells % 2 === 1);
+    // DataLogger relays always go in the card footer as pills (never as a grid
+    // row). An odd cell count gets a blank filler so the last row stays complete.
+    var pillsInGrid = false;
+    if (grid && gridCells % 2 === 1) {
+        grid += '<div class="at-tdg-fill" aria-hidden="true"><span class="at-tdg-lbl">&nbsp;</span><span class="at-tdg-val"></span></div>';
+        gridCells++;
+    }
     // Rendered like a normal value cell: label on the left, compact chips on the right.
     if (pillsInGrid) {
         var dlChips = '';
@@ -581,6 +592,8 @@ function getTrackSortOrder(rawName) {
 }
 var wsCurrentAssetTypeId = null;
 var wsValidAssetIds = [];   // whitelist from GetAssestBy / bulk asset list
+var wsAssetListAnswered = false;   // the asset API answered for the current site + type (list then strict, even empty)
+var tlPmAssetListSeq = 0;          // GetAssestBy request counter: a late reply for an older site / type is ignored
 var wsCurrentFilterAssetIds = [];
 
 // ================================================================
@@ -643,7 +656,10 @@ function isAssetInBulkWhitelist(assetId) {
         if (wsValidAssetIds && wsValidAssetIds.length > 0) {
             return wsValidAssetIds.indexOf(aid) !== -1;
         }
-        return true;
+        /* empty list: allow only while GetAssestBy is still resolving. Once it answered
+           (even with zero assets) nothing binds -- an empty answer let every WS frame
+           create a card for an asset the API never returned. */
+        return !wsAssetListAnswered;
     }
 
     if (selectedType && selectedType !== '0') {
@@ -4042,9 +4058,11 @@ function buildTableRow(assetId, isTrack, isNew) {
         '<button type="button" class="tl-asset-action tl-aa-circuit" title="Open Circuit" onclick="fnGetAssetCircuit(\'' + assetId + '\')">' +
         '<i class="fa-solid fa-project-diagram"></i>' +
         '</button>' +
+        /* 616 parity (tlAvgIconHtml): "Avg values" in the Table view, not for ELD */
+        (isEldAssetType() ? '' :
         '<button type="button" class="tl-asset-action tl-aa-avg" title="Avg values" onclick="fnShowFRSAttributeRangeHistory(\'' + assetId + '\')">' +
         '<i class="fa-solid fa-chart-column"></i>' +
-        '</button>' +
+        '</button>') +
         '</span>' +
         '</td>';
 
@@ -4725,12 +4743,44 @@ function updateTrackCardsIncremental(assetIds) {
         }
 
         var html = buildCard(aid);
-        if (html) $card.replaceWith(html);
+        if (!html) continue;
+        // Replace only when the card's content changed (was: every batch). The
+        // header time ticks every frame, so compare without it and just patch
+        // that text when it is the only difference.
+        var subRe = /<div class="at-card-sub">([\s\S]*?)<\/div>/;
+        var key = html.replace(subRe, '');
+        if ($card.data('cardKey') === key) {
+            var m = subRe.exec(html);
+            var $sub = $card.find('.at-card-sub').first();
+            if (m && $sub.length && $sub.html() !== m[1]) $sub.html(m[1]);
+            continue;
+        }
+        var $new = $(html);
+        $new.data('cardKey', key);
+        $card.replaceWith($new);
     }
 
-    if (hasNewCard && typeof fnBindTrackCards === 'function') fnBindTrackCards();
+    if (hasNewCard && typeof fnBindTrackCards === 'function') { fnBindTrackCards(); return; }
+    // The first paint can run before the site config says which tracks are
+    // DataLogger-only; re-apply the full-first order once it is known.
+    if (!isEld) tlReorderTrackCards($grid);
 }
 window.updateTrackCardsIncremental = updateTrackCardsIncremental;
+
+// Moves existing Track card nodes (no rebuild) so tracks with RDPMS readings
+// come first and DataLogger-only tracks after; no-op when already in order.
+function tlReorderTrackCards($grid) {
+    if (!$grid || !$grid.length) return;
+    var $cards = $grid.children('.at-asset-card[data-id]');
+    if ($cards.length < 2) return;
+    var ids = $cards.map(function () { return String($(this).attr('data-id')); }).get();
+    var want = tlTrackFullFirst(ids);
+    if (want.join(',') === ids.join(',')) return;
+    var byId = {};
+    $cards.each(function () { byId[String($(this).attr('data-id'))] = this; });
+    for (var i = 0; i < want.length; i++) $grid[0].appendChild(byId[want[i]]);
+}
+window.tlReorderTrackCards = tlReorderTrackCards;
 
 // Optimized Table update
 function incrementalTableUpdate(assetIds, isTrack) {
@@ -6039,7 +6089,7 @@ function buildMainSignalCard(assetId) {
     var armPositions = ['rdpms-arm-1', 'rdpms-arm-2', 'rdpms-arm-3', 'rdpms-arm-4'];
     var siteIdForActions = asset.SiteId || $('#drpSite').val();
     var h = '<div class="col-12 col-xxl-4 col-xl-6 col-lg-6 col-md-12 col-sm-12 rdpms-signal-card" id="rdpmsCard_' + assetId + '">';
-    h += '<div class="card card-border"><div class="card-header-signal bg-secondary"><div class="card-header-left" style="background:var(--primary)"><h6>Signal : ' + name + '<br/><span id="rdpmsTs_' + assetId + '" style="font-size:10px;opacity:0.7;">Updated: </span></h6></div><div class="card-header-right" style="background:var(--primary)"><div class="sig-card-actions"><button class="sig-action-btn sig-action-graph" onclick="fnGetAssetGraph(\'' + siteIdForActions + '\',\'' + assetId + '\')" title="Historical Graph"><i class="fa-solid fa-chart-line"></i></button><button class="sig-action-btn sig-action-circuit" onclick="fnGetAssetCircuit(\'' + assetId + '\')" title="Circuit Diagram"><i class="fa-solid fa-project-diagram"></i></button><button class="sig-action-btn sig-action-avg" onclick="fnShowFRSAttributeRangeHistory(\'' + assetId + '\')" title="Avg values"><i class="fa-solid fa-chart-column"></i></button></div></div></div>';
+    h += '<div class="card card-border"><div class="card-header-signal bg-secondary"><div class="card-header-left" style="background:var(--primary)"><h6>Signal : ' + name + '<br/><span id="rdpmsTs_' + assetId + '" style="font-size:10px;opacity:0.7;">Updated: </span></h6></div><div class="card-header-right" style="background:var(--primary)"><div class="sig-card-actions"><button class="sig-action-btn sig-action-graph" onclick="fnGetAssetGraph(\'' + siteIdForActions + '\',\'' + assetId + '\')" title="Historical Graph"><i class="fa-solid fa-chart-line"></i></button><button class="sig-action-btn sig-action-circuit" onclick="fnGetAssetCircuit(\'' + assetId + '\')" title="Circuit Diagram"><i class="fa-solid fa-project-diagram"></i></button></div></div></div>';
     h += '<div class="card-body-signal"><div class="rdpms-sizeDiv"><div class="rdpms-signal-container">';
     h += '<div class="rdpms-routeSignal' + (hasRoutes ? ' has-routes' : '') + '">';
     if (hasRoutes) {
@@ -6082,7 +6132,7 @@ function buildShuntSignalCard(assetId) {
     var siteIdForActions = asset.SiteId || $('#drpSite').val();
     var h = '<div class="col-12 col-xxl-4 col-xl-6 col-lg-6 col-md-12 col-sm-12 rdpms-signal-card" id="rdpmsCard_' + assetId + '">';
     h += '<div class="card card-border"><div class="card-header-signal" style="background:var(--primary)"><div class="card-header-left"><h6>Signal : ' + name + '<br/><span id="rdpmsTs_' + assetId + '" style="font-size:10px;opacity:0.7;">Updated: </span></h6></div>';
-    h += '<div class="card-header-right" style="background:var(--primary)"><div class="sig-card-actions"><button class="sig-action-btn sig-action-graph" onclick="fnGetAssetGraph(\'' + siteIdForActions + '\',\'' + assetId + '\')" title="Historical Graph"><i class="fa-solid fa-chart-line"></i></button><button class="sig-action-btn sig-action-circuit" onclick="fnGetAssetCircuit(\'' + assetId + '\')" title="Circuit Diagram"><i class="fa-solid fa-project-diagram"></i></button><button class="sig-action-btn sig-action-avg" onclick="fnShowFRSAttributeRangeHistory(\'' + assetId + '\')" title="Avg values"><i class="fa-solid fa-chart-column"></i></button></div></div></div>';
+    h += '<div class="card-header-right" style="background:var(--primary)"><div class="sig-card-actions"><button class="sig-action-btn sig-action-graph" onclick="fnGetAssetGraph(\'' + siteIdForActions + '\',\'' + assetId + '\')" title="Historical Graph"><i class="fa-solid fa-chart-line"></i></button><button class="sig-action-btn sig-action-circuit" onclick="fnGetAssetCircuit(\'' + assetId + '\')" title="Circuit Diagram"><i class="fa-solid fa-project-diagram"></i></button></div></div></div>';
     h += '<div class="card-body-signal"><div class="rdpms-sizeShuntDiv"><div class="rdpms-shunt"><img class="trianglePng" src="/assets/images/shunt.png" />';
     h += '<div class="rdpms-white light-off" id="rdpmsShuntTop_' + assetId + '"></div><div class="rdpms-white light-off" id="rdpmsShuntRight_' + assetId + '"></div><div class="rdpms-white light-off" id="rdpmsShuntLeft_' + assetId + '"></div></div>';
     h += '<div class="rdpms-route-table"><table>';
@@ -6927,6 +6977,14 @@ function fnSearchView() {
     }
 }
 
+// Stable split: assets with RDPMS attributes first, DataLogger-only after.
+function tlTrackFullFirst(ids) {
+    if (!ids || ids.length < 2 || typeof tlAssetHasRdpms !== 'function') return ids;
+    var full = [], dlOnly = [];
+    for (var i = 0; i < ids.length; i++) (tlAssetHasRdpms(ids[i]) ? full : dlOnly).push(ids[i]);
+    return full.concat(dlOnly);
+}
+
 function fnBindTrackCards() {
     console.log('[Cards] fnBindTrackCards called');
     var container = $('#atCardView');
@@ -7010,6 +7068,11 @@ function fnBindTrackCards() {
         renderIpsGridView();
         return;
     }
+
+    // Track cards: tracks with RDPMS readings first, DataLogger-only tracks
+    // after them (each group keeps its name order), so DL-only cards sit in
+    // their own compact rows instead of stretching beside full cards.
+    if (isTrack) assetIds = tlTrackFullFirst(assetIds);
 
     var html = '<div class="at-cards-grid">';
     for (var i = 0; i < assetIds.length; i++) {
@@ -12380,6 +12443,8 @@ function loadAssetNumbersMulti(siteId, assetTypeId) {
     $('#chkAllAssetNumber').prop('checked', false);
     $('#txtAssetNumber').text('All');
     wsValidAssetIds = [];
+    wsAssetListAnswered = false;   /* until the asset API answers, frames may bind (PM grace) */
+    var pmReq = ++tlPmAssetListSeq;   /* every call (any type / site) makes older PM replies stale */
 
     if (!siteId || siteId === '' || siteId === '0' ||
         !assetTypeId || assetTypeId === '' || assetTypeId === '0') return;
@@ -12394,7 +12459,14 @@ function loadAssetNumbersMulti(siteId, assetTypeId) {
             data: JSON.stringify({ siteId: siteId, assetTypeId: assetTypeId }),
             contentType: 'application/json',
             success: function (d) {
+                if (pmReq !== tlPmAssetListSeq) return;   /* an older site / type answered late */
                 var list = Array.isArray(d) ? d : (d && (d.Data || d.data || d.Result || []));
+                /* strict (even when empty) only for a real asset list; anything else (login
+                   page after session expiry, {Data:null}, error object) keeps the grace and
+                   never wipes the live data -- same as before the strict rule */
+                var isList = Array.isArray(list) && (Array.isArray(d) || !!(d && (Array.isArray(d.Data) || Array.isArray(d.data) || Array.isArray(d.Result))));
+                if (isList) wsAssetListAnswered = true;
+                if (!Array.isArray(list)) list = [];
 
                 // VibrationA / VibrationB ride on this same payload and decide
                 // which ends the vibration table builds rows for.
@@ -12457,10 +12529,23 @@ function loadAssetNumbersMulti(siteId, assetTypeId) {
                     wsValidAssetIds = [];
                     bulkAssetsList = [];
                     window.bulkAssetsList = bulkAssetsList;
+                    /* API returned a real, empty asset list: drop the previous type's map (it
+                       could rebuild a whitelist) and every asset already bound from the WebSocket */
+                    if (isList) {
+                        bulkAssetMap = {};
+                        window.bulkAssetMap = bulkAssetMap;
+                        Object.keys(wsLiveData || {}).forEach(function (id) {
+                            delete wsLiveData[id];
+                            $('#wsLiveTable tbody tr[data-id="' + id + '"]').remove();
+                            $('#rdpmsCard_' + id).remove();
+                            $('#pmCard_' + id).remove();
+                        });
+                    }
                     $('#listAssetNumber').html('<div class="dropdown-empty">No assets found</div>');
                 }
             },
             error: function () {
+                if (pmReq !== tlPmAssetListSeq) return;   /* stale request: newer one owns the state */
                 wsValidAssetIds = [];
                 if (typeof resetPmVibrationEndFlags === 'function') resetPmVibrationEndFlags();
                 $('#listAssetNumber').html('<div class="dropdown-empty">Error loading</div>');
@@ -12470,6 +12555,7 @@ function loadAssetNumbersMulti(siteId, assetTypeId) {
     }
 
     loadBulkAssetMetadata(siteId, assetTypeId, function () {
+        wsAssetListAnswered = true;
         if (typeof bulkAssetsList !== 'undefined') {
             wsValidAssetIds = [];
             for (var i = 0; i < bulkAssetsList.length; i++) {
@@ -13232,64 +13318,67 @@ function fnGetEventLog(assetId, siteId) {
     window.currentEventLogAssetId = assetId;
     window.currentEventLogSiteId = siteId || $('#drpSite').val();
 
-    $("#loader").show();
+    /* 616 parity (e7mriv2web fnGetEventLog) */
+    // 1. Open the modal immediately with a spinner (modal shell is already on the page)
+    $("#model-div-alert").html(
+        '<div class="text-center p-5">' +
+        '<i class="fas fa-spinner fa-spin fa-2x"></i>' +
+        '<div class="mt-2">Loading event log...</div>' +
+        '</div>');
+    showEventLogModal();
 
-    // Call GetEventLog POST action with assetId
-    $.ajax({
+    // 2. Cancel the previous request if the user clicks another asset quickly
+    if (_eventLogXhr && _eventLogXhr.readyState !== 4) {
+        _eventLogXhr.abort();
+    }
+
+    // 3. Load the content into the already-open modal
+    _eventLogXhr = $.ajax({
         url: '/FRS25/Telemetry/GetEventLog',
         type: 'POST',
         data: { assetId: assetId },  // Controller expects: int assetId
         success: function (data) {
-            $("#loader").hide();
             $("#model-div-alert").empty().append(data);
 
-            // Show modal with proper Bootstrap handling
-            var modalEl = document.getElementById('modalalertlogs');
-
-            try {
-                // Bootstrap 5 approach
-                if (typeof bootstrap !== 'undefined' &&
-                    bootstrap.Modal &&
-                    typeof bootstrap.Modal.getInstance === 'function') {
-                    var existingModal = bootstrap.Modal.getInstance(modalEl);
-                    if (existingModal) {
-                        existingModal.dispose();
-                    }
-                    var modal = new bootstrap.Modal(modalEl, {
-                        backdrop: 'static',
-                        keyboard: true
-                    });
-                    modal.show();
-                } else if (typeof $ !== 'undefined' && $.fn.modal) {
-                    // Bootstrap 4 fallback
-                    $('#modalalertlogs').modal({
-                        backdrop: 'static',
-                        keyboard: true
-                    }).modal('show');
-                }
-            } catch (e) {
-                console.warn('Modal init error, using jQuery fallback:', e);
-                if (typeof $ !== 'undefined' && $.fn.modal) {
-                    $('#modalalertlogs').modal('show');
-                }
-            }
-
-            // Initialize controls after modal loads
-            setTimeout(function () {
+            // Partial's inline scripts have already run and the modal is visible,
+            // so no 400 ms setTimeout is needed
+            if (typeof initEventLogControls === 'function') {
                 initEventLogControls();
-            }, 400);
+            }
         },
         error: function (xhr, status, error) {
-            $("#loader").hide();
+            if (status === 'abort') return; // superseded by a newer click
             console.error("[GetEventLog] Error:", error);
             console.error("[GetEventLog] Response:", xhr.responseText);
+            $("#model-div-alert").html(
+                '<div class="text-center text-danger p-5">Failed to load Event Log.</div>');
             if (typeof showError === 'function') {
                 showError("Failed to load Event Log", "Error");
-            } else {
-                alert("Failed to load Event Log: " + error);
             }
         }
     });
+}
+
+var _eventLogXhr = null;
+
+function showEventLogModal() {
+    var modalEl = document.getElementById('modalalertlogs');
+    try {
+        /* Bootstrap 5 only: this page's Bootstrap has bootstrap.Modal without getInstance,
+           so it goes straight to the jQuery modal below (no console warning) */
+        if (typeof bootstrap !== 'undefined' && bootstrap.Modal && typeof bootstrap.Modal.getInstance === 'function') {
+            // Reuse the existing instance instead of dispose + recreate on every click
+            var modal = bootstrap.Modal.getInstance(modalEl) ||
+                new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: true });
+            modal.show();
+            return;
+        }
+    } catch (e) {
+        console.warn('Modal init error, using jQuery fallback:', e);
+    }
+    if (typeof $ !== 'undefined' && $.fn.modal) {
+        $('#modalalertlogs').modal({ backdrop: 'static', keyboard: true }).modal('show');
+    }
 }
 
 // ================================================================
@@ -13573,6 +13662,42 @@ if (typeof window.fnSearchPointEvent !== 'function') {
 if (typeof fnUnderMaintenance !== 'function') { function fnUnderMaintenance(assetId, element) { $.ajax({ url: '/FRS25/Telemetry/UnderMaintenance', type: 'POST', data: JSON.stringify({ assetId: assetId }), contentType: 'application/json', success: function (data) { if (data && data.Success) { var $icon = $(element); if ($icon.hasClass('fa-bell')) { $icon.removeClass('fa-bell').addClass('fa-bell-slash'); showSuccess('Maintenance mode enabled', 'Maintenance'); } else { $icon.removeClass('fa-bell-slash').addClass('fa-bell'); showSuccess('Maintenance mode disabled', 'Maintenance'); } } }, error: function () { showError('Failed to update maintenance status', 'Error'); } }); } }
 
 // ===== DATALOGGER PROCESSING =====
+/* v618.72 DataLogger name guard. Callers fall back to the frame's AssetAttributeId
+   as the "role", and that id is a DIFFERENT id space from the DataLogger Role, so a
+   site-wide role->name entry could rename a relay into another one (signal S12's
+   "HHR" frame shown as "TPR"). The resolved name is kept unless ALL hold:
+   no real Role on the frame, the raw name is a plain relay name (letters only, e.g.
+   HHR / RECR / Co-HR), the resolved name is a different relay (does not contain the
+   raw name, e.g. "Combined-NWKR" for "NWKR" is kept) and it is not one of this
+   asset's own configured DataLogger names. Then the frame's own name is used. */
+function tlDlNameNorm(s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+function tlAssetHasDlName(assetId, name) {
+    var aid = String(assetId == null ? '' : assetId), want = tlDlNameNorm(name), pre = aid + '_';
+    if (!aid || !want) return false;
+    var maps = [window.userAssetDataloggerMap, window.bulkDataloggerMap];
+    for (var m = 0; m < maps.length; m++) {
+        var mp = maps[m];
+        if (!mp) continue;
+        for (var k in mp) {
+            if (!mp.hasOwnProperty(k) || k.indexOf(pre) !== 0 || !mp[k]) continue;
+            var e = mp[k];
+            if (tlDlNameNorm(e.name) === want || tlDlNameNorm(e.dataloggerAttribute || e.DataloggerAttribute) === want) return true;
+        }
+    }
+    var bm = window.bulkAssetMap && window.bulkAssetMap[aid];
+    var dls = (bm && (bm.mAssetInfoDataloggers || bm.MAssetInfoDataloggers)) || [];
+    for (var i = 0; i < dls.length; i++) if (dls[i] && tlDlNameNorm(dls[i].DataloggerAttribute) === want) return true;
+    return false;
+}
+function tlDlNameGuard(assetId, rawName, resolved, hasRole) {
+    var raw = String(rawName == null ? '' : rawName).trim();
+    if (hasRole || !resolved || !/^[A-Za-z][A-Za-z\- ]*$/.test(raw)) return resolved;
+    var nr = tlDlNameNorm(resolved), nw = tlDlNameNorm(raw);
+    if (!nw || nr === nw || nr.indexOf(nw) !== -1) return resolved;
+    return tlAssetHasDlName(assetId, resolved) ? resolved : raw;
+}
+window.tlDlNameGuard = tlDlNameGuard;
+
 function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp, roleOrAttrId, rawD) {
     if (!wsLiveData[assetId]) return false;
 
@@ -13597,6 +13722,7 @@ function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp,
     }
 
     if (!displayName) displayName = attrName;
+    displayName = tlDlNameGuard(assetId, attrName, displayName, !!(rawD && rawD.Role != null && rawD.Role !== ''));
 
     if (!wsLiveData[assetId].dlRelays) wsLiveData[assetId].dlRelays = {};
 
@@ -13644,10 +13770,10 @@ function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp,
     return true;
 }
 // Make renderDataloggerBadgesForAsset global so it can be called from processWsDataloggerAttr
-function renderDataloggerBadgesForAsset(assetId) { var asset = wsLiveData[assetId]; if (!asset || !asset.dlRelays) return; var relayKeys = Object.keys(asset.dlRelays); if (relayKeys.length === 0) return; relayKeys.sort(function (a, b) { var ra = asset.dlRelays[a], rb = asset.dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return (ra.displayName || a).localeCompare(rb.displayName || b); }); var $section = $('#rdpmsDL_' + assetId); if (!$section.length) { var $cardBody = $('#rdpmsCard_' + assetId + ' .card-body-signal'); if (!$cardBody.length) return; $cardBody.append(getDataloggerSectionHTML(assetId)); $section = $('#rdpmsDL_' + assetId); if (!$section.length) return; } var maxInline = 2; var html = ''; for (var i = 0; i < relayKeys.length && i < maxInline; i++) { var relay = asset.dlRelays[relayKeys[i]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[i]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } var moreCount = relayKeys.length - maxInline; if (moreCount > 0) { html += '<span id="rdpmsDLToggle_' + assetId + '" onclick="toggleDlMore(\'' + assetId + '\')" style="color:var(--e7-accent, #38bdf8);font-size:10px;cursor:pointer;white-space:nowrap;">+ ' + moreCount + ' more</span>'; } html += '<span class="rdpms-dl-details-btn" onclick="fnShowDataLoggerEvent(\'' + assetId + '\')">Details</span>'; if (moreCount > 0) { html += '<div id="rdpmsDLMore_' + assetId + '" style="display:none;width:100%;">'; for (var j = maxInline; j < relayKeys.length; j++) { var relay = asset.dlRelays[relayKeys[j]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[j]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } html += '</div>'; } $section.html(html); $section.closest('.rdpms-datalogger-section').show(); }
+function renderDataloggerBadgesForAsset(assetId) { var asset = wsLiveData[assetId]; if (!asset || !asset.dlRelays) return; var relayKeys = Object.keys(asset.dlRelays); if (relayKeys.length === 0) return; relayKeys.sort(function (a, b) { var ra = asset.dlRelays[a], rb = asset.dlRelays[b]; if (ra.isPickup && !rb.isPickup) return -1; if (!ra.isPickup && rb.isPickup) return 1; return (ra.displayName || a).localeCompare(rb.displayName || b); }); var $section = $('#rdpmsDL_' + assetId); if (!$section.length) { var $cardBody = $('#rdpmsCard_' + assetId + ' .card-body-signal'); if (!$cardBody.length) return; $cardBody.append(getDataloggerSectionHTML(assetId)); $section = $('#rdpmsDL_' + assetId); if (!$section.length) return; } var maxInline = 2; var html = ''; for (var i = 0; i < relayKeys.length && i < maxInline; i++) { var relay = asset.dlRelays[relayKeys[i]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[i]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } var moreCount = relayKeys.length - maxInline; var dlMoreOpen = !!(window._dlMoreOpen && window._dlMoreOpen[assetId]); /* keep the user's open/closed choice across live redraws */ if (moreCount > 0) { html += '<span id="rdpmsDLToggle_' + assetId + '" onclick="toggleDlMore(\'' + assetId + '\')" style="color:var(--e7-accent, #38bdf8);font-size:10px;cursor:pointer;white-space:nowrap;">' + (dlMoreOpen ? '- less' : '+ ' + moreCount + ' more') + '</span>'; } html += '<span class="rdpms-dl-details-btn" onclick="fnShowDataLoggerEvent(\'' + assetId + '\')">Details</span>'; if (moreCount > 0) { html += '<div id="rdpmsDLMore_' + assetId + '" style="' + (dlMoreOpen ? '' : 'display:none;') + 'width:100%;">'; for (var j = maxInline; j < relayKeys.length; j++) { var relay = asset.dlRelays[relayKeys[j]]; var badgeClass = relay.isPickup ? 'pickup' : 'drop'; var badgeText = relay.isPickup ? 'Pickup' : 'Drop'; html += '<div class="rdpms-dl-item"><h6>' + (relay.displayName || relayKeys[j]) + '</h6><span class="rdpms-dl-badge ' + badgeClass + ' shine-button">' + badgeText + '</span></div>'; } html += '</div>'; } /* rewrite only when something changed: no flicker, no collapse */ if ($section.data('dlHtml') !== html || !$section.children().length) { $section.html(html); $section.data('dlHtml', html); } $section.closest('.rdpms-datalogger-section').show(); }
 // Expose globally for callers that use window.renderDataloggerBadgesForAsset(...)
 window.renderDataloggerBadgesForAsset = renderDataloggerBadgesForAsset;
-function toggleDlMore(assetId) { var $overflow = $('#rdpmsDLMore_' + assetId); var $toggle = $('#rdpmsDLToggle_' + assetId); if (!$overflow.length) return; if ($overflow.is(':visible')) { $overflow.slideUp(200); $toggle.text('+ ' + $overflow.find('.rdpms-dl-item').length + ' more'); } else { $overflow.slideDown(200); $toggle.text('- less'); } }
+function toggleDlMore(assetId) { var $overflow = $('#rdpmsDLMore_' + assetId); var $toggle = $('#rdpmsDLToggle_' + assetId); if (!$overflow.length) return; window._dlMoreOpen = window._dlMoreOpen || {}; var $section = $('#rdpmsDL_' + assetId); $section.removeData('dlHtml'); /* next redraw rebuilds with the new state */ if ($overflow.is(':visible')) { window._dlMoreOpen[assetId] = false; $overflow.slideUp(200); $toggle.text('+ ' + $overflow.find('.rdpms-dl-item').length + ' more'); } else { window._dlMoreOpen[assetId] = true; $overflow.slideDown(200); $toggle.text('- less'); } }
 function getDataloggerSectionHTML(assetId) { return '<div class="rdpms-datalogger-section" style="display:none;"><div class="rdpms-dl-row" id="rdpmsDL_' + assetId + '"><span style="color:var(--e7-text-3, #94a3b8);font-size:10px;">Waiting for relay data...</span></div></div>'; }
 
 // ===== DOCUMENT READY =====
@@ -13949,6 +14075,7 @@ $(document).ready(function () {
             assetIds.sort(function (a, b) { return (wsLiveData[a].AssetName || '').localeCompare(wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' }); });
             assetIds = blankDataLast(assetIds); // FIX-1: moved OUTSIDE loop (was inside, re-sorting every iteration)
             var atKind = tlAssetTypeKind(wsCurrentAssetTypeId);
+            if (atKind !== 'signal' && atKind !== 'point' && atKind !== 'eld') assetIds = tlTrackFullFirst(assetIds);
             var html = '<div class="at-cards-grid">';
             for (var i = 0; i < assetIds.length; i++) {
                 var aid = assetIds[i];
@@ -16145,7 +16272,29 @@ function _hexToRgba(hex, alpha) {
     return 'rgba(' + r + ',' + g + ',' + b + ',' + (alpha !== undefined ? alpha : 1) + ')';
 }
 
-function pmShowSingleArrayGraph(assetId, direction, type) {
+// Waveform for ONE operation: +/-2 min around its time (pmShowTableArrayGraph),
+// no date filter. The graph belongs to the operation that was clicked, so the
+// old whole-day Date picker only showed unrelated operations.
+// Operation time: 4th arg, else the clicked row's data-ts, else the asset's
+// latest operation of that direction.
+function pmShowSingleArrayGraph(assetId, direction, type, opTimestampDevice) {
+    var ts = opTimestampDevice;
+    if (!ts) {
+        try {
+            var ev = window.event, tr = ev && ev.target && ev.target.closest ? ev.target.closest('tr[data-ts]') : null;
+            if (tr) ts = tr.getAttribute('data-ts');
+        } catch (e) { /* no event */ }
+    }
+    if (!ts && typeof pmLastOperationTimestamp !== 'undefined' && pmLastOperationTimestamp) {
+        ts = pmLastOperationTimestamp[assetId + '_' + (direction === 'R' ? 'Reverse' : 'Normal')];
+    }
+    if (typeof pmShowTableArrayGraph === 'function') return pmShowTableArrayGraph(assetId, direction, type, ts || '');
+    return pmShowSingleArrayGraphDayLegacy(assetId, direction, type);
+}
+
+// Old whole-day viewer with Date filter; only used if the operation viewer
+// (telemetrylive-ext.js) is not loaded.
+function pmShowSingleArrayGraphDayLegacy(assetId, direction, type) {
     var asset = wsLiveData[assetId];
     var baseName = asset ? (asset.AssetName || assetId) : assetId;
     var name = (baseName.indexOf('PT-') === 0) ? baseName : 'PT-' + baseName;
@@ -16316,7 +16465,7 @@ function loadSingleArrayData(startDate, endDate) {
             if (!operations.length) operations = tlPmParseArrayOps(response, altAttrId);
 
             if (operations.length === 0) {
-                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No array data found for Attribute ID: ' + p.attrId + '<br><small>Array values should be comma-separated strings</small>').show();
+                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data found').show();
                 return;
             }
 
@@ -16592,6 +16741,7 @@ function renderPmBadges(assetId, dlData) {
     var keys = Object.keys(dlData || {});
     if (keys.length === 0) {
         $relaySpan.html('');
+        $relaySpan.removeData('pmBadges');
         return;
     }
 
@@ -16618,7 +16768,11 @@ function renderPmBadges(assetId, dlData) {
 
     h += '<span class="pm-detail-badge" onclick="fnShowDataLoggerEvent(\'' + assetId + '\')">Detail</span>';
 
+    // Rewrite only on change: an identical rewrite every batch restarted the
+    // badges' shine animation, so they visibly jumped.
+    if ($relaySpan.data('pmBadges') === h && $relaySpan.children().length) return;
     $relaySpan.html(h);
+    $relaySpan.data('pmBadges', h);
 }
 
 // ================================================================
@@ -17215,7 +17369,7 @@ function loadCombinedArrayData(startDate, endDate) {
             });
 
             if (aOperations.length === 0 && bOperations.length === 0) {
-                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No array data found for IDs: ' + p.aAttrId + ', ' + p.bAttrId + '<br><small>Array values should be comma-separated strings</small>').show();
+                $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data found').show();
                 return;
             }
 
@@ -18432,8 +18586,10 @@ function addNewTableRow(assetId) {
         '<i class="fa-solid fa-chart-line"></i></button>' +
         '<button type="button" class="tl-asset-action tl-aa-circuit" title="Open Circuit" onclick="fnGetAssetCircuit(\'' + assetId + '\')">' +
         '<i class="fa-solid fa-project-diagram"></i></button>' +
+        /* 616 parity (tlAvgIconHtml): not for ELD */
+        (isEldAssetType() ? '' :
         '<button type="button" class="tl-asset-action tl-aa-avg" title="Avg values" onclick="fnShowFRSAttributeRangeHistory(\'' + assetId + '\')">' +
-        '<i class="fa-solid fa-chart-column"></i></button>' +
+        '<i class="fa-solid fa-chart-column"></i></button>') +
         '</span></td>';
     h += '</tr>';
 
@@ -21216,7 +21372,12 @@ window.tlBuildAssetActions = tlBuildAssetActions;
             }
             // Render table
             var isPoint = isPointAssetType();
+            /* IPS Table -> the flat, segregated "IPS Live Grid" (Voltage / Current /
+               Digital tabs), same as 616 and the Health view's IPS Table (was the
+               generic renderWsTable, a wide matrix with blank cells). */
+            var isIpsTbl = (typeof isIpsAssetType === 'function' && isIpsAssetType());
             if (isPoint && typeof renderPmTableView === 'function') renderPmTableView();
+            else if (isIpsTbl && typeof renderIpsTableView === 'function') renderIpsTableView();
             else if (typeof renderWsTable === 'function') renderWsTable();
             return;
         }
@@ -22405,10 +22566,38 @@ function tlCfgAsset(assetId) {
 function tlCfgRdpmsAttrs(a) { return (a && (a.assetAttributes || a.AssetAttributes)) || []; }
 function tlCfgDataloggers(a) { return (a && (a.mAssetInfoDataloggers || a.MAssetInfoDataloggers)) || []; }
 
+// Track view only: has GetBulkAssetMetadata arrived yet (bulkAssetMap filled)?
+function tlTrackCfgViewActive() {
+    return typeof tlIsAssetTypeKind === 'function' && tlIsAssetTypeKind(null, 'track');
+}
+function tlBulkCfgLoaded() {
+    return typeof bulkAssetMap !== 'undefined' && !!bulkAssetMap && Object.keys(bulkAssetMap).length > 0;
+}
+// Track view, config not loaded yet: show no RDPMS grid instead of the
+// station-wide attribute list.
+function tlTrackCfgPending() { return tlTrackCfgViewActive() && !tlBulkCfgLoaded(); }
+// Track view, config loaded, but this asset is not in it: it has no
+// configured RDPMS attributes (was: every station attribute shown).
+function tlTrackCfgMissing(assetId) {
+    if (!tlTrackCfgViewActive() || !tlBulkCfgLoaded()) return false;
+    var aid = tlBulkStr(assetId);
+    if (!aid || bulkAssetMap[aid]) return false;
+    /* v618.70: only a TRACK asset can be "missing from the Track config". A signal /
+       point machine opened from the SIP while Track is selected is not in it by design;
+       treating it as missing dropped all its RDPMS readings (ISIG / VSIG) on arrival
+       and in the drawer, leaving only its DataLogger relays. */
+    var t = typeof tlAssetTypeOf === 'function' ? tlAssetTypeOf(aid) : null;
+    if (!t) { var we = (window.wsLiveData || {})[aid]; t = we && we.AssetTypeId; }
+    if (t && typeof tlIsAssetTypeKind === 'function' && !tlIsAssetTypeKind(t, 'track')) return false;
+    return true;
+}
+window.tlTrackCfgPending = tlTrackCfgPending;
+window.tlTrackCfgMissing = tlTrackCfgMissing;
+
 // true when the asset's config lists this RDPMS attribute (by id, or by name/alias).
 function tlAssetHasRdpmsAttr(assetId, attrKey, attrId) {
     var a = tlCfgAsset(assetId);
-    if (!a) return true;
+    if (!a) return !tlTrackCfgMissing(assetId);
     var list = tlCfgRdpmsAttrs(a);
     if (!list.length) return false;
     var id = tlBulkStr(attrId).trim();
@@ -22426,7 +22615,7 @@ function tlAssetHasRdpmsAttr(assetId, attrKey, attrId) {
     }
     return false;
 }
-function tlAssetHasRdpms(assetId) { var a = tlCfgAsset(assetId); return !a || tlCfgRdpmsAttrs(a).length > 0; }
+function tlAssetHasRdpms(assetId) { var a = tlCfgAsset(assetId); return a ? tlCfgRdpmsAttrs(a).length > 0 : !tlTrackCfgMissing(assetId); }
 function tlAssetHasDatalogger(assetId) { var a = tlCfgAsset(assetId); return !a || tlCfgDataloggers(a).length > 0; }
 window.tlAssetHasRdpmsAttr = tlAssetHasRdpmsAttr;
 window.tlAssetHasRdpms = tlAssetHasRdpms;
@@ -22436,7 +22625,13 @@ window.tlAssetHasDatalogger = tlAssetHasDatalogger;
 // assetAttributes, or a DL frame for an asset with no mAssetInfoDataloggers).
 function tlCfgKeepIncoming(d) {
     if (!d || d.AssetId === undefined || d.AssetId === null) return true;
-    if (!tlCfgAsset(d.AssetId)) return true;
+    if (!tlCfgAsset(d.AssetId)) {
+        /* not in the Track config: keep its DataLogger frames, drop RDPMS readings */
+        if (String(d.DataType || '').toLowerCase() === 'datalogger') return true;
+        /* the frame's own type, when sent: a non-track asset is never "missing from the Track config" */
+        if (d.AssetTypeId != null && d.AssetTypeId !== '' && typeof tlIsAssetTypeKind === 'function' && !tlIsAssetTypeKind(d.AssetTypeId, 'track')) return true;
+        return !tlTrackCfgMissing(d.AssetId);
+    }
     if (String(d.DataType || '').toLowerCase() === 'datalogger') return tlAssetHasDatalogger(d.AssetId);
     return tlAssetHasRdpmsAttr(d.AssetId, d.RawAssetAttributeName || d.AssetAttributeName, d.AssetAttributeId);
 }
@@ -24307,9 +24502,8 @@ function getSignalGroupColorStyle(groupLabel) {
 }
 // [616:3130-3196] renderSignalAspectTables + _groupRepName + _signalGroupSeqRank
 function renderSignalAspectTables() {
-    var assetIds = Object.keys(wsLiveData).filter(function (id) {
-        return wsValidAssetIds.length === 0 || wsValidAssetIds.indexOf(String(id)) > -1;
-    });
+    /* same whitelist as every other card / table renderer (was: empty list = show all) */
+    var assetIds = Object.keys(wsLiveData).filter(function (id) { return isAssetInBulkWhitelist(id); });
     if (assetIds.length === 0) return;
     $('#wsWaiting').remove();
 
@@ -25612,6 +25806,7 @@ function ipsEscHtml(s) {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+window.ensureIpsTableStyles = ensureIpsTableStyles;
 function ensureIpsTableStyles() {
     if (document.getElementById('ipsLiveTableStyles')) return;
     var css =
@@ -25999,6 +26194,13 @@ function ipsExpandRowsForDisplay(rows) {
     return flat;
 }
 window.ipsExpandRowsForDisplay = ipsExpandRowsForDisplay;
+/* Always-flatten reference under a UNIQUE name. telemetrylive.js runs in global
+   scope, so telemetrylive-ext.js (loaded later) reassigns the global
+   `ipsExpandRowsForDisplay` to its own version, which only emits member rows when
+   IPS_SHOW_BANK_BREAKUP is true (it is false). The Health view's grid must still
+   show the BATT breakdown when expanded, so it uses THIS binding, which ext cannot
+   override. */
+window.ipsExpandRowsForDisplayAlways = ipsExpandRowsForDisplay;
 
 // Click a group row to toggle its member breakdown. Delegated + guarded.
 if (!window._ipsGroupExpandHandlerBound) {
@@ -26126,6 +26328,22 @@ function ipsBuildTableHtml(rows) {
     h += '</div>';
     return h;
 }
+// Exposed so the Health view's IPS Table mode can reuse the exact same flat,
+// segregated grid (616 IPS Live Grid) instead of a wide relay matrix.
+// NOTE: a unique name -- telemetrylive-ext.js overrides window.ipsBuildTableHtml
+// with an export-only variant (plain rows, static "i+1" S.No, no width classes),
+// which the CSS S.No counter turned into "01 / 010" and left headers unaligned.
+window.ipsBuildFullTableHtml = ipsBuildTableHtml;
+window.ipsBuildTableHtml = ipsBuildTableHtml;
+// The exact rows the full builder renders (same keys/order), so a host that
+// embeds the grid (the Health view) can update value cells in place on a live
+// tick instead of rebuilding the table -- which would wipe group expand state.
+window.ipsBuildFullRows = function () {
+    /* always-flatten (see ipsExpandRowsForDisplayAlways) so BATT groups carry their
+       member rows for the Health view's expandable breakdown */
+    var expand = window.ipsExpandRowsForDisplayAlways || ipsExpandRowsForDisplay;
+    return expand(ipsGroupCurrentRows(buildIpsTableRowModels()));
+};
 
 // Real flat-table incremental updater (handles DL badges + stale cells)
 function ipsUpdateTable(updatedAssetIds) {
@@ -26193,7 +26411,9 @@ window.ipsApplyTab = ipsApplyTab;
 // Delegated tab-button handler on #divTelemetryLive, bound once.
 if (!window._ipsTabBound) {
     window._ipsTabBound = true;
-    $(document).on('click', '#divTelemetryLive .ips-tab-btn[data-ipstab]', function () {
+    /* works wherever the flat grid is rendered -- the classic Table view
+       (#divTelemetryLive) AND the Health view's IPS Table (#tlHealthView) */
+    $(document).on('click', '.ips-tab-btn[data-ipstab]', function () {
         ipsApplyTab($(this).attr('data-ipstab'));
     });
 }

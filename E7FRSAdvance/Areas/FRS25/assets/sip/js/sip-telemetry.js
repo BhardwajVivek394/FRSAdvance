@@ -2910,24 +2910,44 @@
     /* DataLogger name — 616 order: DataloggerAttribute field → map[asset_Role]
        → map[asset_attrId] → dlRoleNameMap[Role] → raw name. Numeric-only
        names are never used as labels when a Role name exists.            */
+    /* Same rule as telemetrylive.js tlDlNameGuard (used when loaded); local copy for the
+       stand-alone SIP page. Keeps the resolved name unless: no Role, raw name is a plain
+       relay name, resolved is a different relay and not one of the asset's DL names. */
+    function dlNameGuard(aid, rawName, resolved, hasRole) {
+        if (typeof window.tlDlNameGuard === 'function') return window.tlDlNameGuard(aid, rawName, resolved, hasRole);
+        var raw = String(rawName == null ? '' : rawName).trim();
+        if (hasRole || !resolved || !/^[A-Za-z][A-Za-z\- ]*$/.test(raw)) return resolved;
+        var n = function (s) { return String(s == null ? '' : s).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+        var nr = n(resolved), nw = n(raw);
+        if (!nw || nr === nw || nr.indexOf(nw) !== -1) return resolved;
+        var dm = window.userAssetDataloggerMap, pre = String(aid) + '_';
+        if (dm) for (var k in dm) {
+            if (dm.hasOwnProperty(k) && k.indexOf(pre) === 0 && dm[k] && n(dm[k].name) === nr) return resolved;
+        }
+        return raw;
+    }
     function resolveDlName(d, rawAttr, attrId, assetId) {
         var direct = d.DataloggerAttribute;
         if (direct && String(direct).trim()) return String(direct).trim();
         var role = (d.Role != null && d.Role !== '') ? String(d.Role) : '';
         var aid = String(assetId || '');
         var dm = window.userAssetDataloggerMap;
+        /* v618.48: lookups in their original order (aliases kept); the result then goes
+           through dlNameGuard, which only undoes a rename into a DIFFERENT relay that came
+           from the attribute id (another id space than the Role): S12 "HHR" -> "TPR". */
+        var guard = function (nm) { return dlNameGuard(aid, rawAttr, nm, !!role); };
         if (dm) {
             var e = (role && dm[aid + '_' + role]) || dm[aid + '_' + String(attrId)] || (dm[aid + '_' + rawAttr]);
-            if (e && e.name) return e.name;
+            if (e && e.name) return guard(e.name);
         }
         if (typeof window.tlResolveDisplayAlias === 'function') {
             var common = window.tlResolveDisplayAlias(assetId, rawAttr, attrId || role, 'DataLogger', d);
-            if (common && !/^\d+$/.test(common)) return common;
+            if (common && !/^\d+$/.test(common)) return guard(common);
         }
         var rm = window.dlRoleNameMap;
         if (rm) {
             var rn = (role && rm[role]) || rm[String(attrId)];
-            if (rn) return rn;
+            if (rn) return guard(rn);
         }
         if (rawAttr && !/^\d+$/.test(rawAttr)) return rawAttr;
         return rawAttr || role || String(attrId || '');

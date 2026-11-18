@@ -1957,26 +1957,21 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             Domain.FRSAlertLister fRSAlertLister = new FRSAlertLister();
             fRSAlertLister.SearchCriteria.AssetId = assetId;
             //fRSAlertLister.SearchCriteria.AlertStatus = (int)E7FRSAdvance.Utility.Utility.FRSAlertStatus.Active;
-            fRSAlertLister = _frsAlertService.GetWithOutAcknowledgementAlert(fRSAlertLister);
+            /* 616 parity (e7mriv2web GetEventLog): every alert of the asset, acknowledged or not */
+            fRSAlertLister = _frsAlertService.GetListerWithPagination(fRSAlertLister);
             if (fRSAlertLister != null && fRSAlertLister.mFRSAlerts != null && fRSAlertLister.mFRSAlerts.Count > 0)
             {
                 ViewBag.FRSAlerts = fRSAlertLister.mFRSAlerts;
             }
 
-            if (mAsset != null && mAsset.Id > 0 && mAsset.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE)
-            {
-                var mPointMachineEvents = GetPointMachineEvent(assetId, DateTime.Now.ToString("d-M-yyyy"));
-                if (mPointMachineEvents != null && mPointMachineEvents.Count > 0)
-                {
-                    ViewBag.PointMachineEvent = mPointMachineEvents;
-                }
-            }
-
-            // Site-based aliases for every attribute name shown in the modal.
-            var siteAlias = (mAsset != null && mAsset.Id > 0) ? GetSiteAliasMap(mAsset.SiteId, mAsset.Id) : null;
+            /* 616 parity: the Point Event, Cluster / MQTT / FTP Log and Change Time tabs were
+               removed from _EventLog, so their PointMachineEvent / PointLog / ChangeValue /
+               AssetInfo calls are gone too. */
 
             if (mAsset != null && mAsset.Id > 0 && mAsset.IsDatalogger)
             {
+                // Site-based aliases for every DataLogger attribute name shown in the modal.
+                var siteAlias = GetSiteAliasMap(mAsset.SiteId, mAsset.Id);
                 var mSearchCriteria = new SearchCriteria();
                 mSearchCriteria.SearchDate = DateTime.Now.ToString("d-M-yyyy");
                 mSearchCriteria.SiteId = mAsset.SiteId;
@@ -1995,16 +1990,6 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     ViewBag.PeriodicDatalogger = mPeriodicDatalogger;
                 }
 
-                if (mAsset != null && mAsset.Id > 0)
-                {
-
-                    var mPointEventLogs = GetPointLog(assetId, DateTime.Now.ToString("d-M-yyyy"));
-                    if (mPointEventLogs != null && mPointEventLogs.Count > 0)
-                    {
-                        ViewBag.PointEventLog = mPointEventLogs;
-                    }
-                }
-
                 var mAssetInfoDataloggers = GetAssetInfoDatalogger(mAsset.Id);
                 if (mAssetInfoDataloggers != null && siteAlias != null)
                 {
@@ -2012,21 +1997,6 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                         d.DataloggerAttribute = siteAlias.Resolve(true, d.DataloggerAttributeId, d.DataloggerAttribute);
                 }
                 ViewBag.AssetInfoDatalogger = mAssetInfoDataloggers;
-            }
-            if (mAsset != null && mAsset.Id > 0)
-            {
-                ViewBag.ChangeTimeAssets = GetChangeTime(mAsset.Id);
-                var mAssetInfos = GetAssetInfo(mAsset.Id);
-                if (mAssetInfos != null && siteAlias != null)
-                {
-                    foreach (var ai in mAssetInfos)
-                    {
-                        var raw = !string.IsNullOrEmpty(ai.AttributeName) ? ai.AttributeName : ai.AttributeAliasName;
-                        var alias = siteAlias.Resolve(false, ai.AssetAttributeId, raw);
-                        if (!string.IsNullOrEmpty(alias) && alias != raw) ai.AttributeAliasName = alias;
-                    }
-                }
-                ViewBag.AssetInfos = mAssetInfos;
             }
 
             return PartialView("_EventLog", mAsset);

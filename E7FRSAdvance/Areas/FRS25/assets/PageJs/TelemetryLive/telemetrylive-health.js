@@ -276,6 +276,19 @@
         });
         return out;
     }
+    /* Signal groups in ONE continuous grid (same group order) so a small group
+       no longer leaves the rest of its row empty; each card carries its group
+       tag and one summary line above lists the groups with their counts. */
+    function sigGridHtml(sections) {
+        var sum = '<div class="hv-grpsum">' + sections.map(function (S) {
+            return '<span><b>' + esc(S.label) + '</b> ' + S.list.length + '</span>';
+        }).join('<i aria-hidden="true">&middot;</i>') + '</div>';
+        var cards = '';
+        sections.forEach(function (S) {
+            S.list.forEach(function (A) { cards += cardHtml(A, S.label); });
+        });
+        return sum + '<div class="hv-grid">' + cards + '</div>';
+    }
     function secHead(S) {
         return '<div class="hv-sec"><b>' + esc(S.label) + '</b><span>' + S.list.length + ' signal' + (S.list.length > 1 ? 's' : '') + '</span></div>';
     }
@@ -312,17 +325,25 @@
         ['A', 'B'].forEach(function (E) {
             var f = m[E];
             if (!f) return;
-            var defs = PM_DEFS.filter(function (d) { return pmHasReading(aid, E, d[0]); });
+            /* a reading with a live value is always shown (same as the PM table): a
+               site may map the end's current under other ids than PM_ATTR_IDS (e.g.
+               B end without 213 / 215 while IPT / TPT still arrive); the id check
+               only hides readings that have no value */
+            var defs = PM_DEFS.filter(function (d) { return (f[d[0]] && f[d[0]].present) || pmHasReading(aid, E, d[0]); });
             var any = false;
             for (var i = 0; i < defs.length; i++) if (f[defs[i][0]] && f[defs[i][0]].present) any = true;
             if (!any) return;
+            var rv = (m.operation && m.operation.direction === 'Reverse') ? 1 : 0;
             defs.forEach(function (d) {
                 var en = f[d[0]] || {};
                 var label = E + ' End ' + d[1];
+                /* safe range by the end's channel id for the operation's direction (was by name only) */
+                /* TPT shares the current channel id but is in ms: never the IPT range */
+                var rid = (d[0] !== 'tpt' && PM_ATTR_IDS[E][d[0]]) ? PM_ATTR_IDS[E][d[0]][rv] : '';
                 rows.push({
                     k: 'PM.' + E + '.' + d[0], key: norm(label), attrId: '', title: label, alias: label, label: label, sub: '',
                     v: en.present ? num(pmNum(en.text)) : null, stale: false, scaleMin: null, scaleMax: null,
-                    range: rangeFor(aid, label, label)
+                    range: rangeFor(aid, label, label, rid) || rangeFor(aid, label, label)
                 });
             });
         });
@@ -360,12 +381,28 @@
             var apiAlias = typeof window.tlAliasOf === 'function' ? window.tlAliasOf(aid, attrId, title) || window.tlAliasOf(aid, '', k) : '';
             var alias = strip(m.aliasName || m.AliasName || apiAlias || m.name || byName[k] || k);
             var v = num(a.Value);
+            var rg = rangeFor(aid, title, alias, attrId), lbl = alias || title;
+            var smin = num(m.minValue), smax = num(m.maxValue);
+            /* IPS battery current (CHARGING / DISCHARGING): same value as the IPS cards and
+               table -- amperes (raw / IPS_BATT_MA_PER_AMP) -- with the safe range / scale
+               converted alike and "(A)" on the label. The Health view showed the raw value. */
+            if (!pmm && isIpsType() && v !== null && typeof window.ipsCardDisplayValue === 'function' && typeof window.ipsFormatDisplayValue === 'function') {
+                var dv = window.ipsCardDisplayValue(aid, k, a), rawDv = window.ipsFormatDisplayValue(a.Value, '');
+                var div = parseFloat(window.IPS_BATT_MA_PER_AMP);
+                if (dv !== rawDv && !isNaN(parseFloat(dv)) && div > 0) {
+                    v = num(parseFloat(dv));
+                    var sc = function (x) { return (x === null || x === undefined || isNaN(x)) ? x : x / div; };
+                    if (rg) rg = { min: sc(rg.min), max: sc(rg.max), avg: sc(rg.avg), fail: sc(rg.fail), src: rg.src };
+                    smin = sc(smin); smax = sc(smax);
+                    if (typeof window.ipsBattAmpLabel === 'function') lbl = window.ipsBattAmpLabel(lbl);
+                }
+            }
             rows.push({
                 k: k, key: norm(title), attrId: attrId, title: title, alias: alias,
-                label: alias || title, sub: '',   /* v618.16: AliasName only, everywhere */
+                label: lbl, sub: '',   /* v618.16: AliasName only, everywhere */
                 v: v, stale: a.IsFresh === false, ipsTab: ipsTabOf(aid, k, title + ' ' + alias),
-                scaleMin: num(m.minValue), scaleMax: num(m.maxValue),
-                range: rangeFor(aid, title, alias, attrId)
+                scaleMin: smin, scaleMax: smax,
+                range: rg
             });
         }
         /* IPS: data-logger relays are the DIGITAL readings (e7mriv2web IPS
@@ -492,6 +529,9 @@
             if (!ld.hasOwnProperty(aid)) continue;
             var e = ld[aid];
             if (!e || !e.attrs) continue;
+            /* only assets the asset API returned: an entry created straight from the
+               WebSocket (incl. the SIP schematic's mirror) is never a card on its own */
+            if (typeof window.isAssetInBulkWhitelist === 'function' && !window.isAssetInBulkWhitelist(aid)) continue;
             if (ips) {
                 /* IPS: exactly the assets the IPS cards show (bulk whitelist +
                    assetMatchesSelectedType, which also falls back to the bulk
@@ -545,18 +585,14 @@
         '.hv-row{display:grid;grid-template-columns:minmax(0,1fr) 74px 44px 84px;align-items:center;gap:8px;padding:3px 6px;border-radius:6px;cursor:pointer;}' +
         '.hv-row:hover{background:rgba(127,140,160,.10);}' +
         '.hv-row.sel{box-shadow:inset 0 0 0 1.5px var(--brand,#22d3ee);}' +
-        '.hv-row.st-low{background:rgba(224,161,0,.12);} .hv-row.st-high{background:rgba(229,72,77,.12);}' +
         '.hv-row .lb{font-size:12px;color:var(--e7-text-2,inherit);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
         '.hv-row .lb small{color:var(--e7-text-3,#8D9CB2);margin-left:4px;}' +
         '.hv-row .vl{text-align:right;font-weight:700;font-size:12.5px;font-variant-numeric:tabular-nums;}' +
-        '.hv-row.st-low .vl,.hv-row.st-low .fl{color:var(--e7-amber,#C98A00);} .hv-row.st-high .vl,.hv-row.st-high .fl{color:var(--e7-red,#E5484D);}' +
         '.hv-row .fl{font-size:10.5px;font-weight:700;color:var(--e7-text-3,#8D9CB2);white-space:nowrap;}' +
-        '.hv-row.stale .vl{opacity:.55;}' +
         '.hv-bar2{position:relative;height:12px;}' +
         '.hv-bar2 .tr{position:absolute;left:0;right:0;top:5px;height:2px;border-radius:2px;background:rgba(127,140,160,.30);}' +
         '.hv-bar2 .bd{position:absolute;top:3px;height:6px;border-radius:3px;background:rgba(31,157,85,.30);}' +
         '.hv-bar2 .mk{position:absolute;top:0;width:3px;height:12px;border-radius:2px;background:var(--e7-heading,#13202E);margin-left:-1.5px;}' +
-        '.hv-row.st-low .mk{background:#E0A100;} .hv-row.st-high .mk{background:#E5484D;}' +
         '.hv-card.hv-wide{grid-column:span 2;}' +
         '@media (max-width:1100px){.hv-card.hv-wide{grid-column:1 / -1;}}' +
         '.hv-circ{margin-top:8px;border-radius:10px;overflow:hidden;border:1px solid var(--e7-border,rgba(127,140,160,.25));}' +
@@ -592,10 +628,7 @@
         '.hv-cell{display:block;width:100%;min-width:86px;border:none;border-radius:6px;padding:3px 6px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;}' +
         '.hv-cell .v{display:flex;justify-content:space-between;gap:4px;font-weight:700;font-variant-numeric:tabular-nums;}' +
         '.hv-cell .v i{font-style:normal;font-size:10px;}' +
-        '.hv-cell.st-low{background:rgba(224,161,0,.14);} .hv-cell.st-high{background:rgba(229,72,77,.14);}' +
-        '.hv-cell.st-low .v,.hv-cell.st-low .v i{color:var(--e7-amber,#C98A00);} .hv-cell.st-high .v,.hv-cell.st-high .v i{color:var(--e7-red,#E5484D);}' +
         '.hv-cell.st-near{box-shadow:inset 0 0 0 1px rgba(224,161,0,.45);}' +
-        '.hv-cell.st-low .mk{background:#E0A100;} .hv-cell.st-high .mk{background:#E5484D;}' +
         '.hv-cell.sel{box-shadow:inset 0 0 0 1.5px var(--brand,#22d3ee);}' +
         '.hv-cell .hv-bar2{display:block;height:8px;margin-top:2px;} .hv-cell .hv-bar2 .tr{top:3px;} .hv-cell .hv-bar2 .bd{top:2px;height:4px;} .hv-cell .hv-bar2 .mk{height:8px;}' +
         '.hv-na{color:var(--e7-text-3,#8D9CB2);}' +
@@ -604,7 +637,7 @@
         '.hv-g .tr{position:absolute;left:0;right:0;top:3px;height:4px;border-radius:3px;background:linear-gradient(90deg,rgba(224,161,0,.55) 0%,rgba(31,157,85,.38) 22%,rgba(31,157,85,.38) 78%,rgba(229,72,77,.45) 100%);}' +
         '.hv-g .av{position:absolute;top:1px;width:1.5px;height:8px;margin-left:-.75px;background:rgba(100,116,139,.85);}' +
         '.hv-g .mk{position:absolute;top:-2px;width:5px;height:14px;margin-left:-2.5px;border-radius:2px;background:var(--e7-heading,#13202E);box-shadow:0 0 0 1.5px var(--hv-bg,#fff);}' +
-        '.hv-g .mk.st-low,.hv-g .mk.st-near{background:#E0A100;} .hv-g .mk.st-high{background:#E5484D;}' +
+        '.hv-g .mk.st-near{background:#E0A100;}' +
         '.hv-gl{display:flex;justify-content:space-between;font:10px "JetBrains Mono",monospace;color:var(--e7-text-3,#8D9CB2);}' +
         '.hv-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;}' +
         '.hv-tile{border:1px solid var(--e7-border,rgba(127,140,160,.25));border-radius:10px;padding:7px 9px 6px;cursor:pointer;background:var(--e7-surface-2,transparent);}' +
@@ -615,17 +648,20 @@
         '.hv-tile .bg{font:700 10px "JetBrains Mono",monospace;padding:1px 6px;border-radius:4px;background:rgba(127,140,160,.15);color:var(--e7-text-2,inherit);}' +
         '.hv-tile .vl{font:700 18px "JetBrains Mono",monospace;margin-top:2px;color:var(--e7-heading,inherit);font-variant-numeric:tabular-nums;}' +
         '.hv-tile .sl{font-size:11px;font-weight:600;color:var(--e7-text-3,#8D9CB2);}' +
-        '.hv-tile.st-low,.hv-tile.st-near{border-color:rgba(224,161,0,.55);background:rgba(224,161,0,.07);}' +
-        '.hv-tile.st-low .vl,.hv-tile.st-low .sl{color:var(--e7-amber,#B47B00);} .hv-tile.st-low .bg,.hv-tile.st-near .bg{background:rgba(224,161,0,.22);color:var(--e7-amber,#9A6A00);}' +
-        '.hv-tile.st-high{border-color:rgba(229,72,77,.55);background:rgba(229,72,77,.07);}' +
-        '.hv-tile.st-high .vl,.hv-tile.st-high .sl{color:var(--e7-red,#C8323A);} .hv-tile.st-high .bg{background:rgba(229,72,77,.18);color:var(--e7-red,#C8323A);}' +
-        '.hv-tile.stale{opacity:.6;}' +
+        '.hv-tile.st-near{border-color:rgba(224,161,0,.55);background:rgba(224,161,0,.07);}' +
+        '.hv-tile.st-near .bg{background:rgba(224,161,0,.22);color:var(--e7-amber,#9A6A00);}' +
+        '.hv-tile .hv-stale-ic{flex:none;font-size:12px;color:var(--e7-amber,#B47B00);margin:1px 4px 0 auto;cursor:help;}' +
+        '.hv-tile .hv-stale-ic + .bg{margin-left:0;}' +
         /* Signal aspect-wise (616): aspect blocks in the card, sections, table aspect row */
         '.hv-asps{margin-top:8px;display:flex;flex-direction:column;gap:6px;}' +
         '.hv-agrp th span i{display:inline-block;width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 2px rgba(127,140,160,.18);}' +
         '.hv-tiles.hv-pair{grid-template-columns:repeat(2,minmax(0,1fr));}' +
         '.hv-sec{display:flex;align-items:center;gap:8px;margin:16px 2px 8px;}' +
         '.hv-sec:first-child{margin-top:4px;}' +
+        '.hv-grpsum{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin:4px 2px 10px;font-size:12px;color:var(--e7-text-2,inherit);}' +
+        '.hv-grpsum b{font-weight:700;color:var(--e7-heading,inherit);}' +
+        '.hv-grpsum i{font-style:normal;opacity:.5;}' +
+        '.hv-grptag{display:inline-block;vertical-align:middle;margin-left:6px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(127,140,160,.15);color:var(--e7-text-2,inherit);}' +
         '.hv-sec b{font-size:13px;font-weight:700;color:var(--e7-heading,inherit);}' +
         '.hv-sec span{font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:999px;background:rgba(127,140,160,.15);color:var(--e7-text-2,inherit);}' +
         '.hv-tbl thead tr.hv-agrp th{position:static;text-align:center;font-size:10.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;border-bottom:0;padding-bottom:0;}' +
@@ -809,7 +845,8 @@
     /* reading text: relays as Pickup / Drop, numbers formatted */
     function dispV(r) { return r.relay ? (r.v === null ? '--' : (r.up ? 'Pickup' : 'Drop')) : fmt(r.v); }
     function flagText(r) {
-        return r.st === 'low' ? '&darr; Low' : r.st === 'high' ? '&uarr; High' : r.st === 'near' ? 'Near' : r.st === 'occ' ? 'Occ.' : '';
+        /* no Low / High flag on a reading (no meaning for the user) */
+        return r.st === 'near' ? 'Near' : r.st === 'occ' ? 'Occ.' : '';
     }
     function rowTip(r) {
         var g = r.range;
@@ -830,7 +867,8 @@
     }
     function gaugeHtml(r, labels) {
         var g = r.range, p = gaugePos(r);
-        if (p === null) return labels ? '<div class="hv-gl"><span>' + (r.v === null ? 'no value' : 'no safe range') + '</span></div>' : '';
+        /* no safe range configured: nothing under the value (the old "no safe range" caption said nothing useful) */
+        if (p === null) return '';
         var avg = (g.avg !== null && g.avg !== undefined && g.max > g.min) ? Math.max(0, Math.min(100, ((g.avg - g.min) / (g.max - g.min)) * 100)) : null;
         return '<div class="hv-g"><span class="tr"></span>' +
             (avg !== null ? '<span class="av" style="left:' + avg.toFixed(1) + '%"></span>' : '') +
@@ -841,9 +879,9 @@
         var g = r.range;
         if (r.relay) return r.v === null ? 'no value' : 'relay ' + (r.up ? 'picked up' : 'dropped');
         if (r.v === null) return 'no value';
-        if (!g || g.min === null || g.max === null) return r.st === 'high' ? 'out of range' : 'no safe range';
-        if (r.st === 'low') return 'LOW - below ' + fmt(g.min);
-        if (r.st === 'high') return 'HIGH - above ' + fmt(g.max);
+        /* no range, or below / above it: no status text (LOW / HIGH lines removed) */
+        if (!g || g.min === null || g.max === null) return '';
+        if (r.st === 'low' || r.st === 'high') return '';
         if (r.st === 'occ') return 'low -- track occupied';
         if (r.st === 'near') return 'near ' + (r.v - g.min < g.max - r.v ? 'low' : 'high') + ' limit';
         if (g.avg !== null && g.avg !== undefined && g.avg !== 0) {
@@ -853,12 +891,14 @@
         return 'at normal';
     }
     function rowHtml(A, r) {
-        var badge = r.st === 'low' ? 'LOW' : r.st === 'high' ? 'HIGH' : r.st === 'near' ? 'NEAR' : r.st === 'occ' ? 'OCC.' : r.stale ? 'STALE' : '';
+        var badge = r.st === 'near' ? 'NEAR' : r.st === 'occ' ? 'OCC.' : '';
+        /* stale = clock icon at full strength (was: whole tile faded to 60%) */
+        var staleIc = r.stale ? '<i class="fa-regular fa-clock hv-stale-ic" title="Stale: server marked this reading old (IsFresh = false)" aria-label="Stale reading"></i>' : '';
         return '<div class="hv-tile st-' + r.st + (r.stale ? ' stale' : '') + (H.trendKey[A.aid] === r.k ? ' sel' : '') +
             '" data-hv-row="' + esc(A.aid) + '" data-hv-k="' + esc(r.k) + '" title="' + esc(rowTip(r)) + ' -- click for trend">' +
-            '<div class="hd"><span class="lb">' + esc(r.label) + '</span>' + (badge ? '<span class="bg">' + badge + '</span>' : '') + '</div>' +
+            '<div class="hd"><span class="lb">' + esc(r.label) + '</span>' + staleIc + (badge ? '<span class="bg">' + badge + '</span>' : '') + '</div>' +
             '<div class="vl' + (r.relay ? ' hv-rv ' + (r.up ? 'up' : 'dn') : '') + '">' + dispV(r) + '</div>' +
-            '<div class="sl">' + esc(statusLine(r)) + '</div>' +
+            (function (t) { return t ? '<div class="sl">' + esc(t) + '</div>' : ''; })(statusLine(r)) +
             gaugeHtml(r, true) + '</div>';
     }
 
@@ -921,12 +961,12 @@
     }
     function cBox(P, x, y, w, h, r, fallbackLabel, unit) {
         var st = r ? r.st : 'none';
-        var col = st === 'low' ? P.low : st === 'high' ? P.high : P.box;
-        var tcol = st === 'low' ? P.low : st === 'high' ? P.high : P.text;
+        var col = P.box;   /* low / high: no colour (attribute boxes stay neutral) */
+        var tcol = P.text;
         var label = r ? (r.alias || r.label) : fallbackLabel;
         var val = r && r.v !== null && r.v !== undefined ? fmt(r.v) : '--';
         return '<g>' +
-            '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="3" fill="none" stroke="' + col + '" stroke-width="' + (st === 'low' || st === 'high' ? 2 : 1.2) + '" stroke-dasharray="4 3"></rect>' +
+            '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="3" fill="none" stroke="' + col + '" stroke-width="' + 1.2 + '" stroke-dasharray="4 3"></rect>' +
             '<text x="' + (x + w / 2) + '" y="' + (y + 13) + '" text-anchor="middle" font-size="10.5" font-weight="700" fill="' + tcol + '">' + esc(label) + '</text>' +
             '<text x="' + (x + w / 2) + '" y="' + (y + h - 6) + '" text-anchor="middle" font-size="12.5" font-weight="700" fill="' + tcol + '">: ' + val + (unit ? ' ' + unit : '') + '</text>' +
             (r ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="transparent" data-hv-row="' + esc(A_ID) + '" data-hv-k="' + esc(r.k) + '" style="cursor:pointer"><title>' + esc(r.label + ' -- click for trend') + '</title></rect>' : '') +
@@ -955,11 +995,11 @@
     }
     function cb2(P, x, y, w, h, r, label, unit) {
         var st = r ? r.st : 'none';
-        var col = st === 'low' ? P.low : st === 'high' ? P.high : P.box;
-        var tc = st === 'low' ? P.low : st === 'high' ? P.high : P.text;
+        var col = P.box;   /* low / high: no colour */
+        var tc = P.text;
         var lb = r ? (r.alias || r.label) : label;
         var val = r && r.v !== null && r.v !== undefined ? fmt(r.v) : '--';
-        return '<g><rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + P.bg + '" fill-opacity=".55" stroke="' + col + '" stroke-width="' + (st === 'low' || st === 'high' ? 1.8 : 1) + '" stroke-dasharray="3 2"></rect>' +
+        return '<g><rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + P.bg + '" fill-opacity=".55" stroke="' + col + '" stroke-width="' + 1 + '" stroke-dasharray="3 2"></rect>' +
             '<text x="' + (x + w / 2) + '" y="' + (y + h / 2 - 2) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="' + tc + '">' + esc(lb) + '</text>' +
             '<text x="' + (x + w / 2) + '" y="' + (y + h / 2 + 10) + '" text-anchor="middle" font-size="10" font-weight="700" fill="' + tc + '">: ' + val + (unit ? ' ' + unit : '') + '</text>' +
             (r ? '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="transparent" data-hv-row="' + esc(A_ID) + '" data-hv-k="' + esc(r.k) + '" style="cursor:pointer"><title>' + esc((r.alias || r.label) + ' -- click for trend') + '</title></rect>' : '') + '</g>';
@@ -1468,14 +1508,16 @@
     }
 
     /* ---- card ------------------------------------------------------------ */
-    function cardHtml(A) {
+    function cardHtml(A, grpLabel) {
+        if (typeof grpLabel !== 'string') grpLabel = '';   /* Array.map passes the index */
         var track = isTrackType();
         var pillCls = track ? (A.occ === true ? 'occ' : A.occ === false ? 'clear' : '') : pmPill(A);
         var co = circOpen(A.aid) && circuitAllowed();
         var html = '<article class="hv-card st-' + A.status + (co ? ' hv-wide' : '') + '" data-hv-card="' + esc(A.aid) + '">' +
             '<div class="hv-head">' + ringSvg(A) +
             '<div class="hv-ttl"><span class="hv-pill ' + pillCls + '" title="' + (track ? (A.occ === true ? 'TPR Drop (occupied)' : A.occ === false ? 'TPR Pickup (clear)' : 'TPR state unknown') : '') + '">' + esc(A.name) + '</span>' +
-            '<div><span class="hv-status ' + A.status + '">' + STATUS_TEXT[A.status] + '</span>' + dirChip(A) + ' <span class="hv-sum">' + esc(summaryText(A)) + '</span></div></div>' +
+            (grpLabel ? '<span class="hv-grptag" title="' + esc(grpLabel) + '">' + esc(grpLabel) + '</span>' : '') +
+            '<div><span class="hv-status' + A.status + '">' + STATUS_TEXT[A.status] + '</span>' + dirChip(A) + ' <span class="hv-sum">' + esc(summaryText(A)) + '</span></div></div>' +
             '<div class="hv-tools">' +
             (circuitAllowed() ? '<button type="button" class="hv-tool" data-hv-circ="' + esc(A.aid) + '" aria-pressed="' + co +
                 '" title="' + (co ? 'Hide circuit' : 'Show circuit') + '"><i class="fa-solid fa-project-diagram"></i></button>' : '') +
@@ -1546,7 +1588,7 @@
             return ix - iy || x.label.localeCompare(y.label);
         });
         var h = '<div class="hv-tblwrap"><table class="hv-tbl"><thead>';
-        if (sig) {
+        if (false && sig) {   /* aspect group header row (hv-agrp) removed on request */
             /* aspect header: one cell spanning each aspect's current + voltage columns
                (Asset / Health / Relays below it); this row scrolls, the column row stays */
             h += '<tr class="hv-agrp"><th colspan="3"></th>';
@@ -1657,12 +1699,19 @@
         var list = ids.map(readAsset);
         var counts = { fault: 0, watch: 0, ok: 0, nodata: 0 };
         for (var i = 0; i < list.length; i++) counts[list[i].status]++;
-        var ipsTabNow = (H.view === 'table') ? (H.ipsTableTab || 'all') : H.ipsTab;
-        if (isIpsType() && ipsTabNow && ipsTabNow !== 'all') {
+        /* Table mode for IPS uses the flat 616 grid (self-segregating), so the per-tab
+           row filter only applies to the CARD view. */
+        var ipsFlatTable = H.view === 'table' && isIpsType() && typeof window.ipsBuildTableHtml === 'function';
+        var ipsTabNow = ipsFlatTable ? 'all' : H.ipsTab;
+        if (isIpsType() && !ipsFlatTable && ipsTabNow && ipsTabNow !== 'all') {
             list.forEach(function (A) {
                 A.rows = A.rows.filter(function (r) { return (r.ipsTab || 'voltage') === ipsTabNow; });
                 if (ipsTabNow !== 'digital') A.relays = [];
             });
+            /* 616 parity (IPS card tabs): a tab lists only the assets that HAVE readings
+               of that kind. Before, every asset stayed as an empty card, so the
+               Voltage / Current / Digital toggle looked like it did nothing. */
+            list = list.filter(function (A) { return A.rows.length > 0 || (A.relays && A.relays.length > 0); });
         }
         var q = H.q.trim().toUpperCase();
         var shown = list.filter(function (A) {
@@ -1714,16 +1763,68 @@
         if (!ids.length) {
             body = '<div class="hv-empty"><i class="fas fa-satellite-dish" style="font-size:22px;opacity:.5"></i><br>' +
                 'Select site and asset type, then Search to start live data.</div>';
-        } else if (!shown.length) {
+        } else if (!shown.length && !(H.view === 'table' && isIpsType() && typeof (window.ipsBuildFullTableHtml || window.ipsBuildTableHtml) === 'function')) {
             body = '<div class="hv-empty">Nothing matches this filter.</div>';
         } else {
-            body = H.view === 'table'
-                ? (isIpsType() ? '<div class="hv-tabs" role="tablist">' + [['all', 'All'], ['voltage', 'Voltage'], ['current', 'Current'], ['digital', 'Digital']].map(function (t) {
-                    return '<button type="button" role="tab" data-hv-ipstt="' + t[0] + '" aria-selected="' + ((H.ipsTableTab || 'all') === t[0]) + '">' + t[1] + '</button>';
-                }).join('') + '</div>' : '') + tableHtml(shown)
-                : isSignalType()
-                    ? sigSections(shown).map(function (S) { return secHead(S) + '<div class="hv-grid">' + S.list.map(cardHtml).join('') + '</div>'; }).join('')
-                    : '<div class="hv-grid">' + shown.map(cardHtml).join('') + '</div>';
+            /* IPS Table: the classic flat, segregated "IPS Live Grid" (616 parity) --
+               one row per asset x attribute, Voltage / Current / Digital tabs, battery
+               current grouped and summed in A -- instead of a wide relay matrix with
+               blank cells. Reuses the exact same builder as the Table view. */
+            /* the FULL tabbed builder (plain per-tab S.No via CSS counter, width-matched
+               headers) -- NOT window.ipsBuildTableHtml, which ext overrides with an
+               export-only table (static S.No the counter turns into "01 / 010") */
+            var ipsBuildFlat = window.ipsBuildFullTableHtml || window.ipsBuildTableHtml;
+            var ipsFlat = H.view === 'table' && isIpsType() && typeof ipsBuildFlat === 'function';
+            /* the flat grid owns its tab in window.ipsActiveTab (its own tab bar + the
+               delegated handler drive it); mirror it into H.ipsTableTab so it survives
+               the health view's live re-renders */
+            if (ipsFlat) {
+                if (typeof window.ensureIpsTableStyles === 'function') { try { window.ensureIpsTableStyles(); } catch (e) { } }
+                var _ipt = (window.ipsActiveTab === 'current' || window.ipsActiveTab === 'digital') ? window.ipsActiveTab
+                    : (H.ipsTableTab === 'current' || H.ipsTableTab === 'digital') ? H.ipsTableTab : 'voltage';
+                H.ipsTableTab = _ipt;
+                try { window.ipsActiveTab = _ipt; } catch (e) { }
+            }
+            /* pass always-flattened rows (BATT members included) so the grid's group
+               rows are expandable with real children -- the builder's own expander is
+               the ext one, gated off by IPS_SHOW_BANK_BREAKUP */
+            var _ipsRowsForGrid = (typeof window.ipsBuildFullRows === 'function') ? window.ipsBuildFullRows() : null;
+            body = ipsFlat
+                ? (ipsBuildFlat(_ipsRowsForGrid || undefined) || '<div class="hv-empty">No IPS readings.</div>')
+                : H.view === 'table'
+                    ? tableHtml(shown)
+                    : isSignalType()
+                        ? sigGridHtml(sigSections(shown))
+                        : '<div class="hv-grid">' + shown.map(cardHtml).join('') + '</div>';
+        }
+        /* IPS flat grid: on a live tick that did not change the grid's STRUCTURE
+           (same assets / attributes / tab), refresh value + timestamp cells in
+           place instead of rebuilding the table. A full innerHTML rebuild every
+           second destroyed the table and the user's group-expand (BATT CHARGING /
+           DISCHARGING) never stayed open. */
+        if (ipsFlat && typeof window.ipsBuildFullRows === 'function') {
+            var _ipsTbl = host.querySelector('#ipsLiveTable');
+            if (_ipsTbl && _ipsTbl.tBodies && _ipsTbl.tBodies[0]) {
+                var _ipsRows = window.ipsBuildFullRows();
+                var _trs = _ipsTbl.tBodies[0].rows;
+                var _struct = (H.ipsTableTab || 'voltage') + '::' + _ipsRows.map(function (r) { return String(r.assetId) + '|' + String(r.attrKey); }).join(',');
+                if (_trs.length === _ipsRows.length && H._ipsFlatStruct === _struct) {
+                    for (var _ri = 0; _ri < _ipsRows.length; _ri++) {
+                        var _r = _ipsRows[_ri], _tr = _trs[_ri];
+                        if (_tr.getAttribute('data-ips-id') !== String(_r.assetId) || _tr.getAttribute('data-attr') !== String(_r.attrKey)) { H._ipsFlatStruct = null; break; }
+                        var _vc = _tr.querySelector('.ips-val'); var _tc = _tr.querySelector('.ips-ts');
+                        if (_vc) {
+                            var _vt = String(_r.value == null ? '' : _r.value);
+                            if (_vc.textContent !== _vt) { _vc.innerHTML = _r.dlClass ? '<span class="rdpms-dl-badge ' + _r.dlClass + '">' + esc(_vt) + '</span>' : esc(_vt); }
+                        }
+                        if (_tc && _tc.textContent !== String(_r.ts == null ? '' : _r.ts)) { _tc.textContent = String(_r.ts == null ? '' : _r.ts); }
+                    }
+                    if (H._ipsFlatStruct === _struct) { H.sig = sig; return; }  /* updated in place; skip the full rebuild */
+                }
+                H._ipsFlatStruct = _struct;   /* structure changed -> fall through to a full rebuild */
+            }
+        } else {
+            H._ipsFlatStruct = null;
         }
         /* keep focus / caret in the search box across rebuilds */
         var act = document.activeElement;
@@ -1734,6 +1835,17 @@
         var sy = wrap ? wrap.scrollTop : 0;   /* v618.30: keep vertical position across live rebuilds */
         host.style.setProperty('--hv-bg', cardBg());
         host.innerHTML = bar + body;
+        /* flat IPS grid: show the tab the health view is on (its own tab bar drives it) */
+        if (ipsFlat && typeof window.ipsApplyTab === 'function') {
+            try { window.ipsApplyTab((H.ipsTableTab === 'current' || H.ipsTableTab === 'digital') ? H.ipsTableTab : 'voltage'); } catch (e) { }
+            /* record the freshly built structure so the next live tick updates in place */
+            if (typeof window.ipsBuildFullRows === 'function') {
+                try {
+                    H._ipsFlatStruct = (H.ipsTableTab || 'voltage') + '::' +
+                        window.ipsBuildFullRows().map(function (r) { return String(r.assetId) + '|' + String(r.attrKey); }).join(',');
+                } catch (e) { H._ipsFlatStruct = null; }
+            }
+        }
         var wrap2 = host.querySelector('.hv-tblwrap');
         if (wrap2) {
             /* expanded row content stays in view while the table scrolls sideways */

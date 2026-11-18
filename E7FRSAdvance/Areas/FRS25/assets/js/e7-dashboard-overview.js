@@ -182,6 +182,13 @@
 
     var _showAllRows = false;
 
+    // display priority of an asset type, by its name (lower = first)
+    var TYPE_PRIORITY = [[/track/i, 1], [/signal/i, 2], [/point/i, 3], [/\bips\b|power supply/i, 4], [/axle/i, 5], [/\beld\b|earth/i, 6], [/gate/i, 7]];
+    function typePriority(name) {
+        for (var i = 0; i < TYPE_PRIORITY.length; i++) if (TYPE_PRIORITY[i][0].test(String(name || ''))) return TYPE_PRIORITY[i][1];
+        return 99;
+    }
+
     function renderTable(m) {
         var $box = $('#assetTypeCardsContainer');
         var issue = [], clear = [];
@@ -201,10 +208,14 @@
             (t.pn + t.fn > 0 ? issue : clear).push({ t: t, $row: $row });
         });
 
-        // problem types first (most failures, then most predictive); the rest keep server order
-        issue.sort(function (a, b) { return (b.t.fn - a.t.fn) || (b.t.pn - a.t.pn) || (b.t.total - a.t.total); });
+        // fixed asset-type priority (Track, Signal, Point Machine, IPS, Axle Counter, ELD,
+        // Gate, then the rest in server order), whether or not the type has open alerts;
+        // types with no open alerts still fold, in their place in that order
+        var all = issue.concat(clear);
+        all.forEach(function (r, i) { r.i = i; r.pr = typePriority(r.t.name); });
+        all.sort(function (a, b) { return (a.pr - b.pr) || (a.i - b.i); });
         var $foot = $box.find('#ovMoreRows');
-        issue.concat(clear).forEach(function (r) { r.$row.insertBefore($foot); });
+        all.forEach(function (r) { r.$row.insertBefore($foot); });
         issue.forEach(function (r) { r.$row.removeClass('ov-row-folded'); });
         clear.forEach(function (r) { r.$row.toggleClass('ov-row-folded', !_showAllRows); });
 
@@ -218,7 +229,7 @@
             $foot.prop('hidden', true);
         }
         $('#ovAssetSub').text(issue.length
-            ? issue.length + ' of ' + (issue.length + clear.length) + ' types have open alerts · click a row for its alerts'
+            ? issue.length + ' of ' + (issue.length + clear.length) + ' types have open alerts · by type priority · click a row for its alerts'
             : 'No open alerts in this scope · click a row for its history');
 
         var T = m.tot;

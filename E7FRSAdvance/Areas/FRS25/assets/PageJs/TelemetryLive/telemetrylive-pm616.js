@@ -1004,7 +1004,7 @@ function abortPmIndicationRequest() {
                     }
                 });
                 if (!ops.length) {
-                    $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No array data found for this operation<br><small>Attribute ID: ' + p.attrId + '</small>').show();
+                    $er.html('<i class="fas fa-info-circle fa-2x" style="display:block;margin-bottom:12px;"></i>No data found').show();
                     return;
                 }
                 ops.sort(function (a, b) { return a.timestamp - b.timestamp; });

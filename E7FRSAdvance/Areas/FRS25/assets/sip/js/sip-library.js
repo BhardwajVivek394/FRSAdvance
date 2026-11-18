@@ -45,8 +45,8 @@
         night: {
             canvas: '#0E1828', free: '#46566D', route: '#F6C445', occ: '#FF5A4E', fault: '#FF5A4E',
             lampR: '#FF4D42', lampY: '#FFCB3D', lampG: '#3DE38A',
-            lampDark: '#1B2638', lampRing: '#3A4A62', lampMark: 'rgba(169,183,202,0.38)',
-            head: '#0A111C', headEdge: '#3A4A62', post: '#93A3B8',
+            lampDark: '#1B2638', lampRing: '#56698A', lampMark: 'rgba(169,183,202,0.38)',
+            head: '#0A111C', headEdge: '#8FA3BF', headEdgeW: 1.6, post: '#93A3B8',
             pmN: '#3DE38A', pmR: '#F6C445', pmUnknown: '#5B6B82',
             label: '#FFFFFF', labelHot: '#FFFFFF', select: '#3BC9DB', pl: '#F6FAFF',
             bus: '#9AA8C4', glowOpacity: 0.28
@@ -54,8 +54,8 @@
         vdu: {
             canvas: '#000000', free: '#7A7A7A', route: '#FFD21F', occ: '#FF2B2B', fault: '#FF2B2B',
             lampR: '#FF2B2B', lampY: '#FFD21F', lampG: '#22E05A',
-            lampDark: '#232323', lampRing: '#4A4A4A', lampMark: 'rgba(200,200,200,0.35)',
-            head: '#060606', headEdge: '#4A4A4A', post: '#B5B5B5',
+            lampDark: '#232323', lampRing: '#6A6A6A', lampMark: 'rgba(200,200,200,0.35)',
+            head: '#060606', headEdge: '#C8C8C8', headEdgeW: 1.6, post: '#B5B5B5',
             pmN: '#22E05A', pmR: '#FFD21F', pmUnknown: '#6A6A6A',
             label: '#FFFFFF', labelHot: '#FFFFFF', select: '#00B4FF', pl: '#FFFFFF',
             bus: '#A9A9A9', glowOpacity: 0.3
@@ -64,7 +64,7 @@
             canvas: '#FAFBFD', free: '#B3BDC9', route: '#E8A600', occ: '#E5372E', fault: '#E5372E',
             lampR: '#E5372E', lampY: '#F0B000', lampG: '#17A659',
             lampDark: '#3A4654', lampRing: '#1E2833', lampMark: 'rgba(255,255,255,0.35)',
-            head: '#1E2833', headEdge: '#1E2833', post: '#5A6878',
+            head: '#1E2833', headEdge: '#1E2833', headEdgeW: 1.2, post: '#5A6878',
             pmN: '#17A659', pmR: '#E8A600', pmUnknown: '#8A97A6',
             label: '#4A5868', labelHot: '#13202E', select: '#0E8FA3', pl: '#FFFFFF',
             bus: '#5A6878', glowOpacity: 0
@@ -610,7 +610,7 @@
         const r = Math.max(4, Math.min(w, h) * 0.35);
 
         let svg = `<g class="sip-asset sip-signal" data-id="${cell.id}" data-type="${cell.type}">`;
-        svg += `<circle cx="${lcx}" cy="${lcy}" r="${r + 1.5}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="1"/>`;
+        svg += `<circle cx="${lcx}" cy="${lcy}" r="${r + 1.5}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="${T.headEdgeW}"/>`;
 
         if (lit) {
             let litColour;
@@ -696,7 +696,7 @@
         const lblVisible = !!lblText && lblAttr.fill !== 'transparent';
 
         let svg = `<g class="sip-asset sip-sig-bg" data-id="${cell.id}" data-type="${cell.type}">`;
-        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(w, h) / 2}" ry="${Math.min(w, h) / 2}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="1.2"/>`;
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${Math.min(w, h) / 2}" ry="${Math.min(w, h) / 2}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="${T.headEdgeW}"/>`;
         if (lblVisible) {
             const fill = normaliseLabelFill(lblAttr.fill) || T.labelDefault;
             const size = +lblAttr.fontSize || 12;
@@ -903,7 +903,7 @@
 
         /* 2. Background pill */
         const rx = h / 2;
-        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" ry="${rx}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="1.2"/>`;
+        svg += `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${rx}" ry="${rx}" fill="${T.head}" stroke="${T.headEdge}" stroke-width="${T.headEdgeW}"/>`;
 
         /* 3. Lamps with equal padding (n+1 gaps total) */
         const lampD = Math.max(6, h - 6);

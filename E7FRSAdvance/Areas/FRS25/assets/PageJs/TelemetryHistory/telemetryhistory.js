@@ -12900,10 +12900,18 @@ function _vibCalculateArrayMax(values) {
             }
             for (var k = 0; k < _names.length; k++) {
                 var _n = _names[k];
-                if (/\bMA\b/.test(_n) || /\bAMP(S|ERE|ERES)?\b/.test(_n) || /\bCURRENT\b/.test(_n)) {
+                /* Same unit tokens as _ipsClassifyColumn's secondary scan, so an asset the
+                   renderer WOULD place on a tab is never dropped from per-tab scoping or
+                   denied its placeholder row. Was stricter here (only \bMA\b / whole-word
+                   VOLT / VDC), so a site whose IPS attributes carry no VIPS / IIPS alias and
+                   are named e.g. "(V)" / "(mA)" / bare "V" classified into NO bucket -> the
+                   asset was scoped out AND got no placeholder -> an all-empty IPS history. */
+                if (/\(\s*MA\s*\)/.test(_n) || /\bMA\b/.test(_n) || /\bMV\b/.test(_n) ||
+                    /\bAMP(S|ERE|ERES)?\b/.test(_n) || /\bCURRENT\b/.test(_n)) {
                     out.current = true;
                 }
-                if (/\bVDC\b/.test(_n) || /\bVOLT(S|AGE)?\b/.test(_n)) {
+                if (/\(\s*V\s*\)/.test(_n) || /\bV\b/.test(_n) || /\bVDC\b/.test(_n) ||
+                    /\bVOLT(S|AGE)?\b/.test(_n)) {
                     out.voltage = true;
                 }
             }
@@ -13065,7 +13073,12 @@ function _vibCalculateArrayMax(values) {
             }
         }
 
-        return null; // genuinely not an IPS attribute -- omitted from every tab
+        /* Last resort: this is an IPS column (digital returned above, placeholders /
+           groups carry their own bucket) whose names carried no recognizable token.
+           Default it to Voltage so its data is still visible on a tab rather than
+           silently dropped from ALL three -- the cause of an empty IPS history for a
+           site whose attribute names use neither VIPS/IIPS nor a unit token. */
+        return 'voltage';
     }
 
     /*

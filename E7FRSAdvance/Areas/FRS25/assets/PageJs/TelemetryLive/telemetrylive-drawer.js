@@ -304,13 +304,15 @@
         '.tld-tile .vl{font:700 18px "JetBrains Mono",ui-monospace,monospace;color:var(--e7-heading,#0F1B2A);margin-top:2px;}' +
         '.tld-tile .vl small{font-size:11px;color:var(--e7-text-3,#8b98a8);margin-left:3px;}' +
         '.tld-tile .sl{font-size:11.5px;font-weight:600;color:var(--e7-text-3,#6B7A8C);}' +
-        '.tld-tile.low,.tld-tile.near{border-color:rgba(224,161,0,.55);background:rgba(224,161,0,.06);}' +
-        '.tld-tile.low .vl,.tld-tile.low .sl,.tld-tile.near .vl,.tld-tile.near .sl{color:var(--e7-amber,#B47B00);} .tld-tile.low .bg,.tld-tile.near .bg{background:rgba(224,161,0,.2);color:var(--e7-amber,#8A5F00);}' +
-        '.tld-tile.high{border-color:rgba(229,72,77,.55);background:rgba(229,72,77,.06);} .tld-tile.high .vl,.tld-tile.high .sl{color:var(--e7-red,#C8323A);} .tld-tile.high .bg{background:rgba(229,72,77,.16);color:var(--e7-red,#C8323A);}' +
+        '.tld-tile.near{border-color:rgba(224,161,0,.55);background:rgba(224,161,0,.06);}' +
+        '.tld-tile.near .vl,.tld-tile.near .sl{color:var(--e7-amber,#B47B00);} .tld-tile.near .bg{background:rgba(224,161,0,.2);color:var(--e7-amber,#8A5F00);}' +
+        /* DataLogger relay tiles: Pickup green, Drop amber (value + arrow) */
+        '.tld-tile.rly.ok{border-color:rgba(31,157,85,.5);background:rgba(31,157,85,.07);} .tld-tile.rly.ok .vl,.tld-tile.rly.ok .vl small,.tld-tile.rly.ok .sl{color:var(--e7-green,#1F9D55);}' +
+        '.tld-tile.rly.near .vl small{color:var(--e7-amber,#B47B00);}' +
         '.tld-g{position:relative;height:10px;margin:6px 0 2px;}' +
         '.tld-g .tr{position:absolute;left:0;right:0;top:3px;height:4px;border-radius:3px;background:linear-gradient(90deg,rgba(224,161,0,.55) 0%,rgba(31,157,85,.38) 22%,rgba(31,157,85,.38) 78%,rgba(229,72,77,.45) 100%);}' +
         '.tld-g .mk{position:absolute;top:-2px;width:5px;height:14px;margin-left:-2.5px;border-radius:2px;background:var(--e7-heading,#0F1B2A);}' +
-        '.tld-g .mk.low,.tld-g .mk.near{background:#E0A100;} .tld-g .mk.high{background:#E5484D;}' +
+        '.tld-g .mk.near{background:#E0A100;}' +
         '.tld-gl{display:flex;justify-content:space-between;font:10px "JetBrains Mono",ui-monospace,monospace;color:var(--e7-text-3,#8492A6);}' +
         '.tld-calc{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px 18px;margin-top:8px;font-size:12px;}' +
         '.tld-calc div{display:flex;justify-content:space-between;gap:6px;padding:3px 0;border-bottom:1px dashed var(--e7-border,#e7ebf1);}' +
@@ -400,6 +402,7 @@
         '.tld-rl-sub{font-size:12.5px;color:var(--e7-text-2,#4A5868);margin-top:3px;}' +
         '.tld-rl-big{flex:none;text-align:right;}' +
         '.tld-rl-big b{display:block;font:700 26px "JetBrains Mono",ui-monospace,monospace;color:var(--e7-heading,#0F1B2A);}' +
+        '.tld-rl-hero .tld-rl-big b{color:var(--e7-green,#1F9D55);} .tld-rl-hero.drop .tld-rl-big b{color:var(--e7-amber,#B47B00);}' +
         '.tld-rl-big span{font-size:11px;color:var(--e7-text-3,#6B7A8C);}' +
         '.tld-rl-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}' +
         '.tld-rl-cell{border:1px solid var(--e7-border,#e7ebf1);border-radius:10px;padding:9px 11px;background:var(--e7-surface,#fff);}' +
@@ -432,28 +435,28 @@
     function statusLine(r, st) {
         var g = r.range;
         if (r.v === null) return 'no value';
-        if (st === 'low') return 'LOW - below ' + fmt(g.min);
-        if (st === 'high') return 'HIGH - above ' + fmt(g.max);
+        if (st === 'low' || st === 'high') return '';   /* LOW / HIGH text removed */
         if (st === 'near') return 'near ' + (r.v - g.min < g.max - r.v ? 'low' : 'high') + ' limit';
-        if (st === 'none') return 'no safe range';
+        if (st === 'none') return '';
         if (st === 'occ') return 'low -- track occupied';
         return 'at normal';
     }
     function tileHtml(r) {
         var st = stOf(r), g = r.range;
         var lab = r.alias || r.label;
-        var badge = st === 'low' ? 'LOW' : st === 'high' ? 'HIGH' : st === 'near' ? 'NEAR' : st === 'occ' ? 'OCC.' : '';
+        var badge = st === 'near' ? 'NEAR' : st === 'occ' ? 'OCC.' : '';
         var gauge = '';
         if (g && g.min !== null && g.max !== null && g.max > g.min && r.v !== null) {
             var p = Math.max(0, Math.min(100, ((r.v - g.min) / (g.max - g.min)) * 100));
-            gauge = '<div class="tld-g"><span class="tr"></span><span class="mk ' + st + '" style="left:' + p.toFixed(1) + '%"></span></div>' +
+            gauge = '<div class="tld-g"><span class="tr"></span><span class="mk' + (st && st !== 'low' && st !== 'high' ? ' ' + st : '') + '" style="left:' + p.toFixed(1) + '%"></span></div>' +
                 '<div class="tld-gl"><span>' + fmt(g.min) + '</span><span>' + fmt(g.max) + '</span></div>';
         }
         var sel = D.sel && D.sel.key === r.key;
-        return '<button type="button" class="tld-tile ' + st + (sel ? ' sel' : '') + '" data-tld-k="' + esc(r.key) + '" aria-pressed="' + sel + '" title="' + esc(lab) + ' -- click for its trend"><div class="hd"><span class="lb">' + esc(lab) + '</span>' +
+        /* a LOW / HIGH reading keeps its badge / status text but gets no styling class */
+        return '<button type="button" class="tld-tile' + (st && st !== 'low' && st !== 'high' ? ' ' + st : '') + (sel ? ' sel' : '') + '" data-tld-k="' + esc(r.key) + '" aria-pressed="' + sel + '" title="' + esc(lab) + ' -- click for its trend"><div class="hd"><span class="lb">' + esc(lab) + '</span>' +
             (badge ? '<span class="bg">' + badge + '</span>' : '') + '</div>' +
             '<div class="vl">' + fmt(r.v) + '<small>' + esc(unitOf(lab)) + '</small></div>' +
-            '<div class="sl">' + esc(statusLine(r, st)) + '</div>' + gauge + '</button>';
+            (function (t) { return t ? '<div class="sl">' + esc(t) + '</div>' : ''; })(statusLine(r, st)) + gauge + '</button>';
     }
     /* Signal tiles in the Telemetry Live table's column order (_signalColSeq via
        _compareSignalColumns, on the raw attribute name), I / V of an aspect side by side.
@@ -502,7 +505,7 @@
         var t = relayTime(relayInfo(rl.name).ts);
         var badge = rl.up ? '' : (isTpr ? 'OCC.' : 'DROP');
         var meaning = isTpr ? (rl.up ? 'track clear' : 'track occupied') : (rl.up ? 'relay energised' : 'relay de-energised');
-        return '<div class="tld-tile ' + (rl.up ? 'ok' : 'near') + '" style="cursor:default" title="' + esc(rl.name) + ' (DataLogger relay)">' +
+        return '<div class="tld-tile rly ' + (rl.up ? 'ok' : 'near') + '" style="cursor:default" title="' + esc(rl.name) + ' (DataLogger relay)">' +
             '<div class="hd"><span class="lb">' + esc(rl.name) + ' (DataLogger)</span>' + (badge ? '<span class="bg">' + badge + '</span>' : '') + '</div>' +
             '<div class="vl">' + (rl.up ? 'Pickup' : 'Drop') + '<small>' + (rl.up ? '&#8593;' : '&#8595;') + '</small></div>' +
             '<div class="sl">' + esc(meaning) + (t ? ' &middot; at ' + esc(t) : '') + '</div></div>';
@@ -919,7 +922,7 @@
                 evts.map(function (ev) {
                     var c = cause[ev.Dominant_Cause] || [ev.Dominant_Cause || '--', ''];
                     return '<tr class="' + (c[1] === 'bad' ? 'f' : 'p') + '"><td>' + esc(ev.Event_ID) + '</td><td class="t">' + esc(ev.Start_Time) + '</td><td class="t">' + esc(ev.End_Time) + '</td>' +
-                        '<td>' + num(ev.Duration_Hours, 1) + ' h</td><td><span class="tld-chip ' + c[1] + '">' + esc(c[0]) + '</span></td>' +
+                        '<td>' + (ev.Duration_Hours === null || ev.Duration_Hours === undefined || ev.Duration_Hours === '' ? '--' : hmsText(parseFloat(ev.Duration_Hours) * 3600)) + '</td><td><span class="tld-chip ' + c[1] + '">' + esc(c[0]) + '</span></td>' +
                         '<td class="t">' + num(ev.IF_AUC) + '</td><td class="t">' + num(ev.IR_AUC) + '</td><td class="t" style="color:var(--e7-red,#C8323A);font-weight:700">' + num(ev.Total_AUC) + ' mA-d</td></tr>';
                 }).join('') + '</tbody></table></div>';
         } else h += '<div class="tld-ok">No major leakage events (no continuous fault of 4 hours or more) in the period.</div>';
@@ -1062,20 +1065,17 @@
         var unit = unitOf(r ? (r.alias || r.label) : fallback);
         var v = r ? r.v : null, st = r ? stOf(r) : 'none';
         var calc = r && r.derived;
-        var sc = { ok: P.green, near: P.amber, low: P.amber, high: P.hi, none: P.mut, occ: P.mut }[st] || P.mut;
-        var vc = (st === 'ok' || st === 'none' || st === 'occ') ? P.val : sc;
+        /* LOW / HIGH: text tag only (muted), no coloured stripe / value colour / glow */
+        var sc = { ok: P.green, near: P.amber, low: P.mut, high: P.mut, none: P.mut, occ: P.mut }[st] || P.mut;
+        var vc = (st === 'ok' || st === 'none' || st === 'occ' || st === 'low' || st === 'high') ? P.val : sc;
         var s = '';
-        if (st === 'low' || st === 'high') {
-            s += '<rect x="' + (x - 2) + '" y="' + (y - 2) + '" width="' + (w + 4) + '" height="60" rx="8" fill="none" stroke="' + sc + '" stroke-width="4" filter="url(#tldGl)">' +
-                '<animate attributeName="opacity" values=".9;.2;.9" dur="1.4s" repeatCount="indefinite"></animate></rect>';
-        }
         s += '<g' + (r ? ' data-tld-k="' + esc(r.key) + '" style="cursor:pointer"' : '') + '><title>' + esc(lab + ': ' + fmt(v) + ' ' + unit + (r && r.range && r.range.min !== null ? ' | safe ' + fmt(r.range.min) + ' - ' + fmt(r.range.max) : calc ? ' | calculated' : '') + (r ? ' -- click for its trend' : '')) + '</title>' +
             '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="56" rx="7" fill="' + P.card + '" stroke="' + (r && D.sel && D.sel.key === r.key ? '#0A9AA8' : P.cedge) + '" stroke-width="' + (r && D.sel && D.sel.key === r.key ? 2.6 : 1.2) + '"></rect>' +
             '<rect x="' + x + '" y="' + y + '" width="4" height="56" rx="2" fill="' + sc + '"></rect>' +
             '<text x="' + (x + 11) + '" y="' + (y + 16) + '" font-size="10.5" font-weight="700" fill="' + P.mut + '">' + esc(lab) + '</text>' +
             '<text x="' + (x + 11) + '" y="' + (y + 37) + '" font-size="18" font-weight="800" fill="' + vc + '" font-family="JetBrains Mono, ui-monospace, monospace">' + fmt(v) +
             '<tspan font-size="11" font-weight="700" fill="' + P.mut + '" dx="4">' + esc(unit) + '</tspan></text>';
-        if (st === 'low' || st === 'high' || st === 'near' || st === 'occ') {
+        if (st === 'near' || st === 'occ') {   /* no LOW / HIGH tag */
             s += '<text x="' + (x + w - 8) + '" y="' + (y + 16) + '" text-anchor="end" font-size="9.5" font-weight="800" fill="' + sc + '" font-family="JetBrains Mono, monospace">' + (st === 'occ' ? 'OCC.' : st.toUpperCase()) + '</text>';
         }
         if (r && r.range && r.range.min !== null && r.range.max > r.range.min && v !== null) {
@@ -1245,6 +1245,25 @@
                 byKey[p.key].has[p.E] = true;
                 byKey[p.key].ids[p.E] = p.id;
             });
+            /* same rule as the health card: an end whose PM operation reading has a live
+               value gets the row even without its own configured attribute (e.g. B end
+               current 213 / 215 not configured while B IPT / TPT still arrive). */
+            var liveEnds = function (lbls) {
+                var h = {};
+                ['A', 'B'].forEach(function (E) { lbls.forEach(function (l) { if (rowVal(E, l) !== null) h[E] = true; }); });
+                return h;
+            };
+            [['cur', ['IPT N/R(A) Max', 'IPT N/R(A) Avg'], 'IPT ' + dl], ['v110', ['VPT 110 DC LOC N/R(V)'], 'VPT 110 DC LOC ' + dl]].forEach(function (spec) {
+                var h = liveEnds(spec[1]), row = null;
+                rows.forEach(function (c) { if (!row && c.kind === spec[0]) row = c; });
+                if (!row) {
+                    if (!h.A && !h.B) return;
+                    row = { label: spec[2], kind: spec[0], has: {}, ids: {} };
+                    rows.push(row);
+                }
+                if (h.A) row.has.A = true;
+                if (h.B) row.has.B = true;
+            });
             var out = [];
             rows.forEach(function (c) {
                 if (c.kind === 'cur') {
@@ -1339,20 +1358,25 @@
             }
             out[E].push(r);
         };
+        /* standard PM channel ids [Normal, Reverse] -- the safe-range lookup for an end
+           whose channel is not configured on this site (e.g. B current 213 / 215
+           missing): without an id that end's IPT / VPT 110 tiles had no gauge / status */
+        var STD_ID = { cur: { A: [217, 219], B: [213, 215] }, v110: { A: [216, 218], B: [212, 214] } };
+        var stdId = function (kind, E) { var p = STD_ID[kind] && STD_ID[kind][E]; return p ? p[A.pmDir === 'Reverse' ? 1 : 0] : undefined; };
         M.rows.forEach(function (c) {
             M.ends.forEach(function (E) {
                 if (!c.has[E]) return;
                 var pm = function (l) { return rowByLabel(A, E + ' End ' + l); };
                 if (c.kind === 'cur') {
-                    add(E, pm('IPT N/R(A) Max'), E + ' ' + c.label + ' Max (A)', c.ids[E]);
-                    add(E, pm('IPT N/R(A) Avg'), E + ' ' + c.label + ' Avg (A)', c.ids[E]);
+                    add(E, pm('IPT N/R(A) Max'), E + ' ' + c.label + ' Max (A)', c.ids[E] || stdId('cur', E));
+                    add(E, pm('IPT N/R(A) Avg'), E + ' ' + c.label + ' Avg (A)', c.ids[E] || stdId('cur', E));
                 } else if (c.kind === 'tpt') {
                     /* 616 name "TPT N/R(ms)", with the operation's direction letter */
                     add(E, pm('TPT N/R(ms)'), E + ' TPT ' + dl + '(ms)');
                     var tr = out[E][out[E].length - 1];
                     if (tr.v === null || tr.v === undefined) tr.v = pmOpValue(E === 'A' ? 'AC' : 'BC', A.pmDir, 'OperationTime');
                 } else if (c.kind === 'v110') {
-                    add(E, pm('VPT 110 DC LOC N/R(V)'), E + ' ' + c.label + ' Avg (V)', c.ids[E]);
+                    add(E, pm('VPT 110 DC LOC N/R(V)'), E + ' ' + c.label + ' Avg (V)', c.ids[E] || stdId('v110', E));
                 } else {
                     add(E, null, E + ' ' + c.label, c.ids[E], true);
                 }
@@ -1511,6 +1535,28 @@
     var ASPECT_ECR = { HHG: 'HHECR', DG: 'DECR', GG: 'DECR', HG: 'HECR', YG: 'HECR', RG: 'RECR' };
     var ASPECT_PR = { HHG: 'VSIG HHPR', DG: 'VSIG DPR', HG: 'VSIG HPR', GG: 'VSIG DPR', YG: 'VSIG HPR', RG: 'VSIG RPR' };
     var ASPECT_CONTACTS = { HHG: ['HR', 'DR', 'HHR'], DG: ['HR', 'HHR', 'DR'], GG: ['HR', 'DR'], HG: ['HR', 'DR'], YG: ['HR'], RG: ['HR', 'DECR', 'HHECR', 'HECR'] };
+    /* the aspect's proving-relay reading, matched on the asset's real attribute alias / label:
+       exact ASPECT_PR name first, else any main-signal reading ending in the relay name
+       (RPR, HPR, DPR, HHPR) whatever its prefix (VSIG RPR, VRPR, RPR ...). Calling-on, route and
+       shunt readings (COSIG / ROSIG / SHSIG) are excluded; HPR never takes an HHPR row; voltage
+       (V...) beats current; shortest name wins. */
+    function provingRow(A, x) {
+        if (!A) return null;
+        var pr = ASPECT_PR[x];
+        if (!pr) return null;
+        var exact = sigRow(A, pr);
+        if (exact) return exact;
+        var want = norm(pr.replace(/^VSIG\s+/, '')), best = null, bestScore = 1e9;
+        A.rows.concat(A.derived || []).forEach(function (r) {
+            var n = norm(r.alias || r.label);
+            if (!n || n.slice(-want.length) !== want) return;
+            if (/COSIG|ROSIG|SHSIG/.test(n)) return;
+            if (want === 'HPR' && /HHPR$/.test(n)) return;
+            var score = n.length + (/^V/.test(n) ? 0 : 100);
+            if (score < bestScore) { bestScore = score; best = r; }
+        });
+        return best;
+    }
     function aspectsOf(A) {
         var out = [];
         (A ? A.rows : []).forEach(function (r) {
@@ -1634,8 +1680,10 @@
         a('<text x="840" y="' + (top - 40) + '" text-anchor="middle" font-size="15" font-weight="800" fill="' + P.ink + '">LOCATION BOX</text>');
         a('<line x1="965" y1="' + (top - 50) + '" x2="965" y2="' + (H - 20) + '" stroke="' + P.ink + '" stroke-dasharray="4 4" stroke-width="1.6"></line><text x="975" y="' + (top - 40) + '" font-size="15" font-weight="800" fill="' + P.ink + '">SIGNAL UNIT</text>');
         var headH = asp.length * rowH - 20;
-        a('<rect x="1010" y="' + (top - 30) + '" width="150" height="' + headH + '" rx="70" fill="' + P.tljb + '"></rect>');
-        a('<rect x="1072" y="' + (top - 30 + headH) + '" width="26" height="40" fill="' + P.tljb + '"></rect>');
+        if (headH > 0) {   /* no aspect readings: no signal head (was a negative-height rect error) */
+            a('<rect x="1010" y="' + (top - 30) + '" width="150" height="' + headH + '" rx="70" fill="' + P.tljb + '"></rect>');
+            a('<rect x="1072" y="' + (top - 30 + headH) + '" width="26" height="40" fill="' + P.tljb + '"></rect>');
+        }
         asp.forEach(function (x, i) {
             var y = top + i * rowH, lit = aspectLit(A, x), col = ASPECT_COL[x] || '#F5B70A';
             a(bnLabel(P, 30, y - 8, 'Bx110V') + '<path d="M28 ' + y + 'H1085" stroke="' + P.red + '" stroke-width="2.6"></path>');
@@ -1647,9 +1695,10 @@
             (ASPECT_CONTACTS[x] || ['HR']).forEach(function (c, k) { a(contact(P, A, 110 + k * 92, y - 8, c)); });
             a(ecrBox(P, A, 540, y, ASPECT_ECR[x] || 'ECR'));
             a('<text x="630" y="' + (y + 40) + '" text-anchor="middle" font-size="12.5" font-weight="800" fill="' + (lit ? col : P.mut) + '">' + x + (lit ? ' &#183; lit' : ' &#183; off') + '</text>');
-            var pr = ASPECT_PR[x];
-            if (pr && sigRow(A, pr)) a(scard(P, A, pr, 752, y + 6, 176));
-            else a('<text x="840" y="' + (y + 40) + '" text-anchor="middle" font-size="15" font-weight="800" fill="' + P.ink + '">' + esc((pr || '').replace('VSIG ', '')) + '</text>');
+            /* proving relay bound by the asset's ACTUAL attribute alias (provingRow), card titled
+               with that alias; no such attribute -> nothing drawn in the location box */
+            var prRow = provingRow(A, x);
+            if (prRow) a(ccard(P, A, prRow.key, prRow.alias || prRow.label, 752, y + 6, 176));
             var cy = y + 35;
             if (lit) a('<circle cx="1085" cy="' + cy + '" r="60" fill="' + col + '" opacity=".35" filter="url(#tldGl)"><animate attributeName="opacity" values=".45;.15;.45" dur="1.6s" repeatCount="indefinite"></animate></circle>');
             a('<circle cx="1085" cy="' + cy + '" r="52" fill="' + (lit ? col : (isLight() ? '#3A3F55' : '#2B3044')) + '"></circle>');
@@ -1793,7 +1842,7 @@
         return '<div class="tld-note" style="display:flex;flex-wrap:wrap;gap:16px;font-size:12px">' +
             '<span><b style="color:' + P.flow + '">- - &#8594;</b> DC track current (feed &#8594; rail 2 &#8594; relay end, back on rail 1)</span>' +
             '<span><b style="color:' + P.n24 + '">- -</b><b style="color:' + P.p24 + '">- -</b> 24 V DC to relay room</span><span><b style="color:' + P.ac + '">&#8764;</b> 110 V AC</span>' +
-            '<span>card stripe: green in range, amber near / low, red outside (glows)</span><span>hover a card for its safe range</span></div>';
+            '<span>card stripe: green in range, amber near limit</span><span>hover a card for its safe range</span></div>';
     }
 
     /* ------------------------------------------------------------------
@@ -1825,8 +1874,15 @@
         if (!a.resetTime) return 'open';
         var ms = new Date(a.resetTime) - new Date(a.setTime);
         if (isNaN(ms) || ms < 0) return '--';
-        var m = Math.round(ms / 60000);
-        return m < 60 ? m + ' min' : (m / 60).toFixed(1) + ' h';
+        return hmsText(ms / 1000);
+    }
+    /* duration as HH:MM:SS (days prefixed past 24 h: "2d 03:04:05") */
+    function hmsText(sec) {
+        if (sec === null || sec === undefined || isNaN(sec) || sec < 0) return '--';
+        sec = Math.round(sec);
+        var d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+        var p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return (d ? d + 'd ' : '') + p(h) + ':' + p(m) + ':' + p(s);
     }
     function alertsHtml() {
         var S = D.alerts;

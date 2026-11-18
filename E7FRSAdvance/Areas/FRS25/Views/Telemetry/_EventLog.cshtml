@@ -283,8 +283,7 @@
 
 @{ var modelId = Model != null ? Model.Id : 0;
     var modelSiteId = Model != null ? Model.SiteId : 0;
-    var isDatalogger = Model != null && Model.IsDatalogger;
-    var isPointMachine = Model != null && Model.AssetTypeId == (int)E7FRSAdvance.Utility.Utility.AssetType.POINT_MACHINE; }
+    var isDatalogger = Model != null && Model.IsDatalogger; }
 
 <div class="eventlog-container" data-asset-id="@modelId" data-site-id="@modelSiteId">
     <!-- Tab Navigation -->
@@ -315,34 +314,6 @@
                 </li>
 }
         }
-        @if (isPointMachine)
-        {
-            <li class="nav-item">
-                <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabPointEvent" role="tab">
-                    <i class="fas fa-map-marker-alt"></i> Point Event
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabClusterLog" role="tab">
-                    <i class="fas fa-server"></i> Cluster Log
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabMQTTLog" role="tab">
-                    <i class="fas fa-wifi"></i> MQTT Log
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabFTPLog" role="tab">
-                    <i class="fas fa-folder"></i> FTP Log
-                </a>
-            </li>
-}
-        <li class="nav-item">
-            <a class="nav-link" data-toggle="tab" data-bs-toggle="tab" href="#tabChangeTime" role="tab">
-                <i class="fas fa-clock"></i> Change Time
-            </a>
-        </li>
     </ul>
 
     <!-- Tab Content -->
@@ -490,9 +461,9 @@
         {
             <div class="tab-pane fade" id="tabDatalogger" role="tabpanel">
                 <div class="eventlog-search-form">
-                    <div class="eventlog-form-group">
+                    <div class="eventlog-form-group" style="min-width: 250px;">
                         <label for="drpDataloggerSearchAttribute">Attribute</label>
-                        <select id="drpDataloggerSearchAttribute" class="eventlog-form-control">
+                        <select class="form-control js-example-basic-multiple" id="drpDataloggerSearchAttribute">
                             <option value="" selected>All Attributes</option>
                             @if (ViewBag.AssetInfoDatalogger != null)
                             {
@@ -504,7 +475,7 @@
                             }
                         </select>
                     </div>
-                    <div class="eventlog-form-group" style="max-width: 200px;">
+                    <div class="eventlog-form-group" style="max-width: 240px;">
                         <label for="txtDataloggerSearchDate">Select Date</label>
                         <input type="text" id="txtDataloggerSearchDate" class="eventlog-form-control" placeholder="DD/MM/YYYY" readonly>
                     </div>
@@ -513,11 +484,6 @@
                             <i class="fas fa-search"></i> Search
                         </button>
                     </div>
-                </div>
-
-                <div class="eventlog-info">
-                    <i class="fas fa-info-circle"></i>
-                    Pick a date (and optionally an attribute), then search to view datalogger events
                 </div>
 
                 <div id="divSearchDataloggerEvent" class="table-responsive tablemodalFixHead">
@@ -583,244 +549,34 @@
                     </div>
                 </div>}
         }
-
-        <!-- Point Event Tab -->
-        @if (isPointMachine)
-        {
-            <div class="tab-pane fade" id="tabPointEvent" role="tabpanel">
-                <div class="eventlog-search-form">
-                    <div class="eventlog-form-group" style="max-width: 200px;">
-                        <label for="txtPointEventSearchDate">Select Date</label>
-                        <input type="text" id="txtPointEventSearchDate" class="eventlog-form-control" placeholder="DD/MM/YYYY" readonly>
-                    </div>
-                    <div class="eventlog-form-group" style="flex: 0 0 auto; min-width: auto;">
-                        <button type="button" class="eventlog-btn-search at-eventlog-search-btn" onclick="fnSearchPointEvent()">
-                            <i class="fas fa-search"></i> Search
-                        </button>
-                    </div>
-                </div>
-
-                <div id="divSearchPointEvent" class="table-responsive tablemodalFixHead">
-                    @if (ViewBag.PointMachineEvent != null)
-                    {
-                        var mPointMachineEvents = ViewBag.PointMachineEvent as List<Domain.PointMachineEvent>;
-                        @Html.Partial("_PointMachineEvent", mPointMachineEvents) }
-                    else
-                    {
-                        <div class="eventlog-empty">
-                            <i class="fas fa-inbox"></i>
-                            <p>No point events found. Select a date and search.</p>
-                        </div>}
-                </div>
-            </div> <!-- Cluster Log Tab -->
-            <div class="tab-pane fade" id="tabClusterLog" role="tabpanel">
-                <div class="table-responsive tablemodalFixHead">
-                    @if (ViewBag.PointEventLog != null)
-                    {
-                        var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
-                        var clusterLogs = mPointEventLogs.Where(x => x.TypeId == 1).OrderByDescending(x => x.EventTime).ToList();
-                        if (clusterLogs.Count > 0)
-                        {
-                            <table class="eventlog-table">
-                                <thead>
-                                    <tr>
-                                        <th>Event Time</th>
-                                        <th>Direction</th>
-                                        <th>Capture Time</th>
-                                        <th>Response Counter</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var item in clusterLogs)
-                                    {
-                                        <tr>
-                                            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
-                                            <td>@item.Name</td>
-                                            <td>@item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
-                                            <td class="text-center">@item.ResponseCounter</td>
-                                        </tr>
-}
-                                </tbody>
-                            </table> }
-                        else
-                        {
-                            <div class="eventlog-empty">
-                                <i class="fas fa-inbox"></i>
-                                <p>No cluster logs found</p>
-                            </div> }
-                    }
-                    else
-                    {
-                        <div class="eventlog-empty">
-                            <i class="fas fa-inbox"></i>
-                            <p>No cluster logs found</p>
-                        </div>}
-                </div>
-            </div> <!-- MQTT Log Tab -->
-            <div class="tab-pane fade" id="tabMQTTLog" role="tabpanel">
-                <div class="table-responsive tablemodalFixHead">
-                    @if (ViewBag.PointEventLog != null)
-                    {
-                        var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
-                        var mqttLogs = mPointEventLogs.Where(x => x.TypeId == 2).OrderByDescending(x => x.EventTime).ToList();
-                        if (mqttLogs.Count > 0)
-                        {
-                            <table class="eventlog-table">
-                                <thead>
-                                    <tr>
-                                        <th>Event Time</th>
-                                        <th>Direction</th>
-                                        <th>Capture Time</th>
-                                        <th>Response Counter</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var item in mqttLogs)
-                                    {
-                                        <tr>
-                                            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
-                                            <td>@item.Name</td>
-                                            <td>@item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
-                                            <td class="text-center">@item.ResponseCounter</td>
-                                        </tr>
-}
-                                </tbody>
-                            </table> }
-                        else
-                        {
-                            <div class="eventlog-empty">
-                                <i class="fas fa-inbox"></i>
-                                <p>No MQTT logs found</p>
-                            </div> }
-                    }
-                    else
-                    {
-                        <div class="eventlog-empty">
-                            <i class="fas fa-inbox"></i>
-                            <p>No MQTT logs found</p>
-                        </div>}
-                </div>
-            </div> <!-- FTP Log Tab -->
-            <div class="tab-pane fade" id="tabFTPLog" role="tabpanel">
-                <div class="table-responsive tablemodalFixHead">
-                    @if (ViewBag.PointEventLog != null)
-                    {
-                        var mPointEventLogs = ViewBag.PointEventLog as List<Domain.PointEventLog>;
-                        var ftpLogs = mPointEventLogs.Where(x => x.TypeId == 3).OrderByDescending(x => x.EventTime).ToList();
-                        if (ftpLogs.Count > 0)
-                        {
-                            <table class="eventlog-table">
-                                <thead>
-                                    <tr>
-                                        <th>Event Time</th>
-                                        <th>Direction</th>
-                                        <th>Capture Time</th>
-                                        <th>Response Counter</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var item in ftpLogs)
-                                    {
-                                        <tr>
-                                            <td>@item.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</td>
-                                            <td>@item.Name</td>
-                                            <td>@item.EventTime.ToString("dd/MM/yyyy HH:mm:ss")</td>
-                                            <td class="text-center">@item.ResponseCounter</td>
-                                        </tr>
-}
-                                </tbody>
-                            </table> }
-                        else
-                        {
-                            <div class="eventlog-empty">
-                                <i class="fas fa-inbox"></i>
-                                <p>No FTP logs found</p>
-                            </div> }
-                    }
-                    else
-                    {
-                        <div class="eventlog-empty">
-                            <i class="fas fa-inbox"></i>
-                            <p>No FTP logs found</p>
-                        </div>}
-                </div>
-            </div>}
-
-        <!-- Change Time Tab -->
-        <div class="tab-pane fade" id="tabChangeTime" role="tabpanel">
-            <div class="table-responsive tablemodalFixHead">
-                <table class="eventlog-table">
-                    <thead>
-                        <tr>
-                            @if (ViewBag.AssetInfos != null)
-                            {
-                                var mAssetInfos = ViewBag.AssetInfos as List<Domain.AssetInfo>;
-                                if (mAssetInfos != null && mAssetInfos.Count > 0)
-                                {
-                                    foreach (var assetAttribute in mAssetInfos)
-                                    {
-                                        if (!string.IsNullOrEmpty(assetAttribute.AttributeAliasName))
-                                        {
-                                            <th>@assetAttribute.AttributeAliasName</th>
- }
-                                        else
-                                        {
-                                            <th>@assetAttribute.AttributeName</th>
-}
-                                    }
-                                }
-                            }
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            @if (ViewBag.AssetInfos != null && ViewBag.ChangeTimeAssets != null)
-                            {
-                                var mAssetInfos = ViewBag.AssetInfos as List<Domain.AssetInfo>;
-                                var mChangeTimeAssets = ViewBag.ChangeTimeAssets as List<Domain.DynamoTable>;
-                                if (mChangeTimeAssets != null && mChangeTimeAssets.Count > 0 && mAssetInfos != null && mAssetInfos.Count > 0)
-                                {
-                                    foreach (var mAssetInfo in mAssetInfos)
-                                    {
-                                        <td style="vertical-align:top; padding: 0;">
-                                            <table class="eventlog-table" style="margin: 0; box-shadow: none; border-radius: 0;">
-                                                @foreach (var mChangeTimeAsset in mChangeTimeAssets.Where(x => x.asset_attribute_id == mAssetInfo.AssetAttributeId).OrderByDescending(x => x.change_timestamp))
-                                                {
-                                                    <tr>
-                                                        <td style="border-bottom: 1px solid var(--e7-border, #e2e8f0);">
-                                                            <span>@mChangeTimeAsset.asset_attribute_value</span><br />
-                                                            <small style="color: var(--e7-text-3, #64748b);">(@mChangeTimeAsset.change_timestamp.ToString("dd-MM-yyyy HH:mm:ss"))</small>
-                                                        </td>
-                                                    </tr>
-}
-                                            </table>
-                                        </td>
- }
-                                }
-                                else
-                                {
-                                    <td colspan="10" class="eventlog-empty">
-                                        <i class="fas fa-inbox"></i>
-                                        <p>No change time records found</p>
-                                    </td>
- }
-                            }
-                            else
-                            {
-                                <td colspan="10" class="eventlog-empty">
-                                    <i class="fas fa-inbox"></i>
-                                    <p>No change time records found</p>
-                                </td>
-}
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
     </div>
 </div>
 
-<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<script>
+    /* jQuery UI for the date picker, loaded ONCE per page and awaited. It used to be a
+       plain <script src> in this partial: jQuery fetches a cross-domain script inserted
+       with the HTML asynchronously, so the controls were sometimes set up before it
+       arrived -- $.fn.datepicker was then the layout's Air Datepicker, which does not
+       understand these options, and the field never opened a calendar. */
+    function eventLogJqUiReady() {
+        return !!($.datepicker && typeof $.datepicker.setDefaults === 'function' && $.ui);
+    }
+    function ensureEventLogJqUi(cb) {
+        var st = window._eventLogJqUi || (window._eventLogJqUi = { loading: false, tried: false, cbs: [] });
+        if (eventLogJqUiReady() || st.tried) { cb(); return; }
+        st.cbs.push(cb);
+        if (st.loading) return;
+        st.loading = true;
+        var done = function () {
+            st.loading = false;
+            st.tried = true;   /* loaded or failed: never fetch again, set up with what exists */
+            var list = st.cbs.splice(0);
+            for (var i = 0; i < list.length; i++) { try { list[i](); } catch (e) { console.error('[EventLog] init error', e); } }
+        };
+        $.ajax({ url: 'https://code.jquery.com/ui/1.13.2/jquery-ui.min.js', dataType: 'script', cache: true, timeout: 20000 })
+            .always(done);   /* on failure the controls still set up (plain date text) */
+    }
+</script>
 
 <script>
     // Store asset info from model (C# 5 compatible)
@@ -833,12 +589,15 @@
 
     (function () {
         console.log('[EventLog] Initializing with AssetId:', eventLogAssetId, 'SiteId:', eventLogSiteId);
-        setTimeout(function () {
-            initializeEventLogControls();
-        }, 200);
+        ensureEventLogJqUi(initializeEventLogControls);
     })();
 
     function initializeEventLogControls() {
+        /* also called by telemetrylive.js initEventLogControls: wait for jQuery UI there too */
+        if (!eventLogJqUiReady() && !(window._eventLogJqUi && window._eventLogJqUi.tried)) {
+            ensureEventLogJqUi(initializeEventLogControls);
+            return;
+        }
         console.log('[EventLog] Setting up controls...');
 
         // === Initialize Select2 (All Attributes default) ===
@@ -868,8 +627,8 @@
         var todayFormatted = today.getDate() + '/' + (today.getMonth() + 1) + '/' + today.getFullYear();
 
         var $dlDate = $('#txtDataloggerSearchDate');
-        if ($dlDate.length) {
-            if (typeof $.fn.datepicker !== 'undefined') {
+        if ($dlDate.length && !$dlDate.hasClass('hasDatepicker')) {   /* init once (called twice per open) */
+            if (eventLogJqUiReady()) {
                 try {
                     $dlDate.datepicker({
                         dateFormat: 'd/m/yy',
@@ -898,28 +657,6 @@
             $dlDate.off('change.dlSearch').on('change.dlSearch', function () {
                 fnSearchDatalogger();
             });
-        }
-
-        var $peDate = $('#txtPointEventSearchDate');
-        if ($peDate.length) {
-            if (typeof $.fn.datepicker !== 'undefined') {
-                try {
-                    $peDate.datepicker({
-                        dateFormat: 'd/m/yy',
-                        maxDate: new Date(),
-                        beforeShow: function (input, inst) {
-                            setTimeout(function () {
-                                inst.dpDiv.css({ 'z-index': 999999 });
-                            }, 10);
-                        }
-                    });
-                    $peDate.datepicker('setDate', today);
-                } catch (e) {
-                    $peDate.val(todayFormatted);
-                }
-            } else {
-                $peDate.val(todayFormatted);
-            }
         }
 
         setupTabHandlers();
@@ -1009,59 +746,6 @@
             error: function (xhr, status, error) {
                 console.error('[Datalogger] Error:', error);
                 $('#divSearchDataloggerEvent').html('<div class="text-center text-danger p-4"><i class="fas fa-exclamation-circle fa-2x"></i><p class="mt-2">Failed to load data</p></div>');
-                if (typeof showError === 'function') showError('Failed to load data', 'Error');
-            }
-        });
-    }
-
-    // ================================================================
-    // SEARCH POINT EVENT - Calls _PointMachineEvent
-    // Controller expects: SearchCriteria { AssetId, SiteId, SearchDate }
-    // ================================================================
-    function fnSearchPointEvent() {
-        var searchDate = $('#txtPointEventSearchDate').val();
-
-        if (!searchDate || searchDate.trim() === '') {
-            if (typeof showWarning === 'function') showWarning('Please select a date', 'Validation');
-            else alert('Please select a date');
-            return;
-        }
-
-        var assetId = eventLogAssetId || window.currentEventLogAssetId;
-        var siteId = eventLogSiteId || window.currentEventLogSiteId || $('#drpSite').val();
-
-        if (!assetId || assetId === 0) {
-            if (typeof showWarning === 'function') showWarning('Asset ID not found', 'Error');
-            else alert('Asset ID not found');
-            return;
-        }
-
-        console.log('[PointEvent] Searching:', { date: searchDate, assetId: assetId, siteId: siteId });
-
-        $('#divSearchPointEvent').html('<div class="text-center p-4"><i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Loading...</p></div>');
-
-        // Build search criteria matching original format
-        var searchCriteria = {
-            AssetId: assetId,
-            SiteId: siteId,
-            SearchDate: searchDate
-        };
-
-        $.ajax({
-            url: '/FRS25/Telemetry/_PointMachineEvent',
-            type: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify(searchCriteria),
-            success: function (data) {
-                if (data) {
-                    $('#divSearchPointEvent').html(data);
-                } else {
-                    $('#divSearchPointEvent').html('<div class="eventlog-empty"><i class="fas fa-inbox"></i><p>No data found</p></div>');
-                }
-            },
-            error: function (xhr, status, error) {
-                console.error('[PointEvent] Error:', error);
-                $('#divSearchPointEvent').html('<div class="text-center text-danger p-4"><i class="fas fa-exclamation-circle fa-2x"></i><p class="mt-2">Failed to load data</p></div>');
                 if (typeof showError === 'function') showError('Failed to load data', 'Error');
             }
         });
