@@ -270,6 +270,8 @@ function trackTprStatus(a) {
         if (!dl.hasOwnProperty(k)) continue;
         var r = dl[k] || {};
         if (_isTrackTprKey(k, r)) {
+            /* a TPR frame on a track whose config has no TPR DataLogger is not its relay */
+            if (typeof tlRelayConfigured === 'function' && !tlRelayConfigured(a.AssetId, k, r)) continue;
             var up = (r.isPickup === true || r.IsPickup === true || r.value === 1 || r.value === '1' ||
                 (typeof r.value === 'number' && r.value >= 0.5) || r.Value === 1 || r.Value === '1');
             return { state: up ? 'pickup' : 'drop', src: 'relay' };
@@ -390,6 +392,8 @@ function atBuildTrackCard(aid) {
     var pills = '';
     // No DataLogger configured (RDPMS-only asset): no relay pills.
     var dlKeys = _hasDl ? Object.keys(dlRelays) : [];
+    /* only the relays this asset's config lists (was: every relay once any DL was configured) */
+    if (typeof tlRelayConfigured === 'function') dlKeys = dlKeys.filter(function (k) { return tlRelayConfigured(aid, k, dlRelays[k]); });
 
     // Dedicated TPR status badge for tracks: pickup = green up (track clear),
     // drop = amber down (track occupied). Shown first; the raw TPR relay (if
@@ -1602,6 +1606,15 @@ function getDerivedCells(derived) {
 // ================================================================
 var userAssetSimpleMap = {};            // RDPMS + PointMachine indication metadata
 var userAssetDataloggerMap = {};        // DataLogger metadata (richer than dlRoleNameMap)
+/* 616 parity: assetId_DataloggerAttributeId -> relay name, with NO Value / row-Id keys.
+   userAssetDataloggerMap mixes three id spaces under one key (DataloggerAttributeId,
+   Value = Role, Id), so one number can be relay A's attribute id and relay B's Role:
+   whichever row came last owns the key. A live relay frame carries its
+   DataloggerAttributeId as AssetAttributeId, so it must be resolved from this
+   id-only map first (asset 44687: DR attribute id 66 hit HR's Role key 66; Bhestan
+   S12: another relay's frame landed on RECR / TPR). */
+var dlAttrIdNameMap = {};
+window.dlAttrIdNameMap = dlAttrIdNameMap;
 var userAssetInfoLoaded = false;
 var userAssetInfoSiteId = null;
 var userAssetInfoAssetTypeId = null;
@@ -2298,6 +2311,7 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
             // Reset maps for new site data
             userAssetSimpleMap = {};
             userAssetDataloggerMap = {};
+            dlAttrIdNameMap = {}; window.dlAttrIdNameMap = dlAttrIdNameMap;
 
             bulkAliasByAssetAttrName = {};
             bulkAliasByAssetAttrId = {};
@@ -2487,6 +2501,9 @@ function loadBulkAssetMetadata(siteId, assetTypeId, callback) {
                         dlRoleNameMap[dlMapIds[mk]] = dlName;
                         dlAssetRoleMap[dlKey] = dlName;
                     }
+                    /* id-only map for live relay frames (see dlAttrIdNameMap) */
+                    var dlAttrIdOnly = _dlMapId(dl.DataloggerAttributeId);
+                    if (dlAttrIdOnly) dlAttrIdNameMap[aid + '_' + dlAttrIdOnly] = dlName;
 
                     dlCount++;
                 }
@@ -2684,6 +2701,15 @@ function resolveDataloggerDisplayName(assetId, attrNameOrId, rawD) {
 
     if (rawD && clean(rawD.DataloggerAttribute)) {
         return clean(rawD.DataloggerAttribute);
+    }
+
+    // 616: live relay messages carry DataloggerAttributeId as AssetAttributeId. Resolve it
+    // from the id-only map first: the mixed keys below can hold another relay's Value / row
+    // Id (asset 44687: DR id 66 hit HR's key 66 and DR never got a pill; Bhestan S12 RECR
+    // showed another relay's Drop).
+    if (rawD) {
+        var byAttrId = dlAttrIdNameMap[aid + '_' + clean(rawD.DataloggerAttributeId || rawD.AssetAttributeId)];
+        if (byAttrId) return byAttrId;
     }
 
     var candidates = [];
@@ -13701,8 +13727,11 @@ window.tlDlNameGuard = tlDlNameGuard;
 function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp, roleOrAttrId, rawD) {
     if (!wsLiveData[assetId]) return false;
 
+    /* 616: a blank / non-numeric relay value is "no reading" (isNull), not Drop */
+    var isNull = (value === null || value === undefined || String(value).trim() === '');
     var numVal = parseFloat(value);
-    var isPickup = (numVal === 1);
+    if (isNaN(numVal)) isNull = true;
+    var isPickup = (!isNull && numVal === 1);
 
     var displayName = '';
 
@@ -13727,7 +13756,8 @@ function processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp,
     if (!wsLiveData[assetId].dlRelays) wsLiveData[assetId].dlRelays = {};
 
     var relayObj = {
-        value: isNaN(numVal) ? value : numVal,
+        value: isNull ? null : numVal,
+        isNull: isNull,
         isPickup: isPickup,
         displayName: displayName,
         attrName: attrName,
@@ -14810,12 +14840,12 @@ function prependPmOperationRow(assetId, row, showA, showB) {
         + '</td>';
     html += '<td><a href="javascript:void(0)">C</a> / <a href="javascript:void(0)">V</a> T(' + row.totalOT + ')</td>';
     if (row.showA !== false && showA) {
-        html += '<td class="col-a"><span class="pm-current-val">' + row.aAcMax + ' / ' + row.aAcAvg + ' (' + row.aAcCount + ')</span></td>';
+        html += '<td class="col-a"><span class="pm-current-val">' + row.aAcMax + ' / ' + row.aAcAvg + '</span></td>';
         html += '<td class="col-a"><span class="pm-voltage-val">' + row.aAvAvg + '</span></td>';
         html += '<td class="col-a">' + row.aAcOT + '</td>';
     }
     if (row.showB !== false && showB) {
-        html += '<td class="col-b"><span class="pm-current-val-b">' + row.bBcMax + ' / ' + row.bBcAvg + ' (' + row.bBcCount + ')</span></td>';
+        html += '<td class="col-b"><span class="pm-current-val-b">' + row.bBcMax + ' / ' + row.bBcAvg + '</span></td>';
         html += '<td class="col-b"><span class="pm-voltage-val">' + row.bBvAvg + '</span></td>';
         html += '<td class="col-b">' + row.bBcOT + '</td>';
     }
@@ -14876,13 +14906,13 @@ function updatePmRowInPlace(assetId, row, showA, showB, oldTs) {
     ci++;
 
     if (showA && row.showA !== false) {
-        $tr.find('td').eq(ci).find('span.pm-current-val').text(row.aAcMax + ' / ' + row.aAcAvg + ' (' + row.aAcCount + ')'); ci++;
+        $tr.find('td').eq(ci).find('span.pm-current-val').text(row.aAcMax + ' / ' + row.aAcAvg); ci++;
         $tr.find('td').eq(ci).find('span.pm-voltage-val').text(row.aAvAvg); ci++;
         $tr.find('td').eq(ci).text(row.aAcOT); ci++;
     }
 
     if (showB && row.showB !== false) {
-        $tr.find('td').eq(ci).find('span.pm-current-val-b').text(row.bBcMax + ' / ' + row.bBcAvg + ' (' + row.bBcCount + ')'); ci++;
+        $tr.find('td').eq(ci).find('span.pm-current-val-b').text(row.bBcMax + ' / ' + row.bBcAvg); ci++;
         $tr.find('td').eq(ci).find('span.pm-voltage-val').text(row.bBvAvg); ci++;
         $tr.find('td').eq(ci).text(row.bBcOT); ci++;
     }
@@ -14924,12 +14954,12 @@ function refreshPmOperationTable(assetId, hist, showA, showB) {
             + '</td>';
         rows += '<td><a href="javascript:void(0)">C</a> / <a href="javascript:void(0)">V</a> T(' + r.totalOT + ')</td>';
         if (r.showA !== false && showA) {
-            rows += '<td class="col-a"><span class="pm-current-val">' + r.aAcMax + ' / ' + r.aAcAvg + ' (' + r.aAcCount + ')</span></td>';
+            rows += '<td class="col-a"><span class="pm-current-val">' + r.aAcMax + ' / ' + r.aAcAvg + '</span></td>';
             rows += '<td class="col-a"><span class="pm-voltage-val">' + r.aAvAvg + '</span></td>';
             rows += '<td class="col-a">' + r.aAcOT + '</td>';
         }
         if (r.showB !== false && showB) {
-            rows += '<td class="col-b"><span class="pm-current-val-b">' + r.bBcMax + ' / ' + r.bBcAvg + ' (' + r.bBcCount + ')</span></td>';
+            rows += '<td class="col-b"><span class="pm-current-val-b">' + r.bBcMax + ' / ' + r.bBcAvg + '</span></td>';
             rows += '<td class="col-b"><span class="pm-voltage-val">' + r.bBvAvg + '</span></td>';
             rows += '<td class="col-b">' + r.bBcOT + '</td>';
         }
@@ -16214,10 +16244,10 @@ function buildPmDataRow(assetId, pm) {
         if (showA) {
             // Col: A Current (Max/Avg)(Count) - Clickable only if count > 0
             if (hasAcData) {
-                rows += '<td class="col-a"><a href="javascript:void(0)" class="pm-current-link" onclick="pmShowSingleArrayGraph(\'' + assetId + '\',\'' + dirPrefix + '\',\'AC\')" title="Click to view A Current waveform"><span class="pm-current-val">' + r.aAcMax + ' / ' + r.aAcAvg + ' (' + r.aAcCount + ')</span></a></td>';
+                rows += '<td class="col-a"><a href="javascript:void(0)" class="pm-current-link" onclick="pmShowSingleArrayGraph(\'' + assetId + '\',\'' + dirPrefix + '\',\'AC\')" title="Click to view A Current waveform"><span class="pm-current-val">' + r.aAcMax + ' / ' + r.aAcAvg + '</span></a></td>';
             } else {
                 // Show non-clickable value (use actual values if available, else "--")
-                var acDisplay = (r.aAcMax && r.aAcMax !== '--') ? (r.aAcMax + ' / ' + r.aAcAvg + ' (' + r.aAcCount + ')') : '-- / -- (0)';
+                var acDisplay = (r.aAcMax && r.aAcMax !== '--') ? (r.aAcMax + ' / ' + r.aAcAvg) : '-- / --';
                 rows += '<td class="col-a"><span class="pm-current-val pm-no-data" style="cursor:default;opacity:0.6;">' + acDisplay + '</span></td>';
             }
             // Col: A VPT110 DC LOC - Clickable only if data exists
@@ -16234,9 +16264,9 @@ function buildPmDataRow(assetId, pm) {
         if (showB) {
             // Col: B Current (Max/Avg)(Count) - Clickable only if count > 0
             if (hasBcData) {
-                rows += '<td class="col-b"><a href="javascript:void(0)" class="pm-current-link" onclick="pmShowSingleArrayGraph(\'' + assetId + '\',\'' + dirPrefix + '\',\'BC\')" title="Click to view B Current waveform"><span class="pm-current-val-b">' + r.bBcMax + ' / ' + r.bBcAvg + ' (' + r.bBcCount + ')</span></a></td>';
+                rows += '<td class="col-b"><a href="javascript:void(0)" class="pm-current-link" onclick="pmShowSingleArrayGraph(\'' + assetId + '\',\'' + dirPrefix + '\',\'BC\')" title="Click to view B Current waveform"><span class="pm-current-val-b">' + r.bBcMax + ' / ' + r.bBcAvg + '</span></a></td>';
             } else {
-                var bcDisplay = (r.bBcMax && r.bBcMax !== '--') ? (r.bBcMax + ' / ' + r.bBcAvg + ' (' + r.bBcCount + ')') : '-- / -- (0)';
+                var bcDisplay = (r.bBcMax && r.bBcMax !== '--') ? (r.bBcMax + ' / ' + r.bBcAvg) : '-- / --';
                 rows += '<td class="col-b"><span class="pm-current-val-b pm-no-data" style="cursor:default;opacity:0.6;">' + bcDisplay + '</span></td>';
             }
             // Col: B VPT110 DC LOC - Clickable only if data exists
@@ -18182,7 +18212,8 @@ function processSingleLiveUpdateFixed(d) {
                 attrName,
                 d.Value,
                 timestamp,
-                attrId || d.AssetAttributeId || d.AttrId || d.DataloggerAttributeId || attrName
+                attrId || d.AssetAttributeId || d.AttrId || d.DataloggerAttributeId || attrName,
+                d   /* raw frame: the id-only relay map needs its AssetAttributeId */
             );
         }
 
@@ -19191,7 +19222,7 @@ function processItemsFixed(items) {
             }
 
             if (typeof processWsDataloggerAttr === 'function') {
-                processWsDataloggerAttr(aid, d.AssetName, attrName, d.Value, timestamp);
+                processWsDataloggerAttr(aid, d.AssetName, attrName, d.Value, timestamp, d.AssetAttributeId || attrName, d);
             }
 
             // FIX: Mark asset as updated and increment counter for DataLogger messages
@@ -20200,7 +20231,7 @@ console.log('[DataLogger-Fix] Initializing DataLogger Pickup/Drop fix...');
 
 //    return true;
 //};
-window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, timestamp, roleOrAttrId) {
+window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, timestamp, roleOrAttrId, rawD) {
     // ── BULK WHITELIST GUARD ──
     // Never create an asset from a DataLogger frame if it wasn't in the bulk
     // response. Updating an asset that already exists is fine (it passed the
@@ -20237,14 +20268,28 @@ window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, 
         }
     }
 
+    /* 616: a blank / non-numeric relay value is "no reading" (isNull), not Drop */
+    var isNull = (value === null || value === undefined || String(value).trim() === '');
     var numVal = parseFloat(value);
-    if (isNaN(numVal)) numVal = 0;
+    if (isNaN(numVal)) { isNull = true; numVal = null; }
 
-    var isPickup = (numVal === 1 || numVal === 1.0);
+    var isPickup = (!isNull && numVal === 1);
 
-    var displayName = (typeof resolveBulkDataloggerName === 'function')
-        ? resolveBulkDataloggerName(assetId, roleOrAttrId || attrName, attrName)
-        : attrName;
+    /* 616 parity: a live relay frame carries its DataloggerAttributeId as AssetAttributeId.
+       Resolve it from the id-only map FIRST. resolveBulkDataloggerName() reads the mixed
+       map, whose key "aid_47" can be relay A's attribute id AND relay B's Role (Bhestan S12:
+       HHECR attribute id 47 = RECR Role 47, so every HHECR drop frame was stored as RECR
+       and RECR showed Drop while 616 showed Pickup). */
+    var displayName = '';
+    if (rawD && typeof dlAttrIdNameMap !== 'undefined') {
+        var liveAttrId = _tlMetaStr(rawD.DataloggerAttributeId || rawD.AssetAttributeId).trim();
+        if (liveAttrId) displayName = dlAttrIdNameMap[_tlMetaStr(assetId) + '_' + liveAttrId] || '';
+    }
+    if (!displayName) {
+        displayName = (typeof resolveBulkDataloggerName === 'function')
+            ? resolveBulkDataloggerName(assetId, roleOrAttrId || attrName, attrName)
+            : attrName;
+    }
 
     if (!displayName && typeof _tlStripAssetPrefix === 'function') {
         displayName = _tlStripAssetPrefix(assetId, resolvedAssetName, attrName);
@@ -20267,6 +20312,7 @@ window.processWsDataloggerAttr = function (assetId, assetName, attrName, value, 
 
     var relayObj = {
         value: numVal,
+        isNull: isNull,
         isPickup: isPickup,
         displayName: displayName,
         timestamp: timestamp || new Date().toISOString(),
@@ -20574,7 +20620,8 @@ function processDataLoggerItems(items) {
             attrName,
             value,
             timestamp,
-            d.AssetAttributeId || d.AttrId || d.DataloggerAttributeId || attrName
+            d.AssetAttributeId || d.AttrId || d.DataloggerAttributeId || attrName,
+            d
         );
         // Mark asset as updated
         if (!window.wsUpdatedAssets) window.wsUpdatedAssets = {};
@@ -20617,7 +20664,7 @@ window.processSingleLiveUpdate = function (d) {
         }
 
         // Process DataLogger
-        window.processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp);
+        window.processWsDataloggerAttr(assetId, assetName, attrName, value, timestamp, d.AssetAttributeId || attrName, d);
 
         // Update stats
         window.wsMessageCount = (window.wsMessageCount || 0) + 1;
@@ -22596,7 +22643,7 @@ window.tlTrackCfgMissing = tlTrackCfgMissing;
 
 // true when the asset's config lists this RDPMS attribute (by id, or by name/alias).
 function tlAssetHasRdpmsAttr(assetId, attrKey, attrId) {
-    var a = tlCfgAsset(assetId);
+    var a = tlCfgAssetForDisplay(assetId);
     if (!a) return !tlTrackCfgMissing(assetId);
     var list = tlCfgRdpmsAttrs(a);
     if (!list.length) return false;
@@ -22615,8 +22662,62 @@ function tlAssetHasRdpmsAttr(assetId, attrKey, attrId) {
     }
     return false;
 }
-function tlAssetHasRdpms(assetId) { var a = tlCfgAsset(assetId); return a ? tlCfgRdpmsAttrs(a).length > 0 : !tlTrackCfgMissing(assetId); }
-function tlAssetHasDatalogger(assetId) { var a = tlCfgAsset(assetId); return !a || tlCfgDataloggers(a).length > 0; }
+function tlAssetHasRdpms(assetId) { var a = tlCfgAssetForDisplay(assetId); return a ? tlCfgRdpmsAttrs(a).length > 0 : !tlTrackCfgMissing(assetId); }
+function tlAssetHasDatalogger(assetId) { var a = tlCfgAssetForDisplay(assetId); return !a || tlCfgDataloggers(a).length > 0; }
+
+/* ---- Display-side config (drawer / Health view), any page filter -------------------
+   bulkAssetMap only holds the type picked in the Asset Type dropdown, so an asset opened
+   from the SIP while another type is picked had NO config and showed every relay /
+   reading the socket sent. Fall back to the SIP's all-types store (sipMetaAll.cfg, the
+   same GetBulkAssetMetadata rows for every type of the site).
+   SAFE BY DESIGN: the ingest gate (tlCfgKeepIncoming) and the table mask call
+   tlCfgAsset() first and only reach the helpers when it succeeded, so nothing stored in
+   wsLiveData changes. Unknown config (store not loaded yet) => shown as before. */
+function tlCfgAssetSip(assetId) {
+    var aid = tlBulkStr(assetId), M = window.sipMetaAll;
+    if (!aid || !M || !M.cfg || !M.cfg[aid]) return null;
+    var a = M.cfg[aid];
+    if (typeof tlIsAssetTypeKind === 'function' ? !tlIsAssetTypeKind(a.AssetTypeId, 'track') : parseInt(a.AssetTypeId, 10) !== 1) return null;
+    return a;
+}
+function tlCfgAssetForDisplay(assetId) { return tlCfgAsset(assetId) || tlCfgAssetSip(assetId); }
+window.tlCfgAssetForDisplay = tlCfgAssetForDisplay;
+
+/* Per-relay check: is THIS DataLogger relay configured for the asset (mAssetInfoDataloggers)?
+   The old rule was all-or-nothing (any DL configured => every relay that arrives is shown),
+   so e.g. a TPR frame showed on a track whose config has no TPR. Track + Signal only;
+   PM / IPS / other types keep today's behaviour. Matching is generous (name, raw name, or
+   any configured id) so a real relay is never hidden by a naming difference. */
+function tlRelayConfigured(assetId, key, relay) {
+    var aid = tlBulkStr(assetId);
+    if (!aid) return true;
+    var a = (typeof bulkAssetMap !== 'undefined' && bulkAssetMap && bulkAssetMap[aid]) ||
+        (window.sipMetaAll && window.sipMetaAll.cfg && window.sipMetaAll.cfg[aid]) || null;
+    if (!a) return true;                                   /* config unknown: as before */
+    var t = a.AssetTypeId;
+    if (typeof tlIsAssetTypeKind !== 'function' || !(tlIsAssetTypeKind(t, 'track') || tlIsAssetTypeKind(t, 'signal'))) return true;
+    var dls = tlCfgDataloggers(a);
+    if (!dls.length) return false;                         /* config known, no DataLogger at all */
+    var r = relay || {};
+    var nm = tlDlNameNorm(r.displayName || r.name || key);
+    var raw = tlDlNameNorm(r.rawAttrName || r.attrName || '');
+    var kk = tlDlNameNorm(key);
+    var role = tlBulkStr(r.role).trim();
+    for (var i = 0; i < dls.length; i++) {
+        var d = dls[i];
+        if (!d) continue;
+        var names = [tlDlNameNorm(d.DataloggerAttribute || d.dataloggerAttribute), tlDlNameNorm(d.DataloggerAssetName || d.dataloggerAssetName)];
+        for (var n = 0; n < names.length; n++) {
+            if (names[n] && (names[n] === nm || names[n] === raw || names[n] === kk)) return true;
+        }
+        if (role) {
+            var ids = [d.DataloggerAttributeId, d.Value || d.value, d.Id];
+            for (var j = 0; j < ids.length; j++) if (ids[j] != null && tlBulkStr(ids[j]).trim() === role) return true;
+        }
+    }
+    return false;
+}
+window.tlRelayConfigured = tlRelayConfigured;
 window.tlAssetHasRdpmsAttr = tlAssetHasRdpmsAttr;
 window.tlAssetHasRdpms = tlAssetHasRdpms;
 window.tlAssetHasDatalogger = tlAssetHasDatalogger;
@@ -26186,8 +26287,9 @@ window.ipsGroupCurrentRows = ipsGroupCurrentRows;
 window.ipsGroupCurrentRowsLocal = ipsGroupCurrentRows;
 
 // Expand/collapse state for aggregated BATT rows, keyed by synthetic assetId.
+/* open by default (every bank attribute visible); this map holds the groups the user COLLAPSED */
 var ipsExpandedGroups = {};
-function ipsGroupIsExpanded(id) { return !!(id && ipsExpandedGroups[id]); }
+function ipsGroupIsExpanded(id) { return !!(id && !ipsExpandedGroups[id]); }
 window.ipsGroupIsExpanded = ipsGroupIsExpanded;
 
 // Display-only expander: inserts each group's member rows after it, in amperes,
@@ -26230,7 +26332,7 @@ if (!window._ipsGroupExpandHandlerBound) {
         var gid = $(this).attr('data-ips-group');
         if (!gid) { return; }
         var nowOpen = !ipsGroupIsExpanded(gid);
-        if (nowOpen) { ipsExpandedGroups[gid] = true; } else { delete ipsExpandedGroups[gid]; }
+        if (nowOpen) { delete ipsExpandedGroups[gid]; } else { ipsExpandedGroups[gid] = true; }
         $(this).toggleClass('ips-group-open', nowOpen);
         $(this).closest('table.ips-live-table').find('tr.ips-row-child').each(function () {
             if ($(this).attr('data-parent') === gid) {
@@ -26364,7 +26466,10 @@ window.ipsBuildFullRows = function () {
        member rows for the Health view's expandable breakdown */
     var expand = window.ipsExpandRowsForDisplayAlways || ipsExpandRowsForDisplay;
     var group = window.ipsGroupCurrentRowsLocal || ipsGroupCurrentRows;
-    return expand(group(buildIpsTableRowModels()));
+    /* {all:true}: the RAW per-attribute rows. telemetrylive-ext.js overrides
+       buildIpsTableRowModels() to return rows ALREADY summed, so grouping them again
+       gave each BATT group one member -> drawn as a plain row with no bank rows. */
+    return expand(group(buildIpsTableRowModels({ all: true })));
 };
 
 // Real flat-table incremental updater (handles DL badges + stale cells)

@@ -653,7 +653,7 @@
         @Html.HiddenFor(m => m.SearchCriteria.ColumnName, new { id = "hdnColumnName" })
         @Html.HiddenFor(m => m.SearchCriteria.SortDirection, new { id = "hdnSortDirection" })
         <div class="filter-bar">
-            <div class="filter-group"><label>Zone</label>@Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "filter-value", id = "zoneAdd1", tabindex = 1 })</div>
+            <div class="filter-group"><label>Zone</label>@Html.DropDownListFor(m => m.SearchCriteria.ZoneId, (IEnumerable<SelectListItem>)ViewBag.Zones, new { @class = "filter-value", id = "zoneAdd1", tabindex = 1, onchange = "GetDivisionByZone(this.value)" })</div>
             <div class="filter-group"><label>Division</label><input type="hidden" id="hdnSearchDivisionId" value="@Model.SearchCriteria.DivisionId" />@Html.DropDownListFor(m => m.SearchCriteria.DivisionId, (IEnumerable<SelectListItem>)ViewBag.Divisions, new { @class = "filter-value", id = "divisions", tabindex = 1 })</div>
             <div class="filter-group"><button type="button" class="btn-search" onclick="Search()">Search</button></div>
             <div class="summary-cards" id="summary-cards"></div>
@@ -763,6 +763,9 @@
             {
                 var $c = $('#divSite_' + siteId); if ($c.length > 0 && !$c.hasClass('has-alert')) setCardAlert(siteId, true);
             }
+            // Surface the newest alerting site to the top of the grid (also when the
+            // card was already alerting, which setCardAlert above skips).
+            if (typeof bringCardToFront === 'function') bringCardToFront(siteId);
             if (typeof renderNowSlide === 'function')
                 renderNowSlide(siteId); if (soundOn) playSoundCooldown();
             if (typeof updateSummaryCards === 'function')
@@ -775,9 +778,46 @@
     }
 
     // ===== Init =====
+    // Submit the filter explicitly via AJAX instead of relying on the form's
+    // unobtrusive-ajax submit. The layout loads jquery.unobtrusive-ajax after
+    // the page body and binds it to a different jQuery instance than the one
+    // this page's inline script uses, so $('#frmGetSiteList').submit() was a no-op
+    // ("Search does nothing"). This posts the same serialized form (Zone/Division
+    // + sort hidden fields) to the SiteList action and replaces #divSiteList,
+    // matching the AjaxOptions (POST, UpdateTargetId, InsertionMode.Replace).
     function Search() {
-        $('#frmGetSiteList').submit();
+        var $form = $('#frmGetSiteList');
+        $('#loader').show();
+        $.ajax({
+            url: $form.attr('action'),
+            type: 'POST',
+            data: $form.serialize(),
+            success: function (html) { $('#divSiteList').html(html); },
+            error: function () { if (typeof CommonNotification === 'function') CommonNotification('ERROR', 'Something went wrong!', 'Error'); },
+            complete: function () { $('#loader').hide(); }
+        });
     }
-    function GetDivisionByZone(zoneId) { if (!zoneId) return; $.ajax({ url: '/FRS25/UserSite/GetDivisionByZoneId', type: 'POST', data: '{zoneId:' + zoneId + '}', contentType: 'application/json', success: function (data) { $('#divisions').empty().append($('<option>').val('0').html('Select Division')); $.each(data, function (k, v) { var sel = $('#hdnSearchDivisionId').val() == v.Id ? ' selected' : ''; $('#divisions').append($('<option' + sel + '>').val(v.Id).html(v.Name)); }); } }); }
-    $(document).ready(function () { wsConnect(); GetDivisionByZone($('#zoneAdd1').val()); $('#zoneAdd1').change(function () { GetDivisionByZone($(this).val()); }); setInterval(announceAlerts, 30000); });
+    // Cascade: reload the Division dropdown for the chosen Zone.
+    // Bound inline via onchange on #zoneAdd1 (see markup) so it fires with the
+    // native select regardless of which jQuery instance this page ends up using.
+    function GetDivisionByZone(zoneId) {
+        if (zoneId === null || zoneId === undefined || zoneId === '') return;
+        $.ajax({
+            url: '/FRS25/UserSite/GetDivisionByZoneId',
+            type: 'POST',
+            data: JSON.stringify({ zoneId: parseInt(zoneId, 10) || 0 }),
+            contentType: 'application/json',
+            success: function (data) {
+                var $d = $('#divisions').empty().append($('<option>').val('0').text('Select Division'));
+                $.each(data, function (k, v) { $d.append($('<option>').val(v.Id).text(v.Name)); });
+                var prev = $('#hdnSearchDivisionId').val();
+                if (prev && prev !== '0') $d.val(prev);
+            },
+            error: function (xhr) {
+                console.error('GetDivisionByZone failed', xhr && xhr.status, xhr && xhr.responseText);
+                if (typeof CommonNotification === 'function') CommonNotification('ERROR', 'Could not load divisions for the selected zone.', 'Error');
+            }
+        });
+    }
+    $(document).ready(function () { wsConnect(); GetDivisionByZone($('#zoneAdd1').val()); setInterval(announceAlerts, 30000); });
 </script>

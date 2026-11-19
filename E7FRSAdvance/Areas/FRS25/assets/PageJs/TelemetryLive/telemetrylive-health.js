@@ -84,6 +84,10 @@
         }
         return null;
     }
+    /* IPS battery current in amperes: 3 decimals, same as the IPS cards / table
+       (fmt's 2 decimals turned 0.003 A into 0.00) */
+    function fmtA(v) { return (v === null || v === undefined || isNaN(v)) ? '--' : Number(v).toFixed(3); }
+    function fmtR(r, v) { if (v === undefined) v = r ? r.v : null; return r && r.amp ? fmtA(v) : fmt(v); }
     function fmt(v) {
         if (v === null || v === undefined) return '--';
         var a = Math.abs(v);
@@ -186,14 +190,20 @@
     /* ======================================================================
        READ ONE ASSET FROM THE LIVE STORE
        ====================================================================== */
-    function trackOccupied(e, rows) {
+    /* { occ, src }: src 'relay' = configured TPR DataLogger relay, 'tprv' = worked out
+       from the TPR V reading (< 1 V = occupied). The drawer labels the two differently:
+       a TPR V state used to be shown as "TPR Pickup / Drop" on tracks with no TPR relay. */
+    function trackOccupiedInfo(e, rows, aid) {
         var dl = e.dlRelays || {};
         for (var k in dl) {
             if (!dl.hasOwnProperty(k)) continue;
-            if (norm(dl[k].displayName || k).indexOf('TPR') !== -1) return !dl[k].isPickup;
+            if (norm(dl[k].displayName || k).indexOf('TPR') === -1) continue;
+            if (typeof window.tlRelayConfigured === 'function' && !window.tlRelayConfigured(aid, k, dl[k])) continue;
+            if (dl[k].isNull) continue;
+            return { occ: !dl[k].isPickup, src: 'relay' };
         }
         for (var i = 0; i < rows.length; i++) {
-            if (rows[i].key === 'TPRV' && rows[i].v !== null) return rows[i].v < 1;
+            if (rows[i].key === 'TPRV' && rows[i].v !== null) return { occ: rows[i].v < 1, src: 'tprv' };
         }
         return null;
     }
@@ -382,7 +392,7 @@
             var alias = strip(m.aliasName || m.AliasName || apiAlias || m.name || byName[k] || k);
             var v = num(a.Value);
             var rg = rangeFor(aid, title, alias, attrId), lbl = alias || title;
-            var smin = num(m.minValue), smax = num(m.maxValue);
+            var smin = num(m.minValue), smax = num(m.maxValue), isAmp = false;
             /* IPS battery current (CHARGING / DISCHARGING): same value as the IPS cards and
                table -- amperes (raw / IPS_BATT_MA_PER_AMP) -- with the safe range / scale
                converted alike and "(A)" on the label. The Health view showed the raw value. */
@@ -390,8 +400,8 @@
                 var dv = window.ipsCardDisplayValue(aid, k, a), rawDv = window.ipsFormatDisplayValue(a.Value, '');
                 var div = parseFloat(window.IPS_BATT_MA_PER_AMP);
                 if (dv !== rawDv && !isNaN(parseFloat(dv)) && div > 0) {
-                    v = num(parseFloat(dv));
-                    var sc = function (x) { return (x === null || x === undefined || isNaN(x)) ? x : x / div; };
+                    v = num(parseFloat(dv)); isAmp = true;
+                    var sc =function (x) { return (x === null || x === undefined || isNaN(x)) ? x : x / div; };
                     if (rg) rg = { min: sc(rg.min), max: sc(rg.max), avg: sc(rg.avg), fail: sc(rg.fail), src: rg.src };
                     smin = sc(smin); smax = sc(smax);
                     if (typeof window.ipsBattAmpLabel === 'function') lbl = window.ipsBattAmpLabel(lbl);
@@ -400,7 +410,7 @@
             rows.push({
                 k: k, key: norm(title), attrId: attrId, title: title, alias: alias,
                 label: lbl, sub: '',   /* v618.16: AliasName only, everywhere */
-                v: v, stale: a.IsFresh === false, ipsTab: ipsTabOf(aid, k, title + ' ' + alias),
+                v: v, amp: isAmp, stale: a.IsFresh === false, ipsTab: ipsTabOf(aid, k, title + ' ' + alias),
                 scaleMin: smin, scaleMax: smax,
                 range: rg
             });
@@ -452,7 +462,8 @@
         } else if (!pmm) {
             rows.sort(function (x, y) { return x.label.localeCompare(y.label, undefined, { numeric: true }); });
         }
-        var occ = isTrackType() ? trackOccupied(e, rows) : null;
+        var occInfo = isTrackType() ? trackOccupiedInfo(e, rows, aid) : null;
+        var occ = occInfo ? occInfo.occ : null, occSrc = occInfo ? occInfo.src : null;
         var outs = 0, near = 0, stale = 0, have = 0;
         for (var i = 0; i < rows.length; i++) {
             var r = rows[i];
@@ -486,7 +497,10 @@
         var relays = pmm ? pmm.relays : [];
         var dl = pmm ? {} : (cfgHasDl ? (e.dlRelays || {}) : {});   /* no relays for an asset with no DL configured */
         for (var dk in dl) {
-            if (dl.hasOwnProperty(dk)) relays.push({ name: dl[dk].displayName || dk, up: !!dl[dk].isPickup });
+            if (!dl.hasOwnProperty(dk)) continue;
+            /* only the relays this asset's config lists (drawer from the SIP included) */
+            if (typeof window.tlRelayConfigured === 'function' && !window.tlRelayConfigured(aid, dk, dl[dk])) continue;
+            relays.push({ name: dl[dk].displayName || dk, up: !!dl[dk].isPickup });
         }
         /* DL-only asset (no RDPMS configured): its relays ARE its live data, so
            it is not "No data" -- healthy while it reports, no readings or
@@ -514,7 +528,7 @@
             }
         }
         return {
-            aid: aid, name: e.AssetName || ('Asset ' + aid), rows: rows, derived: derived, occ: occ, outs: outs, near: near,
+            aid: aid, name: e.AssetName || ('Asset ' + aid), rows: rows, derived: derived, occ: occ, occSrc: occSrc, outs: outs, near: near,
             pmDir: pmm ? pmm.dir : '', pmWhen: pmm ? pmm.when : '',
             stale: stale, have: have, status: status, score: score, relays: relays, dlOnly: dlOnly,
             sev: (status === 'fault' ? 3000 : status === 'watch' ? 2000 : status === 'nodata' ? 0 : 1000) + outs * 50 + near * 10 + stale
@@ -843,7 +857,7 @@
         return p.length ? p.join(', ') : 'All readings inside safe range';
     }
     /* reading text: relays as Pickup / Drop, numbers formatted */
-    function dispV(r) { return r.relay ? (r.v === null ? '--' : (r.up ? 'Pickup' : 'Drop')) : fmt(r.v); }
+    function dispV(r) { return r.relay ? (r.v === null ? '--' : (r.up ? 'Pickup' : 'Drop')) : fmtR(r); }
     function flagText(r) {
         /* no Low / High flag on a reading (no meaning for the user) */
         return r.st === 'near' ? 'Near' : r.st === 'occ' ? 'Occ.' : '';
@@ -851,7 +865,7 @@
     function rowTip(r) {
         var g = r.range;
         var t = r.label + (r.sub ? ' (' + r.sub + ')' : '') + ': ' + dispV(r);
-        if (g && g.min !== null && g.max !== null) t += ' | safe ' + fmt(g.min) + ' to ' + fmt(g.max) + ' (' + g.src + ')' + (g.avg !== null && g.avg !== undefined ? ' | avg ' + fmt(g.avg) : '');
+        if (g && g.min !== null && g.max !== null) t += ' | safe ' + fmtR(r, g.min) + ' to ' + fmtR(r, g.max) + ' (' + g.src + ')' + (g.avg !== null && g.avg !== undefined ? ' | avg ' + fmtR(r, g.avg) : '');
         if (r.st === 'occ') t += ' | low while the track is occupied (normal)';
         if (r.stale) t += ' | stale';
         return t;
@@ -1445,9 +1459,11 @@
         }
         if (ci < 0) return '<div class="hv-trend">' + head + '<div class="th">No history for this reading in the last 24 h.</div></div>';
         var pts = [];
+        /* history is raw mA; the reading is shown in A -> scale the trend alike */
+        var ampDiv = r.amp ? (parseFloat(window.IPS_BATT_MA_PER_AMP) || 1000) : 1;
         for (var p = 0; p < T.rows.length; p++) {
             var v = num(T.rows[p].v[ci]);
-            if (v !== null) pts.push({ t: T.rows[p].t, v: v });
+            if (v !== null) pts.push({ t: T.rows[p].t, v: v / ampDiv });
         }
         if (pts.length < 2) return '<div class="hv-trend">' + head + '<div class="th">Not enough samples.</div></div>';
         var lo = Infinity, hi = -Infinity;
@@ -1469,9 +1485,9 @@
         return '<div class="hv-trend">' + head +
             '<svg viewBox="0 0 ' + W + ' ' + Hh + '" preserveAspectRatio="none" aria-hidden="true">' + band +
             '<path d="' + d + '" fill="none" stroke="' + col + '" stroke-width="1.6" vector-effect="non-scaling-stroke"></path></svg>' +
-            '<div class="th"><span>min ' + fmt(Math.min.apply(null, pts.map(function (z) { return z.v; }))) + '</span><span>' +
-            (g && g.min !== null && g.max !== null ? 'safe ' + fmt(g.min) + ' to ' + fmt(g.max) : '') + '</span><span>max ' +
-            fmt(Math.max.apply(null, pts.map(function (z) { return z.v; }))) + '</span></div></div>';
+            '<div class="th"><span>min ' + fmtR(r, Math.min.apply(null, pts.map(function (z) { return z.v; }))) + '</span><span>' +
+            (g && g.min !== null && g.max !== null ? 'safe ' + fmtR(r, g.min) + ' to ' + fmtR(r, g.max) : '') + '</span><span>max ' +
+            fmtR(r, Math.max.apply(null, pts.map(function (z) { return z.v; }))) + '</span></div></div>';
     }
     function fetchTrend(aid) {
         var cur = H.trend[aid];
@@ -1660,13 +1676,13 @@
                 '<small class="hv-gsub">' + (g.bucket === 'charging' ? 'Charging' : 'Discharging') + ' &middot; ' + g.members.length + ' banks</small></th>' +
                 '<td><span class="hv-status ' + worst.status + '">' + STATUS_TEXT[worst.status] + '</span></td><td class="hv-rl"></td>';
             cols.forEach(function (c) {
-                var sum = 0, n = 0;
+                var sum = 0, n = 0, amp = false;
                 g.members.forEach(function (m) {
                     var r = null;
                     m.rows.concat(m.derived || []).forEach(function (x) { if (x.k === c.k) r = x; });
-                    if (r && !r.relay && r.v !== null && r.v !== undefined && !isNaN(r.v)) { sum += r.v; n++; }
+                    if (r && !r.relay && r.v !== null && r.v !== undefined && !isNaN(r.v)) { sum += r.v; n++; if (r.amp) amp = true; }
                 });
-                h += n ? '<td class="hv-sumcell" title="Sum of ' + n + ' bank' + (n > 1 ? 's' : '') + '"><b>' + fmt(sum) + '</b><small>&Sigma; ' + n + '</small></td>' : '<td class="hv-na">--</td>';
+                h += n ? '<td class="hv-sumcell" title="Sum of ' + n + ' bank' + (n > 1 ? 's' : '') + '"><b>' + (amp ? fmtA(sum) : fmt(sum)) + '</b><small>&Sigma; ' + n + '</small></td>' : '<td class="hv-na">--</td>';
             });
             h += '</tr>';
             if (open) g.members.forEach(function (m) { assetRow(m, true); });
@@ -1714,6 +1730,16 @@
             list = list.filter(function (A) { return A.rows.length > 0 || (A.relays && A.relays.length > 0); });
         }
         var q = H.q.trim().toUpperCase();
+        /* "Find asset" filters `shown` (cards / non-IPS table), but the IPS flat grid
+           (Table view) is built from window.ipsBuildFullRows() and bypassed that filter.
+           Match asset name here -- the same rule as the card view -- so Find asset works
+           in the IPS Table view too. Returns null when the builder is absent (old
+           fallback). */
+        var ipsGridRows = function () {
+            if (typeof window.ipsBuildFullRows !== 'function') return null;
+            var _rows = window.ipsBuildFullRows();
+            return q ? _rows.filter(function (r) { return r && r.assetName && String(r.assetName).toUpperCase().indexOf(q) !== -1; }) : _rows;
+        };
         var shown = list.filter(function (A) {
             if (q && A.name.toUpperCase().indexOf(q) === -1) return false;
             if (H.filter === 'attn') return A.status === 'fault' || A.status === 'watch';
@@ -1733,7 +1759,9 @@
             JSON.stringify(H.open) + (pageLight() ? 'L' : 'D') + '|' +
             shown.map(function (A) {
                 return A.aid + ':' + A.status + A.score + A.occ + A.relays.map(function (r) { return r.up ? 1 : 0; }).join('') + ':' +
-                    A.rows.map(function (r) { return r.k + '=' + fmt(r.v) + r.st + (r.stale ? 's' : ''); }).join(',');
+                    /* raw value, not fmt(): small changes (0.003 -> 0.000 A) rounded to the same
+                       text, the signature never changed and the IPS table stopped updating live */
+                    A.rows.map(function (r) { return r.k + '=' + String(r.v) + r.st + (r.stale ? 's' : ''); }).join(',');
             }).join(';');
         if (!force && sig === H.sig) return;
         H.sig = sig;
@@ -1788,7 +1816,7 @@
             /* pass always-flattened rows (BATT members included) so the grid's group
                rows are expandable with real children -- the builder's own expander is
                the ext one, gated off by IPS_SHOW_BANK_BREAKUP */
-            var _ipsRowsForGrid = (typeof window.ipsBuildFullRows === 'function') ? window.ipsBuildFullRows() : null;
+            var _ipsRowsForGrid = ipsGridRows();
             body = ipsFlat
                 ? (ipsBuildFlat(_ipsRowsForGrid || undefined) || '<div class="hv-empty">No IPS readings.</div>')
                 : H.view === 'table'
@@ -1805,7 +1833,7 @@
         if (ipsFlat && typeof window.ipsBuildFullRows === 'function') {
             var _ipsTbl = host.querySelector('#ipsLiveTable');
             if (_ipsTbl && _ipsTbl.tBodies && _ipsTbl.tBodies[0]) {
-                var _ipsRows = window.ipsBuildFullRows();
+                var _ipsRows = ipsGridRows() || [];
                 var _trs = _ipsTbl.tBodies[0].rows;
                 var _struct = (H.ipsTableTab || 'voltage') + '::' + _ipsRows.map(function (r) { return String(r.assetId) + '|' + String(r.attrKey); }).join(',');
                 if (_trs.length === _ipsRows.length && H._ipsFlatStruct === _struct) {
@@ -1842,7 +1870,7 @@
             if (typeof window.ipsBuildFullRows === 'function') {
                 try {
                     H._ipsFlatStruct = (H.ipsTableTab || 'voltage') + '::' +
-                        window.ipsBuildFullRows().map(function (r) { return String(r.assetId) + '|' + String(r.attrKey); }).join(',');
+                        (ipsGridRows() || []).map(function (r) { return String(r.assetId) + '|' + String(r.attrKey); }).join(',');
                 } catch (e) { H._ipsFlatStruct = null; }
             }
         }

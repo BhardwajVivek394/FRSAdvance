@@ -98,7 +98,11 @@
        for an asset without mAssetInfoDataloggers. Other types untouched. */
     function cfgOnly(aid, A) {
         if (!A || typeof W.tlAssetHasRdpmsAttr !== 'function') return A;
-        var hasCfg = W.bulkAssetMap && W.bulkAssetMap[String(aid)];
+        /* the page's bulk config, else the SIP's all-types store: a track opened from the
+           SIP while another type is picked in the dropdown had no config here and showed
+           every relay / reading the socket sent */
+        var hasCfg = (W.bulkAssetMap && W.bulkAssetMap[String(aid)]) ||
+            (typeof W.tlCfgAssetForDisplay === 'function' && W.tlCfgAssetForDisplay(aid));
         if (!hasCfg) return A;
         var out = {};
         for (var k in A) if (Object.prototype.hasOwnProperty.call(A, k)) out[k] = A[k];
@@ -134,8 +138,14 @@
         var a = live()[aid] || {}, sm = W.sipMetaAll && W.sipMetaAll.assets && W.sipMetaAll.assets[aid], bm = W.bulkAssetMap && W.bulkAssetMap[aid];
         return String((sm && sm.SiteId) || (bm && bm.SiteId) || a.SiteId || '');
     }
-    function loadAliases(aid) {
-        var sid = aliasSite(aid);
+    function loadAliases(aid) { loadAliasesForSite(aliasSite(aid)); }
+    /* Also callable without an open drawer: the SIP view prewarms a site's
+       attribute aliases (GetUserAssetInfo) so the first point-machine click opens
+       the drawer with its circuit cards already bound, instead of waiting ~1s. The
+       success handler's `if (!D.aid) return` already skips the repaint when no
+       drawer is open, so a prewarm only fills the AL cache. */
+    function loadAliasesForSite(sid) {
+        sid = String(sid == null ? '' : sid);
         if (!sid || sid === '0' || AL.site === sid) return;
         AL.site = sid; AL.byId = {}; AL.byName = {}; AL.assets = {};
         $.ajax({
@@ -1128,14 +1138,20 @@
         a('<text x="678" y="474" font-size="14" fill="' + P.ink + '">24V DC FROM R/R</text>');
         a('<text x="1356" y="704" text-anchor="end" font-size="15" font-weight="800" fill="' + P.ink + '">N-24V</text><text x="1356" y="752" text-anchor="end" font-size="15" font-weight="800" fill="' + P.ink + '">B-24V</text>');
         /* TPR */
-        var tCol = A && A.occ === true ? P.amber : P.green;
-        var tUp = !(A && A.occ === true);
+        /* TPR box = the TPR DataLogger relay only (mAssetInfoDataloggers). No configured TPR
+           relay, or no frame yet: grey "?" -- never a state worked out from TPR V. */
+        var tKnown = !!(A && A.occSrc === 'relay' && (A.occ === true || A.occ === false));
+        var tCol = !tKnown ? P.mut : A.occ === true ? P.amber : P.green;
+        var tUp = !(tKnown && A.occ === true);
+        var tCfg = typeof W.tlRelayConfigured !== 'function' || W.tlRelayConfigured(D.aid, 'TPR', { displayName: 'TPR' });
         a('<rect x="1082" y="268" width="182" height="56" rx="6" fill="' + P.card + '" stroke="' + tCol + '" stroke-width="2"></rect>');
         a('<circle cx="1230" cy="296" r="15" fill="' + tCol + '" opacity=".25"><animate attributeName="r" values="12;20;12" dur="1.8s" repeatCount="indefinite"></animate>' +
             '<animate attributeName="opacity" values=".35;0;.35" dur="1.8s" repeatCount="indefinite"></animate></circle>');
-        a('<circle cx="1230" cy="296" r="12" fill="' + tCol + '"></circle><text x="1230" y="301" text-anchor="middle" font-size="14" font-weight="800" fill="#FFFFFF">' + (tUp ? '&#8593;' : '&#8595;') + '</text>' +
+        a('<circle cx="1230" cy="296" r="12" fill="' + tCol + '"></circle><text x="1230" y="301" text-anchor="middle" font-size="14" font-weight="800" fill="#FFFFFF">' + (!tKnown ? '?' : tUp ? '&#8593;' : '&#8595;') + '</text>' +
             '<text x="1140" y="304" text-anchor="middle" font-size="24" font-weight="800" fill="' + tCol + '">TPR</text>');
-        a('<text x="1173" y="350" text-anchor="middle" font-size="15" font-weight="700" fill="' + tCol + '">' + (A && A.occ === true ? 'Drop &#183; track occupied' : A && A.occ === false ? 'Pickup &#183; track clear' : 'TPR state unknown') + '</text>');
+        a('<text x="1173" y="350" text-anchor="middle" font-size="15" font-weight="700" fill="' + tCol + '">' +
+            (tKnown ? (A.occ ? 'Drop &#183; track occupied' : 'Pickup &#183; track clear')
+                : tCfg ? 'TPR relay &#183; no data' : 'No TPR DataLogger configured') + '</text>');
         /* animated current: DC loop through the rails, 24 V out, 110 V AC */
         if (!occ) {
             a(flow('M322 590V150H872V400', 2.2, P.flow));
@@ -2398,7 +2414,7 @@
             var hc = String(HH.data.health.color || '').toLowerCase();
             cls = hc === 'red' ? 'bad' : hc === 'amber' ? 'warn' : hc === 'green' ? 'ok' : cls;
             stTxt = HH.data.health.label || stTxt;
-            A = { have: true, score: HH.data.health.score, status: st, occ: A ? A.occ : null, pmDir: A && A.pmDir, pmWhen: A && A.pmWhen, rows: A ? A.rows : [], relays: A ? A.relays : [] };
+            A = { have: true, score: HH.data.health.score, status: st, occ: A ? A.occ : null, occSrc: A ? A.occSrc : null, pmDir: A && A.pmDir, pmWhen: A && A.pmWhen, rows: A ? A.rows : [], relays: A ? A.relays : [] };
         }
         var ts = a.lastUpdated ? (typeof W.fmtTime === 'function' ? W.fmtTime(a.lastUpdated) : new Date(a.lastUpdated).toLocaleTimeString()) : '--';
         var icon = kind() === 'signal' ? '<rect x="7" y="2" width="10" height="15" rx="5"></rect><circle cx="12" cy="6.5" r="1.6"></circle><circle cx="12" cy="11.5" r="1.6"></circle><path d="M12 17v5M8 22h8"></path>'
@@ -2407,7 +2423,10 @@
             '<div style="flex:1;min-width:0"><div class="tld-title">' + ({ pm: 'POINT : ', signal: 'SIGNAL : ' }[kind()] || 'TRACK : ') + esc(a.AssetName || D.aid) + '</div><div class="tld-chips">' +
             '<span class="tld-chip ' + cls + '">' + esc(stTxt) + (A && A.have ? ' ' + A.score : '') + '</span>' +
             (kind() === 'signal' ? sigHeadChips(A) : kind() === 'pm' ? (A && A.pmDir ? '<span class="tld-chip ' + (A.pmDir === 'Reverse' ? 'warn' : 'ok') + '">' + esc(A.pmDir) + (A.pmWhen && A.pmWhen !== '--' ? ' &#183; ' + esc(A.pmWhen) : '') + '</span>' : '') :
-            (A && A.occ !== null && A.occ !== undefined ? '<span class="tld-chip ' + (A.occ ? 'warn' : 'ok') + '">TPR ' + (A.occ ? '&#8595; Drop' : '&#8593; Pickup') + '</span>' : '')) +
+            /* TPR chip = the TPR DataLogger relay ONLY (configured in the asset's
+               GetBulkAssetMetadata mAssetInfoDataloggers). TPR V is an RDPMS reading: it stays
+               in Live values, never shown as a DataLogger state. */
+            (A && A.occSrc === 'relay' && (A.occ === true || A.occ === false) ? '<span class="tld-chip ' + (A.occ ? 'warn' : 'ok') + '">TPR ' + (A.occ ? '&#8595; Drop' : '&#8593; Pickup') + '</span>' : '')) +
             '<span class="tld-chip">Live &#183; ' + esc(ts) + '</span></div></div>' +
             (prev ? '<button type="button" class="tld-btn" data-tld-go="' + esc(prev) + '">&#8592; ' + esc(nm(prev)) + '</button>' : '') +
             (next ? '<button type="button" class="tld-btn" data-tld-go="' + esc(next) + '">' + esc(nm(next)) + ' &#8594;</button>' : '') +
@@ -2726,5 +2745,6 @@
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ensureCss); else ensureCss();
     W.tlOpenAssetDrawer = function (aid, typeHint) { open(aid, typeHint); };
+    W.tlPrewarmAliases = function (sid) { try { loadAliasesForSite(sid); } catch (e) { } };
     W.TlAssetDrawer = { open: open, close: close, isOpen: function () { return !!D.aid; } };
 })();

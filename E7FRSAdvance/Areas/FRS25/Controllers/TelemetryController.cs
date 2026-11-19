@@ -1137,8 +1137,24 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
         }
 
+        // Per-site configured attributes / aliases change rarely, so the asset drawer
+        // and PM cards don't need a fresh ~1s API round-trip on every open. Cache the raw
+        // JSON per site + user for 60 s (keyed per user because the API filters by the
+        // caller's visibility): enough for the SIP prewarm + drawer opens, short enough that a
+        // config change made elsewhere (another app, a DB script) shows within a minute.
+        // Saves made through this app clear it at once (FilterCacheHelper.ClearUserAssetInfoCache).
+        private const int UserAssetInfoCacheSeconds = 60;
+
         public async Task<ActionResult> GetUserAssetInfo(int siteId)
         {
+            /* expired session: the handled JSON error the drawer expects, not a 500 */
+            if (ClsHttpContent.LoginUser == null)
+                return Json(new { error = "Session expired" }, JsonRequestBehavior.AllowGet);
+            string cacheKey = E7FRSAdvance.Areas.FRS25.Helper.FilterCacheHelper.UserAssetInfoCachePrefix + siteId + "_" + ClsHttpContent.LoginUser.Id;
+            string cachedJson = System.Runtime.Caching.MemoryCache.Default.Get(cacheKey) as string;
+            if (cachedJson != null)
+                return Content(cachedJson, "application/json");
+
             try
             {
                 using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
@@ -1148,6 +1164,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
 
                     if (response.StatusCode == HttpStatusCode.OK)
                     {
+                        if (!string.IsNullOrWhiteSpace(json) && json.Trim() != "[]" && json.Trim() != "null")
+                            System.Runtime.Caching.MemoryCache.Default.Set(cacheKey, json, DateTimeOffset.UtcNow.AddSeconds(UserAssetInfoCacheSeconds));
                         return Content(json, "application/json");
                     }
                     else

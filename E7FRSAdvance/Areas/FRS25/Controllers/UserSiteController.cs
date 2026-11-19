@@ -744,18 +744,36 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             {
                 var mPerformanceLister = new FRSAlertLister();
                 mPerformanceLister.SearchCriteria.SiteId = siteId;
+                // Match the proven AlertDetailReport query: a date window (this month),
+                // acknowledged alerts, and pagination set. Without these the paginated
+                // API returns no usable rows, so the tab rendered 0/0/0 ("no data").
+                mPerformanceLister.SearchCriteria.FromDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+                mPerformanceLister.SearchCriteria.ToDate = DateTime.Now;
+                // Fetch ALL of this month's alerts for the site (not only acknowledged ones).
+                // The accuracy numerator below already counts only the True / Partial
+                // (acknowledged-correct) alerts, so the denominator must include every alert
+                // of that type. Filtering the fetch to IsAcknowledgement=true meant a site
+                // with no acknowledged alerts this month returned zero rows -> the tab showed
+                // "No performance data" even though the site had alerts.
+                mPerformanceLister.Pager.Take = -1;
                 mPerformanceLister = frsAlertService.GetListerWithPagination(mPerformanceLister);
 
                 if (mPerformanceLister != null && mPerformanceLister.mFRSAlerts != null && mPerformanceLister.mFRSAlerts.Count > 0)
                 {
                     var perf = mPerformanceLister.mFRSAlerts;
 
-                    // Calculate accuracy percentages
-                    // Adjust these calculations based on your actual Performance domain model
-                    double failureTotal = perf.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure).Count();
-                    double failureTrue = perf.Where(x => x.AlertTypeId == (int)E7FRSAdvance.Utility.Utility.AlertType.Failure && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)).Count();
-                    double predictiveTotal = perf.Where(x => x.AlertType == "Predictive").Count();
-                    double predictiveTrue = perf.Where(x => x.AlertType == "Predictive" && (x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True || x.AcknowledgemenStatusId == (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT)).Count();
+                    int failureTypeId = (int)E7FRSAdvance.Utility.Utility.AlertType.Failure;
+                    int predictiveTypeId = (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive;
+                    int ackTrue = (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True;
+                    int ackPt = (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT;
+
+                    // (True + Partial) / Total, per alert type. Use AlertTypeId for both
+                    // (the old code compared the AlertType string for predictive, which
+                    // never matched, so predictive accuracy was always 0).
+                    double failureTotal = perf.Where(x => x.AlertTypeId == failureTypeId).Count();
+                    double failureTrue = perf.Where(x => x.AlertTypeId == failureTypeId && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt)).Count();
+                    double predictiveTotal = perf.Where(x => x.AlertTypeId == predictiveTypeId).Count();
+                    double predictiveTrue = perf.Where(x => x.AlertTypeId == predictiveTypeId && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt)).Count();
 
                     result = new
                     {

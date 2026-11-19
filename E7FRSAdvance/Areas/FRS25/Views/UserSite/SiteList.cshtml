@@ -1170,7 +1170,10 @@
     {
         var idx = 0; foreach (var item in Model.mSites)
         {
-            var siteCode = item.Name != null && item.Name.Length >= 4 ? item.Name.Substring(0, 4).ToUpper() : (item.Name ?? "").ToUpper();
+            @* ch-code chip shows the site's StationCode; fall back to a name-derived code only when StationCode is blank *@
+            var siteCode = !string.IsNullOrWhiteSpace(item.StationCode)
+                ? item.StationCode
+                : (item.Name != null && item.Name.Length >= 4 ? item.Name.Substring(0, 4).ToUpper() : (item.Name ?? "").ToUpper());
             <div class="station-card enter" id="divSite_@item.Id" data-siteid="@item.Id" data-sitename="@item.Name" style="animation-delay:@(idx*0.09)s">
                 <div class="card-head">
                     <div class="ch-top">
@@ -1225,13 +1228,19 @@ $(document).ready(function(){
   // Tab navigation — manual only, pause on hover
   $('.station-card').each(function(){
     var card=this,track=$(card).find('.slide-track')[0],btns=card.querySelectorAll('.card-nav button');
-    card._cur=0;
-    function goTo(i){card._cur=i;track.style.transform='translateX(-'+i*100+'%)';btns.forEach(function(b,j){b.classList.toggle('active',j===i);});setCardHeight(card);}
+    card._cur=0; card._loaded={};
+    var siteId=$(card).data('siteid');
+    // Lazy-load: fetch a tab's data only the first time it is opened. The "Now"
+    // tab (index 0) needs no fetch, so initial page load fires zero per-card
+    // AJAX calls instead of 4 per site (Timeline/Performance/Users/Health) — the
+    // Health call alone can take up to 20s, and under the InProc session lock all
+    // of them serialize, which is what made the page slow to load.
+    // Mark the slide loaded up front to dedupe concurrent clicks, but clear it on
+    // a failed fetch so re-opening the tab retries instead of showing "Loading…" forever.
+    function ensureSlide(i){ if(i>0 && !card._loaded[i]){ card._loaded[i]=true; fnLoadSlide(siteId,i,function(ok){ if(!ok) card._loaded[i]=false; }); } }
+    function goTo(i){card._cur=i;track.style.transform='translateX(-'+i*100+'%)';btns.forEach(function(b,j){b.classList.toggle('active',j===i);});ensureSlide(i);setCardHeight(card);}
     btns.forEach(function(b){b.addEventListener('click',function(){goTo(parseInt(b.dataset.idx));});});
     goTo(0);
-    // Load slide data
-    var siteId=$(card).data('siteid');
-    fnLoadSlideData(siteId);
   });
 
   fitAllCards();setTimeout(fitAllCards,300);
@@ -1239,7 +1248,11 @@ $(document).ready(function(){
 
   updateSummaryCards();
   fnAllSiteCheckChannelDown();
-  setInterval(fnAllSiteCheckChannelDown,dataInterval);
+  // This partial's ready() runs again on every Search (the grid is re-injected),
+  // so clear the previous polling timer before starting a new one — otherwise the
+  // timers stack and polling load multiplies with each search.
+  if(window._siteChkInterval) clearInterval(window._siteChkInterval);
+  window._siteChkInterval=setInterval(fnAllSiteCheckChannelDown,dataInterval);
 });
 
 // ===== Render Now Slide =====
@@ -1464,11 +1477,13 @@ function renderUsersSlide(siteId,users){
   });$c.html('<div class="history-title">User History</div>'+items);setTimeout(fitAllCards,50);
 }
 
-// ===== Load slide data =====
-function fnLoadSlideData(siteId){
-  $.ajax({url:'/FRS25/UserSite/GetTimelineAlerts',type:'Post',data:{siteId:siteId},success:function(d){renderTimelineSlide(siteId,d);}});
-  $.ajax({url:'/FRS25/UserSite/GetPerformanceData',type:'Post',data:{siteId:siteId},success:function(d){renderPerformanceSlide(siteId,d);}});
-  $.ajax({url:'/FRS25/UserSite/GetUserHistoryData',type:'Post',data:{siteId:siteId},success:function(d){renderUsersSlide(siteId,d);}});
+// ===== Load slide data (one loader per tab; called lazily on first view) =====
+// Each loader takes an optional done(ok) callback so the caller can tell a real
+// failure (ok===false) from a successful empty result, and retry only on failure.
+function fnLoadTimeline(siteId,done){ $.ajax({url:'/FRS25/UserSite/GetTimelineAlerts',type:'Post',data:{siteId:siteId},success:function(d){renderTimelineSlide(siteId,d); if(done)done(true);},error:function(){if(done)done(false);}}); }
+function fnLoadPerformance(siteId,done){ $.ajax({url:'/FRS25/UserSite/GetPerformanceData',type:'Post',data:{siteId:siteId},success:function(d){renderPerformanceSlide(siteId,d); if(done)done(true);},error:function(){if(done)done(false);}}); }
+function fnLoadUsers(siteId,done){ $.ajax({url:'/FRS25/UserSite/GetUserHistoryData',type:'Post',data:{siteId:siteId},success:function(d){renderUsersSlide(siteId,d); if(done)done(true);},error:function(){if(done)done(false);}}); }
+function fnLoadHealth(siteId,done){
   $.ajax({url:'/FRS25/UserSite/GetSiteHealth',type:'Post',data:{siteId:siteId},success:function(d){
     d=d||{Fixes:0,Hardware:{},Svc:{}};
     window.healthCacheHw=window.healthCacheHw||{};
@@ -1478,9 +1493,14 @@ function fnLoadSlideData(siteId){
     if(window.siteHealthStore&&window.siteHealthStore[siteId]&&typeof window.hBuildSvcForSite==='function'){
       d.Svc=window.hBuildSvcForSite(siteId);
     }
-    renderHealthSlide(siteId,d);
-  },error:function(){renderHealthSlide(siteId,null);}});
+    renderHealthSlide(siteId,d); if(done)done(true);
+  },error:function(){renderHealthSlide(siteId,null); if(done)done(false);}});
 }
+// Tab index -> loader. Index 0 ("Now") is driven by live alerts, not a fetch.
+var SLIDE_LOADERS={1:fnLoadTimeline,2:fnLoadPerformance,3:fnLoadUsers,4:fnLoadHealth};
+function fnLoadSlide(siteId,idx,done){ var fn=SLIDE_LOADERS[idx]; if(fn) fn(siteId,done); }
+// Kept for compatibility: load every secondary slide at once (no longer called on page load).
+function fnLoadSlideData(siteId){ fnLoadTimeline(siteId); fnLoadPerformance(siteId); fnLoadUsers(siteId); fnLoadHealth(siteId); }
 
 // ===== Summary Cards =====
     function updateSummaryCards() {
@@ -1492,11 +1512,24 @@ function fnLoadSlideData(siteId){
             '<div class="summary-card sc-active"><div class="sc-meta"><div class="num">' + sirens + '</div><div class="lbl">Active Sirens</div></div></div>');
     }
 
+// ===== Move an alerting card to the front of the grid =====
+// Keeps the newest alerting site on top so the siren source is immediately
+// visible. Uses insertBefore to MOVE the existing node (its tab listeners and
+// slide state are preserved — nothing is re-rendered).
+    function bringCardToFront(siteId) {
+        var card = document.getElementById('divSite_' + siteId),
+            grid = document.getElementById('station-grid');
+        if (card && grid && grid.firstElementChild !== card) {
+            grid.insertBefore(card, grid.firstElementChild);
+            setTimeout(fitAllCards, 50);
+        }
+    }
+
 // ===== Set card alert state =====
     function setCardAlert(siteId, isAlert) {
         var $card = $('#divSite_' + siteId), $sl = $('#statusLine_' + siteId);
         if (isAlert) {
-            $card.addClass('has-alert'); $sl.removeClass('ok').addClass('alert'); $('#statusTxt_' + siteId).text('Alert Active'); renderNowSlide(siteId);
+            $card.addClass('has-alert'); $sl.removeClass('ok').addClass('alert'); $('#statusTxt_' + siteId).text('Alert Active'); bringCardToFront(siteId); renderNowSlide(siteId);
         } else { $card.removeClass('has-alert'); $sl.removeClass('alert').addClass('ok'); $('#statusTxt_' + siteId).text('Operational'); $('#statusBadge_' + siteId).text('All clear'); renderNowSlide(siteId); }
     }
 
@@ -1510,8 +1543,12 @@ function fnAllSiteCheckChannelDown(){
         success: function (smsAlerts) {
             $('#loader').hide(); var hasNew = false;
 
-            // Merge full alert objects into wsAlertStore so renderNowSlide/telemetry have real data
-            var touchedSites = {};
+            // Merge full alert objects into wsAlertStore so renderNowSlide/telemetry have real data.
+            // touchedSites = any site returned this poll (used to refresh its Now slide).
+            // newAlertSites = sites that got a genuinely NEW alert id this poll (used to
+            // re-surface the card). These must stay separate: an ongoing alert is returned
+            // every poll, so bumping on touchedSites would reshuffle active cards endlessly.
+            var touchedSites = {}, newAlertSites = {};
             if (smsAlerts && smsAlerts.length) {
                 $.each(smsAlerts, function (i, a) {
                     var sid = a.SiteId;
@@ -1528,6 +1565,7 @@ function fnAllSiteCheckChannelDown(){
                             AlertAction: isActive ? 'SET' : 'RESET', Status: isActive ? 'Active' : 'Cleared'
                         });
                         if (window.wsAlertStore[sid].length > 10) window.wsAlertStore[sid] = window.wsAlertStore[sid].slice(0, 10);
+                        if (isActive) newAlertSites[sid] = true;
                     }
                     touchedSites[sid] = true;
                 });
@@ -1542,6 +1580,10 @@ function fnAllSiteCheckChannelDown(){
                 } else if (!now && was) {
                     setCardAlert(sid, false);
                 } else if (touchedSites[sid]) {
+                    // Only re-surface when a genuinely NEW alert arrived for this already-
+                    // alerting site; an ongoing alert is returned every poll and must not
+                    // keep reshuffling the grid.
+                    if (now && newAlertSites[sid]) bringCardToFront(sid);
                     renderNowSlide(sid);
                 }
             });

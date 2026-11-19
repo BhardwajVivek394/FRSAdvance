@@ -1876,6 +1876,13 @@
         state.loading = true;
         setStatus('Loading layout…', 'loading');
 
+        /* Warm the asset drawer's per-site attribute aliases (GetUserAssetInfo) now,
+           so clicking a point machine opens the drawer with its circuit cards already
+           bound instead of waiting ~1s for the site attributes on the first click. */
+        if (typeof window.tlPrewarmAliases === 'function') {
+            try { window.tlPrewarmAliases(siteId); } catch (e) { }
+        }
+
         var cached = !opts.force && state.layoutCache[siteId];
         if (cached && (Date.now() - cached.at) < LAYOUT_CACHE_TTL_MS) {
             onLayoutData(cached.data, siteId, gen, true);
@@ -2298,7 +2305,7 @@
        telemetry grid is unaffected. Point Machine (type 3) uses a different
        endpoint in the classic code and is skipped here (PM rows fall back to
        the live snapshot). Cached per site. */
-    window.sipMetaAll = window.sipMetaAll || { siteId: null, simple: {}, dl: {}, assets: {}, zeroOffset: {}, loaded: false, pending: 0 };
+    window.sipMetaAll = window.sipMetaAll || { siteId: null, simple: {}, dl: {}, dlByAttrId: {}, cfg: {}, assets: {}, zeroOffset: {}, loaded: false, pending: 0 };
     var PM_ASSET_TYPE_ID = '3';
     function sipMetaPost(url, body) {
         return fetch(url, {
@@ -2316,6 +2323,15 @@
             if (!asset || !asset.Id) continue;
             var aid = String(asset.Id);
             M.assets[aid] = { Id: asset.Id, Name: asset.Name, SiteId: asset.SiteId, AssetTypeId: asset.AssetTypeId };
+            /* the asset's configured attributes + DataLoggers as GetBulkAssetMetadata sent them,
+               so the asset drawer can show only what is configured for ANY asset opened from the
+               SIP (bulkAssetMap only holds the dropdown's type). Display use only. */
+            M.cfg = M.cfg || {};
+            M.cfg[aid] = {
+                Id: asset.Id, AssetTypeId: asset.AssetTypeId,
+                assetAttributes: asset.assetAttributes || asset.AssetAttributes || [],
+                mAssetInfoDataloggers: asset.mAssetInfoDataloggers || asset.MAssetInfoDataloggers || []
+            };
             var off = parseFloat(asset.ZeroOffsetValue);
             if (!isNaN(off) && off > 0) M.zeroOffset[aid] = off;
             var attrs = asset.assetAttributes || asset.AssetAttributes || [];
@@ -2345,6 +2361,11 @@
                     || String(dl.DataloggerAssetName || dl.dataloggerAssetName || '').trim()
                     || String(dl.AttributeName || dl.Name || ('DL ' + role)).trim();
                 if (!dlName) continue;
+                /* id-only map (aid_DataloggerAttributeId -> name): a live relay frame's
+                   AssetAttributeId. M.dl is keyed by Role, a different id space (S12: HHECR
+                   attribute id 47 = RECR Role 47). Covers every type, not just the dropdown's. */
+                var dAttrId = String(dl.DataloggerAttributeId == null ? '' : dl.DataloggerAttributeId).trim();
+                if (dAttrId && dAttrId !== '0') (M.dlByAttrId = M.dlByAttrId || {})[aid + '_' + dAttrId] = dlName;
                 var dk = aid + '_' + role;
                 if (!M.dl[dk]) M.dl[dk] = {
                     role: role, Role: role, dataloggerRole: role,
@@ -2367,7 +2388,7 @@
         if (!siteId || siteId === '0') return;
         var M = window.sipMetaAll;
         if (M.siteId === siteId && (M.loaded || M.pending > 0)) return;   // cached / in-flight
-        window.sipMetaAll = M = { siteId: siteId, simple: {}, dl: {}, assets: {}, zeroOffset: {}, loaded: false, pending: 0 };
+        window.sipMetaAll = M = { siteId: siteId, simple: {}, dl: {}, dlByAttrId: {}, cfg: {}, assets: {}, zeroOffset: {}, loaded: false, pending: 0 };
         sipMetaPost('/FRS25/Telemetry/GetAssetTypeBySiteId', { siteId: siteId }).then(function (types) {
             if (window.sipMetaAll !== M) return;                         // site changed meanwhile
             var list = (types || []).filter(function (t) {
@@ -2936,6 +2957,15 @@
            through dlNameGuard, which only undoes a rename into a DIFFERENT relay that came
            from the attribute id (another id space than the Role): S12 "HHR" -> "TPR". */
         var guard = function (nm) { return dlNameGuard(aid, rawAttr, nm, !!role); };
+        /* 616 parity (same as Telemetry Live): a live relay frame's AssetAttributeId is its
+           DataloggerAttributeId -> the id-only map answers before the mixed Role / Value /
+           Id map, whose shared keys renamed S12 relays into each other (HHR -> TPR). */
+        var im = window.dlAttrIdNameMap, sm = window.sipMetaAll && window.sipMetaAll.dlByAttrId;
+        if (attrId) {
+            var aKey = aid + '_' + String(attrId);
+            var byAttrId = (im && im[aKey]) || (sm && sm[aKey]);   /* page's type, else any type */
+            if (byAttrId) return byAttrId;
+        }
         if (dm) {
             var e = (role && dm[aid + '_' + role]) || dm[aid + '_' + String(attrId)] || (dm[aid + '_' + rawAttr]);
             if (e && e.name) return guard(e.name);

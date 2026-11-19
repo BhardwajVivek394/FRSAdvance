@@ -1877,8 +1877,9 @@ function abortPmIndicationRequest() {
     function dv(v) { return hasVal(v) ? v : DASH; }
     function currentText(max, avg, count) {
         // v616 27500: no Max for this operation -> the whole cell collapses.
-        if (!hasVal(max)) return DASH + ' / ' + DASH + ' (0)';
-        return max + ' / ' + dv(avg) + ' (' + (hasVal(count) ? count : '0') + ')';
+        // Sample count "(n)" intentionally not shown (user request 2026-11-19).
+        if (!hasVal(max)) return DASH + ' / ' + DASH;
+        return max + ' / ' + dv(avg);
     }
     function applyRowLinks($tr, assetId, row, showA, showB, startIdx) {
         var dirPrefix = (row.operationType === 'Reverse') ? 'R' : 'N';
@@ -5020,9 +5021,9 @@ try {
     }
     W.ipsClassifyTab = ipsClassifyTab;
 
-    // Per-bank readings of a battery group are not shown: only the Σ total
-    // (table: no expandable bank rows; cards: no "tap for breakup").
-    var IPS_SHOW_BANK_BREAKUP = false;
+    // BATT CHARGING / DISCHARGING: the Σ total expands to its per-bank readings,
+    // as in 616 (table: click the row; cards: "tap for breakup").
+    var IPS_SHOW_BANK_BREAKUP = true;
 
     function staleInfo(aObj) {
         var stale = fn('isPmReplayStale') ? W.isPmReplayStale(aObj) === true : false;
@@ -5133,8 +5134,9 @@ try {
     }
     W.ipsGroupCurrentRows = ipsGroupCurrentRows;
 
+    /* open by default, like telemetrylive.js; this map holds the groups the user COLLAPSED */
     var expandedGroups = {};
-    function ipsGroupIsExpanded(id) { return !!(id && expandedGroups[id]); }
+    function ipsGroupIsExpanded(id) { return !!(id && !expandedGroups[id]); }
     W.ipsGroupIsExpanded = ipsGroupIsExpanded;
     function ipsExpandRowsForDisplay(rows) {
         if (!rows || !rows.length) return rows || [];
@@ -5350,7 +5352,7 @@ try {
             var gid = $(this).attr('data-ips-group');
             if (!gid) return;
             var open = !ipsGroupIsExpanded(gid);
-            if (open) expandedGroups[gid] = true; else delete expandedGroups[gid];
+            if (open) delete expandedGroups[gid]; else expandedGroups[gid] = true;
             $(this).toggleClass('ips-group-open', open).attr('aria-expanded', open ? 'true' : 'false');
             $(this).closest('table').find('tr.ips-row-child').each(function () {
                 if ($(this).attr('data-parent') === gid) $(this).toggleClass('ips-child-collapsed', !open);
@@ -5632,10 +5634,8 @@ try {
         var disp = ipsCardDisplayValue(assetId, an, aObj);
         var label = plainLabel(assetId, an, aObj);
         var labelHtml = fn('formatAliasName') ? (W.formatAliasName(label) || esc(label)) : esc(label);
-        if (extraCls === 'ipsv2-bank') {
-            var short = bankShortLabel(label);
-            if (short) labelHtml = '<b class="ipsv2-bank-no">' + esc(short) + '</b><span class="ipsv2-bank-full">' + esc(label) + '</span>';
-        }
+        /* bank rows show their real attribute name (no "Bank 1 / Bank 2" short label) */
+        void bankShortLabel;
         var s = staleMarks(assetId, an, aObj.Value, disp === EMPTY ? 'ips-attr-val no-data' : 'ips-attr-val');
         return '<div class="ips-attr-row' + (extraCls ? ' ' + extraCls : '') + '">' +
             '<span class="ips-attr-name" title="' + esc(label) + '">' + labelHtml + '</span>' +
@@ -8510,7 +8510,7 @@ try {
 
     var TLMG = window.TLMG = { version: '1.0.0' };
     var MAX_AUTO = 12;      // "Select All" auto-loads at most this many assets
-    var MAX_HARD = 30;      // hard ceiling for an explicit selection / chooser
+    // (no ceiling for an explicit selection / chooser: whatever the user ticks is graphed)
     var CONCURRENT = 4;     // history requests in flight at once
     var LIVE_MS = 2000;
 
@@ -8793,7 +8793,8 @@ try {
     //   explicit subset            -> those (hard cap)
     //   "Select All" ([] or all ticked) -> every checked asset, auto cap MAX_AUTO
     //   nothing checked / no list  -> every asset of the type, auto cap
-    function resolveAssets(forcedIds) {
+    //   noCap: Track / Signal graph ONE asset at a time, so the whole list goes to the selector
+    function resolveAssets(forcedIds, noCap) {
         var pool = assetPool(mgG.typeId), ids, capped = false, explicit = false;
         if (forcedIds && forcedIds.length) { ids = forcedIds.slice(); explicit = true; }
         else {
@@ -8804,8 +8805,8 @@ try {
                 if (!ids.length) ids = pool.map(function (a) { return a.id; });
             }
         }
-        var cap = explicit ? MAX_HARD : MAX_AUTO;
-        if (ids.length > cap) { ids = ids.slice(0, cap); capped = true; }
+        var cap = explicit ? Infinity : MAX_AUTO;
+        if (!noCap && ids.length > cap) { ids = ids.slice(0, cap); capped = true; }
         mgG.pool = pool; mgG.capped = capped; mgG.poolTotal = pool.length;
         return ids;
     }
@@ -8985,6 +8986,12 @@ try {
             'body[data-aurora="light"] .tlmg-wrap .tlgv-bar,body[data-aurora="light"] .tlmg-selbar,body[data-aurora="light"] .tlmg-wrap .tlgv-cursor{background:var(--e7-surface-2, rgba(11,21,48,.035));}',
             'body[data-aurora="light"] .tlmg-wrap .tlgv-seg button.on,body[data-aurora="light"] .tlmg-btn.on,body[data-aurora="light"] .tlmg-btn.tlmg-primary{color:#fff;}',
             'body[data-aurora="light"] .tlmg-chip,body[data-aurora="light"] .tlmg-mini,body[data-aurora="light"] .tlmg-btn,body[data-aurora="light"] .tlmg-lg{background:var(--e7-surface-2, rgba(11,21,48,.04));}',
+            /* the light rule above also blanked the primary (Apply / Show) button: white text on white */
+            'body[data-aurora="light"] .tlmg-btn.on,body[data-aurora="light"] .tlmg-btn.tlmg-primary{background:linear-gradient(120deg,var(--e7-ask-from,#0891b2),var(--e7-ask-to,#0e7490));color:#fff;border-color:transparent;}',
+            '.tlmg-bk{grid-column:1/-1;margin:0 0 4px 14px;padding-left:8px;border-left:2px solid var(--e7-border,rgba(255,255,255,.14));}',
+            '.tlmg-bk-list{display:none;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:4px 6px;margin-top:4px;}.tlmg-bk.open .tlmg-bk-list{display:grid;}',
+            '.tlmg-pop-apply{all:unset;box-sizing:border-box;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;margin-top:8px;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:700;color:#fff !important;cursor:pointer;}',
+            '.tlmg-pop-apply:hover:not(:disabled){filter:brightness(1.1);}.tlmg-pop-apply:focus-visible{outline:2px solid #0891b2;outline-offset:2px;}',
             'body[data-aurora="light"] .tlmg-pop{background:var(--e7-surface, #fff);}',
             '@media (max-width:640px){.tlmg-head{padding:10px 12px;}.tlmg-title b{font-size:13.5px;}.tlmg-abody{grid-template-columns:1fr;padding-left:18px;}.tlmg-chart{height:320px;}.tlmg-selbar{padding:6px 10px;}.tlmg-count{width:100%;margin-left:0;}.tlmg-ahdr{right:8px;}}',
             '@media (prefers-reduced-motion:reduce){.tlmg-spin{animation:none;}}',
@@ -9016,7 +9023,7 @@ try {
         if (!kd.typeId || kd.typeId === '0') { warn('Please select an asset type'); return false; }
         mgG.siteId = siteId; mgG.kind = kd.kind; mgG.typeId = kd.typeId; mgG.typeName = kd.typeName;
 
-        var ids = resolveAssets(opts.assetIds);
+        var ids = resolveAssets(opts.assetIds, kd.kind === 'track' || kd.kind === 'signal');
         /* v618.25: Track / Signal -> ONE asset at a time (selector in the header);
            IPS / ELD / others keep the multi-asset view. */
         mgG.single = false;
@@ -9034,7 +9041,7 @@ try {
             return false;
         }
         var key = kd.typeId + '|' + ids.slice().sort().join(',');
-        if (mgG.selectionKey !== key) { mgG.checked = {}; mgG.collapsed = {}; mgG.fold = {}; mgG.hidden = {}; mgG.search = ''; mgG.selectionKey = key; }
+        if (mgG.selectionKey !== key) { mgG.checked = {}; mgG.collapsed = {}; mgG.fold = {}; mgG.hidden = {}; mgG.search = ''; mgG.memberOn = {}; mgG.bkOpen = {}; mgG.selectionKey = key; }
         mgG.realIds = ids.slice();      // what is requested from the History API
         mgG.assetIds = ids.slice();     // what is shown (IPS adds virtual BATT group rows)
         mgG.assets = {};
@@ -9171,8 +9178,9 @@ try {
         var $n = $('#mgNotice').empty();
         var failed = Object.keys(mgG.failed).length;
         var parts = [];
-        if (mgG.capped) parts.push('<span><i class="fas fa-triangle-exclamation"></i> Showing the first <b>' + mgG.assetIds.length + '</b> of <b>' + mgG.poolTotal + '</b> ' + esc(mgG.typeName) + ' assets.</span>' +
-            '<button type="button" class="tlmg-mini" data-mg-choose>Choose assets…</button>');
+        /* single-asset view: the header selector already lists every asset, so no cap notice.
+           Multi-asset view: the header "Assets" button is the one way to change assets (no duplicate here). */
+        if (mgG.capped && !mgG.single) parts.push('<span><i class="fas fa-triangle-exclamation"></i> Showing the first <b>' + mgG.assetIds.length + '</b> of <b>' + mgG.poolTotal + '</b> ' + esc(mgG.typeName) + ' assets. Use the <b>Assets</b> button above to change.</span>');
         if (failed) parts.push('<span><i class="fas fa-plug-circle-xmark"></i> <b>' + failed + '</b> asset' + (failed > 1 ? 's' : '') + ' failed to load.</span>' +
             '<button type="button" class="tlmg-mini" data-mg-retry-all><i class="fas fa-rotate-right"></i> Retry failed</button>');
         if (parts.length) $n.html('<div class="tlmg-notice">' + parts.join('<span style="opacity:.3">|</span>') + '</div>');
@@ -9182,23 +9190,56 @@ try {
     function buildChooser() {
         var $p = $('#mgPop');
         /* single-asset view (Track / Signal): the chosen set is the selector's list, not the one shown */
-        var chosen = (mgG.single && mgG.allIds && mgG.allIds.length) ? mgG.allIds : mgG.assetIds;
-        var cur = {}; chosen.forEach(function (id) { cur[id] = true; });
-        var h = '<div class="tlmg-pop-head"><input type="search" class="tlgv-search" data-mg-pop-search placeholder="Search asset…" aria-label="Search asset"/>' +
+        var chosen = (mgG.single && mgG.allIds && mgG.allIds.length) ? mgG.allIds : (mgG.realIds || mgG.assetIds || []);
+        /* tick what is on the graph: match by id, and by name as a fallback (the Asset-No list
+           and the graphed ids can come from different sources, which left every box empty) */
+        var cur = {}, curName = {};
+        chosen.forEach(function (id) {
+            cur[String(id)] = true;
+            var nm = (mgG.assets && mgG.assets[id] && mgG.assets[id].name) || assetName(id);
+            if (nm) curName[String(nm).trim().toLowerCase()] = true;
+        });
+        var h = '<div style="font-size:11px;margin:0 2px 8px;color:var(--e7-text-3,rgba(255,255,255,.5));">Tick the assets to show on the graph, then press <b>Apply</b>.</div>' +
+            '<div class="tlmg-pop-head"><input type="search" class="tlgv-search" data-mg-pop-search placeholder="Search asset…" aria-label="Search asset"/>' +
             '<button type="button" class="tlmg-mini" data-mg-pop-all="1">All</button><button type="button" class="tlmg-mini" data-mg-pop-all="0">None</button></div>' +
             '<div class="tlmg-pop-list">';
         mgG.pool.forEach(function (a) {
-            h += '<label class="tlmg-pop-item"><input type="checkbox" value="' + esc(a.id) + '" ' + (cur[a.id] ? 'checked' : '') + '/><span>' + esc(a.name) + '</span></label>';
+            h += '<label class="tlmg-pop-item"><input type="checkbox" value="' + esc(a.id) + '" ' + ((cur[String(a.id)] || curName[String(a.name || '').trim().toLowerCase()]) ? 'checked' : '') + '/><span>' + esc(a.name) + '</span></label>';
         });
         if (!mgG.pool.length) h += '<div class="tlgv-empty" style="padding:16px;">No asset list available</div>';
-        h += '</div><div class="tlmg-pop-foot"><span data-mg-pop-n>' + chosen.length + '</span>&nbsp;selected · max ' + MAX_HARD +
-            '<span class="tlgv-spacer"></span><button type="button" class="tlmg-btn tlmg-primary" data-mg-pop-apply><i class="fas fa-check"></i> Apply</button></div>';
+        h += '</div><div class="tlmg-pop-foot"><span data-mg-pop-n>' + chosen.length + '</span>&nbsp;of ' + mgG.pool.length + ' selected</div>' +
+            /* own class + inline colours: theme rules for .tlmg-btn kept blanking this button */
+            '<button type="button" class="tlmg-pop-apply" data-mg-pop-apply style="background:#0891b2;color:#fff;"><i class="fas fa-check"></i> Apply</button>';
         $p.html(h);
+        mgG.popStart = popSel().join(',');   // what was ticked on open: closing with a change applies it
+    }
+    function popSel() {
+        var ids = []; $('#mgPop input[type=checkbox]:checked').each(function () { ids.push(String(this.value)); });
+        return ids;
     }
     function popCount() {
-        var n = $('#mgPop input[type=checkbox]:checked').length;
-        $('#mgPop [data-mg-pop-n]').text(n).css('color', n > MAX_HARD ? 'var(--e7-red, #f87171)' : '');
-        $('#mgPop [data-mg-pop-apply]').prop('disabled', n === 0 || n > MAX_HARD);
+        var n = popSel().length, changed = popSel().join(',') !== mgG.popStart;
+        $('#mgPop [data-mg-pop-n]').text(n);
+        $('#mgPop [data-mg-pop-apply]').prop('disabled', n === 0)
+            .css({ background: n ? '#0891b2' : '#94a3b8', cursor: n ? 'pointer' : 'not-allowed' })
+            .html(n ? '<i class="fas fa-check"></i> Apply · show ' + n + ' asset' + (n > 1 ? 's' : '') + (changed ? '' : ' (no change)') : 'Tick at least one asset');
+    }
+    // apply the ticked set to the graph; quietly does nothing when unchanged or empty
+    function applyPop(force) {
+        var ids = popSel();
+        togglePop(false);
+        if (!ids.length) { warn('Pick at least one asset.'); return; }
+        if (!force && ids.join(',') === mgG.popStart) return;
+        // mirror the choice into the Asset-No multi-select so Search / other views agree
+        try {
+            var $items = $('#listAssetNumber .dropdown-item');
+            if ($items.length) {
+                $items.each(function () { var on = ids.indexOf(String($(this).attr('data-value'))) > -1; $(this).toggleClass('checked', on).find('input').prop('checked', on); });
+                if (fn('updateAssetText')) window.updateAssetText();
+                if (fn('updateSelectAllState')) window.updateSelectAllState();
+            }
+        } catch (e2) { /* ignore */ }
+        TLMG.open({ assetIds: ids, keepRange: true });
     }
     function togglePop(open) {
         var $p = $('#mgPop'), isOpen = $p.hasClass('open');
@@ -9210,6 +9251,7 @@ try {
             $('#mgAssetsBtn').hide();
             $('#mgRange .tlmg-assets').css('display', open ? '' : 'none');
         }
+        if (open && !isOpen) buildChooser();   // always reflect what is currently on the graph
         $p.toggleClass('open', open);
         $('#mgAssetsBtn').attr('aria-expanded', open ? 'true' : 'false');
         if (open) { popCount(); setTimeout(function () { $p.find('[data-mg-pop-search]').trigger('focus'); }, 10); }
@@ -9253,37 +9295,28 @@ try {
             load();
         });
         // asset chooser
-        $w.on('click.tlmg', '#mgAssetsBtn,[data-mg-choose]', function (e) { e.stopPropagation(); togglePop(); });
+        $w.on('click.tlmg', '#mgAssetsBtn,[data-mg-choose]', function (e) {
+            e.stopPropagation();
+            if ($('#mgPop').hasClass('open') && popSel().length) applyPop(false); else togglePop();
+        });
         $w.on('click.tlmg', '#mgPop', function (e) { e.stopPropagation(); });
         $w.on('change.tlmg', '#mgPop input[type=checkbox]', popCount);
         $w.on('click.tlmg', '[data-mg-pop-all]', function () {
             var on = $(this).attr('data-mg-pop-all') === '1';
             $('#mgPop .tlmg-pop-item:not(.hidden) input').prop('checked', on);
-            if (on) { var n = 0; $('#mgPop input[type=checkbox]:checked').each(function () { if (++n > MAX_HARD) this.checked = false; }); }
             popCount();
         });
         $w.on('input.tlmg', '[data-mg-pop-search]', function () {
             var q = String(this.value || '').trim().toLowerCase();
             $('#mgPop .tlmg-pop-item').each(function () { $(this).toggleClass('hidden', !!q && $(this).text().toLowerCase().indexOf(q) < 0); });
         });
-        $w.on('click.tlmg', '[data-mg-pop-apply]', function () {
-            var ids = []; $('#mgPop input[type=checkbox]:checked').each(function () { ids.push(String(this.value)); });
-            if (!ids.length) { warn('Pick at least one asset.'); return; }
-            if (ids.length > MAX_HARD) { warn('Pick at most ' + MAX_HARD + ' assets.'); return; }
-            togglePop(false);
-            // mirror the choice into the Asset-No multi-select so Search / other views agree
-            try {
-                var $items = $('#listAssetNumber .dropdown-item');
-                if ($items.length) {
-                    $items.each(function () { var on = ids.indexOf(String($(this).attr('data-value'))) > -1; $(this).toggleClass('checked', on).find('input').prop('checked', on); });
-                    if (fn('updateAssetText')) window.updateAssetText();
-                    if (fn('updateSelectAllState')) window.updateSelectAllState();
-                }
-            } catch (e2) { /* ignore */ }
-            TLMG.open({ assetIds: ids });
+        $w.on('click.tlmg', '[data-mg-pop-apply]', function (e) { e.preventDefault(); e.stopPropagation(); if (popSel().length) applyPop(true); });
+        /* closing the popover (outside click / Assets button) keeps a changed selection instead of dropping it */
+        $(document).off('click.tlmgpop').on('click.tlmgpop', function () { if ($('#mgPop').hasClass('open')) { if (popSel().length) applyPop(false); else togglePop(false); } });
+        $w.on('keydown.tlmg', '#mgPop', function (e) {
+            if (e.key === 'Escape') togglePop(false);                                   // Esc = cancel
+            else if (e.key === 'Enter' && popSel().length) { e.preventDefault(); applyPop(true); }
         });
-        $(document).off('click.tlmgpop').on('click.tlmgpop', function () { if ($('#mgPop').hasClass('open')) togglePop(false); });
-        $w.on('keydown.tlmg', '#mgPop', function (e) { if (e.key === 'Escape') togglePop(false); });
         // retry
         $w.on('click.tlmg', '[data-mg-retry]', function () { retryAssets([String($(this).attr('data-mg-retry'))]); });
         $w.on('click.tlmg', '[data-mg-retry-all]', function () { retryAssets(Object.keys(mgG.failed)); });
@@ -9334,7 +9367,9 @@ try {
         });
         // attribute panel
         $w.on('change.tlmg', '[data-mg-key]', function () {
-            mgG.checked[$(this).attr('data-mg-key')] = this.checked;
+            var mk = $(this).attr('data-mg-key');
+            mgG.checked[mk] = this.checked;
+            if (mgG.series[mk] && mgG.series[mk].memberOf) (mgG.memberOn = mgG.memberOn || {})[mk] = this.checked;   // survives reloads
             $(this).closest('.tlmg-chip').toggleClass('off', !this.checked);
             updateCount(); render();
         });
@@ -9345,6 +9380,16 @@ try {
             var aid = String($(this).attr('data-mg-aid')), $g = $(this).closest('.tlmg-agrp');
             mgG.fold[aid] = !mgG.fold[aid]; $g.toggleClass('folded', !!mgG.fold[aid]);
             $(this).attr('aria-expanded', mgG.fold[aid] ? 'false' : 'true');
+        });
+        // IPS Σ row: show / hide the per-bank breakdown
+        $w.on('click.tlmg', '[data-mg-bk]', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            var k = String($(this).attr('data-mg-bk')), $b = $(this).closest('.tlmg-bk');
+            mgG.bkOpen = mgG.bkOpen || {};
+            var open = mgG.bkOpen[k] = !mgG.bkOpen[k];
+            $b.toggleClass('open', open);
+            var n = $b.find('.tlmg-chip').length, s = mgG.series[k];
+            $(this).attr('aria-expanded', open).html('<i class="fas fa-chevron-' + (open ? 'down' : 'right') + '"></i> ' + esc(s ? s.name : '') + ' — ' + (open ? 'hide' : 'show') + ' breakdown (' + n + ' bank' + (n > 1 ? 's' : '') + ')');
         });
         $w.on('keydown.tlmg', '.tlmg-ahead', function (e) {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $(this).trigger('click'); }
@@ -9692,13 +9737,20 @@ try {
                 color: seriesColor(V.idx, attrIdx), pts: pts, actual: pts.slice(0, Math.max(1, pts.length - 1)), isBin: false, isGroup: true,
                 members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }), live: { src: 'sum', members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }) }
             };
-            g.members.forEach(function (k) { delete mgG.series[k]; delete mgG.checked[k]; });
+            /* keep each bank's own series as a breakdown under the Σ row (was deleted, so the
+               BATT CHARGING / DISCHARGING group could not be expanded). Off the graph until ticked. */
+            mgG.memberOn = mgG.memberOn || {};
+            g.members.forEach(function (k) {
+                var ms = mgG.series[k]; if (!ms) return;
+                ms.memberOf = key; ms.groupAid = vAid;
+                mgG.checked[k] = mgG.memberOn[k] === true;
+            });
             mgG.order.push(key);
             if (mgG.checked[key] === undefined) mgG.checked[key] = true;
         });
         mgG.order = mgG.order.filter(function (k) { return !!mgG.series[k]; });
         // real assets that were fully absorbed into a group have no series left; drop them from the chrome
-        mgG.assetIds = mgG.assetIds.filter(function (aid) { var A = mgG.assets[aid]; if (A.virtual) return true; return mgG.order.some(function (k) { return mgG.series[k].assetId === aid; }) || !chargingBucket(A.name); });
+        mgG.assetIds = mgG.assetIds.filter(function (aid) { var A = mgG.assets[aid]; if (A.virtual) return true; return mgG.order.some(function (k) { return mgG.series[k].assetId === aid && !mgG.series[k].memberOf; }) || !chargingBucket(A.name); });
     }
 
     // ------------------------------------------------------------------
@@ -9713,7 +9765,20 @@ try {
         if (f === 'v') return s.kind === 'v' || s.kind === 'other';
         return true;
     }
-    function seriesOfAsset(aid) { return mgG.order.filter(function (k) { return mgG.series[k].assetId === aid; }).map(function (k) { return mgG.series[k]; }); }
+    // which asset row a series belongs to: IPS bank breakdown series sit under their Σ group
+    function ownerAid(s) { return s.memberOf ? s.groupAid : s.assetId; }
+    function seriesOfAsset(aid) { return mgG.order.filter(function (k) { return ownerAid(mgG.series[k]) === aid; }).map(function (k) { return mgG.series[k]; }); }
+    function chipHtml(s) {
+        var checked = mgG.checked[s.key] !== false;
+        var last = s.actual.length ? s.actual[s.actual.length - 1][1] : (s.pts.length ? s.pts[s.pts.length - 1][1] : null);
+        var label = s.memberOf ? s.assetName + ' · ' + s.name : s.name;
+        return '<label class="tlmg-chip' + (checked ? '' : ' off') + (passesFilter(s) ? '' : ' hide') + '" data-mg-chip="' + esc(s.key) + '" style="--ac:' + s.color + '" title="' + esc(s.assetName + ' · ' + s.name) + ' — ' + kindLabel(s.kind) + '">' +
+            '<input type="checkbox" data-mg-key="' + esc(s.key) + '" ' + (checked ? 'checked' : '') + '/>' +
+            '<span class="tlmg-dot" style="background:' + s.color + '"></span>' +
+            '<span class="tlmg-an">' + esc(label) + '</span>' +
+            '<span class="tlmg-kind">' + (s.kind === 'bin' ? '0/1' : s.kind === 'drv' ? 'DRV' : (s.unit || kindLabel(s.kind))) + '</span>' +
+            '<span class="tlmg-av" data-mg-val style="color:' + s.color + '">' + (s.kind === 'bin' ? valHtml(last, 'bin') : fmtVal(last)) + '</span></label>';
+    }
     function renderPanel() {
         var h = '';
         mgG.assetIds.forEach(function (aid) {
@@ -9733,16 +9798,19 @@ try {
                 '<button type="button" class="tlmg-mini" data-mg-collapse="' + esc(aid) + '" title="' + (collapsed ? 'Show this asset in the graph' : 'Hide this asset from the graph (keeps the ticks)') + '"><i class="fas ' + (collapsed ? 'fa-eye-slash' : 'fa-eye') + '"></i></button>' +
                 '</span></div>';
             h += '<div class="tlmg-abody">';
+            mgG.bkOpen = mgG.bkOpen || {};
             list.forEach(function (s) {
-                var checked = mgG.checked[s.key] !== false, st = s.stats || null;
-                var last = s.actual.length ? s.actual[s.actual.length - 1][1] : (s.pts.length ? s.pts[s.pts.length - 1][1] : null);
-                h += '<label class="tlmg-chip' + (checked ? '' : ' off') + (passesFilter(s) ? '' : ' hide') + '" data-mg-chip="' + esc(s.key) + '" style="--ac:' + s.color + '" title="' + esc(s.assetName + ' · ' + s.name) + ' — ' + kindLabel(s.kind) + '">' +
-                    '<input type="checkbox" data-mg-key="' + esc(s.key) + '" ' + (checked ? 'checked' : '') + '/>' +
-                    '<span class="tlmg-dot" style="background:' + s.color + '"></span>' +
-                    '<span class="tlmg-an">' + esc(s.name) + '</span>' +
-                    '<span class="tlmg-kind">' + (s.kind === 'bin' ? '0/1' : s.kind === 'drv' ? 'DRV' : (s.unit || kindLabel(s.kind))) + '</span>' +
-                    '<span class="tlmg-av" data-mg-val style="color:' + s.color + '">' + (s.kind === 'bin' ? valHtml(last, 'bin') : fmtVal(last)) + '</span></label>';
-                void st;
+                if (s.memberOf) return;   // drawn inside its Σ row's breakdown below
+                h += chipHtml(s);
+                if (!s.isGroup) return;
+                /* Σ row: expandable per-bank breakdown (BATT CHARGING 1, 2, …) */
+                var mem = list.filter(function (m) { return m.memberOf === s.key; });
+                if (!mem.length) return;
+                var open = !!mgG.bkOpen[s.key];
+                h += '<div class="tlmg-bk' + (open ? ' open' : '') + '" data-mg-bkwrap="' + esc(s.key) + '">' +
+                    '<button type="button" class="tlmg-mini" data-mg-bk="' + esc(s.key) + '" aria-expanded="' + open + '">' +
+                    '<i class="fas fa-chevron-' + (open ? 'down' : 'right') + '"></i> ' + esc(s.name) + ' — ' + (open ? 'hide' : 'show') + ' breakdown (' + mem.length + ' bank' + (mem.length > 1 ? 's' : '') + ')</button>' +
+                    '<div class="tlmg-bk-list">' + mem.map(chipHtml).join('') + '</div></div>';
             });
             h += '</div></div>';
         });
@@ -9764,9 +9832,15 @@ try {
         });
     }
     function setAllChecked(on, aid) {
-        mgG.order.forEach(function (k) { if (aid === null || mgG.series[k].assetId === aid) mgG.checked[k] = on; });
+        mgG.order.forEach(function (k) {
+            var s = mgG.series[k];
+            if (aid !== null && ownerAid(s) !== aid) return;
+            if (s.memberOf && on) return;   // "All" keeps bank breakdown lines opt-in; "None" clears them
+            mgG.checked[k] = on;
+            if (s.memberOf) (mgG.memberOn = mgG.memberOn || {})[k] = on;
+        });
         var sel = aid === null ? '#mgPanel [data-mg-key]' : '#mgPanel .tlmg-agrp[data-mg-aid="' + cssKey(aid) + '"] [data-mg-key]';
-        $(sel).prop('checked', on).closest('.tlmg-chip').toggleClass('off', !on);
+        $(sel).each(function () { var c = mgG.checked[$(this).attr('data-mg-key')] !== false; this.checked = c; $(this).closest('.tlmg-chip').toggleClass('off', !c); });
         updateCount(); render();
     }
 
@@ -9850,10 +9924,11 @@ try {
         var many = mgG.assetIds.length > 1, out = [];
         mgG.order.forEach(function (k) {
             var s = mgG.series[k];
-            if (mgG.checked[k] === false || !passesFilter(s) || mgG.collapsed[s.assetId]) return;
+            if (mgG.checked[k] === false || !passesFilter(s) || mgG.collapsed[ownerAid(s)]) return;
             var pts = compress(s.pts.slice());
-            var A = mgG.assets[s.assetId] || { name: s.assetName, color: '#22d3ee', idx: 0 };
-            var m = { key: k, name: many ? (A.name + ' · ' + s.name) : s.name, short: s.name, sub: A.name, color: s.color, kind: s.kind, unit: s.unit, pts: pts, actual: s.actual, live: s.live, asset: A };
+            var A = mgG.assets[ownerAid(s)] || { name: s.assetName, color: '#22d3ee', idx: 0 };
+            var nm = s.memberOf ? (s.assetName + ' · ' + s.name) : s.name;   // bank line: say which bank
+            var m = { key: k, name: (many && !s.memberOf) ? (A.name + ' · ' + nm) : nm, short: nm, sub: A.name, color: s.color, kind: s.kind, unit: s.unit, pts: pts, actual: s.actual, live: s.live, asset: A };
             m.stats = computeStats(m, mgG.start, mgG.end);
             out.push(m);
         });
@@ -10043,7 +10118,7 @@ try {
         function hint(k) {
             var m = k && byKey[k];
             return [{
-                id: 'mgFocusHint', type: 'text', left: gridLeft + 8, top: 62, z: 50, silent: true,
+                id: 'mgFocusHint', type: 'text', left: gridLeft + 8, top: 40, z: 50, silent: true,
                 style: {
                     text: m ? (m.s.name + (mgG.focusPin === k ? '   · pinned (click again to release)' : '   · click to pin')) : 'Hover a line to focus it · click to pin',
                     fill: m ? m.s.color : (isLight() ? '#8391A3' : '#7C8BA0'), font: (m ? '700 ' : '') + '11.5px system-ui,-apple-system,"Segoe UI",sans-serif'
@@ -10436,7 +10511,7 @@ try {
             new MutationObserver(function () {
                 if (!$('#mgWrap').length || mgG.loading) return;
                 mgG.assetIds.forEach(function (aid) { var A = mgG.assets[aid]; if (A) A.color = assetColor(A.idx); });
-                mgG.order.forEach(function (k) { var s = mgG.series[k], A = mgG.assets[s.assetId]; if (A) s.color = seriesColor(A.idx, seriesOfAsset(s.assetId).indexOf(s)); });
+                mgG.order.forEach(function (k) { var s = mgG.series[k], A = mgG.assets[ownerAid(s)]; if (A) s.color = seriesColor(A.idx, Math.max(0, seriesOfAsset(ownerAid(s)).indexOf(s))); });
                 renderPanel(); render();
             }).observe(document.body, { attributes: true, attributeFilter: ['data-aurora'] });
         }

@@ -180,6 +180,17 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
         }
 
         // ──────────────────────────────────────────────
+        //  Telemetry GetUserAssetInfo cache (configured attributes, aliases, DataLoggers).
+        //  Cleared after any save of asset attribute / DataLogger config so the Telemetry
+        //  Live drawer and PM cards bind the new config at once. Never throws.
+        // ──────────────────────────────────────────────
+        public const string UserAssetInfoCachePrefix = "FRS25_UserAssetInfo_";
+        public static void ClearUserAssetInfoCache()
+        {
+            try { ClearCacheByPrefix(UserAssetInfoCachePrefix); } catch { /* cache only */ }
+        }
+
+        // ──────────────────────────────────────────────
         //  Clear EVERYTHING under the "FRS25_" namespace, for ALL users
         //  (use with caution — wipes cache for every logged-in user)
         // ──────────────────────────────────────────────

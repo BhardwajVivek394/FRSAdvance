@@ -405,13 +405,35 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         //{
         //    return Json(_divisionService.GetByZoneId(zoneId), JsonRequestBehavior.AllowGet);
         //}
+        // Divisions for the selected zone(s), cached per role + zone set + user (500 s) so the
+        // Division dropdown's cascade doesn't re-hit the API (Division/GetAllDivisionLister plus,
+        // for non-admin roles, Site/GetAll) on every zone selection. Same data as before — only
+        // the repeat round-trips are removed.
+        private const int DivisionByZoneCacheSeconds = 500;
+
         public JsonResult GetDivisionByZoneId(DivisionLister mDivisionLister)
         {
             List<Division> mDivisions = new List<Division>();
-            if (mDivisionLister.SearchCriteria.ZoneIds != null && mDivisionLister.SearchCriteria.ZoneIds.Count() > 0)
-                mDivisions = _divisionService.GetDivisionList(mDivisionLister);
-            else
-                mDivisions = new List<Division>();
+
+            if (mDivisionLister != null
+                && mDivisionLister.SearchCriteria != null
+                && mDivisionLister.SearchCriteria.ZoneIds != null
+                && mDivisionLister.SearchCriteria.ZoneIds.Count() > 0)
+            {
+                // Starts with "FRS25_" so FilterCacheHelper's prefix sweep can clear it
+                string cacheKey = "FRS25_DivByZoneIds_"
+                    + ClsHttpContent.LoginUser.RoleId
+                    + "_" + string.Join(",", mDivisionLister.SearchCriteria.ZoneIds.OrderBy(x => x))
+                    + "_" + ClsHttpContent.LoginUser.Id;
+
+                mDivisions = MemoryCache.Default.Get(cacheKey) as List<Division>;
+                if (mDivisions == null)
+                {
+                    mDivisions = _divisionService.GetDivisionList(mDivisionLister) ?? new List<Division>();
+                    if (mDivisions.Count > 0)
+                        MemoryCache.Default.Set(cacheKey, mDivisions, DateTimeOffset.UtcNow.AddSeconds(DivisionByZoneCacheSeconds));
+                }
+            }
 
             return Json(mDivisions, JsonRequestBehavior.AllowGet);
         }
