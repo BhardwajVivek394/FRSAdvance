@@ -8913,7 +8913,12 @@ try {
             '.tlmg-notice{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 14px;font-size:11.5px;color:var(--e7-text-2,rgba(255,255,255,.72));background:var(--e7-amber-soft, rgba(251,191,36,.08));border-bottom:1px solid rgba(251,191,36,.25);}',
             '.tlmg-notice i{color:var(--e7-amber, #fbbf24);}',
             /* asset chooser popover */
-            '.tlmg-assets{position:relative;}',
+            '.tlmg-assets{position:relative;display:inline-flex;align-items:center;gap:6px;}',
+            '.tlmg-asel-lbl{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--e7-text-3,rgba(255,255,255,.5));white-space:nowrap;}',
+            /* multi-asset: every reading in one track-style grid, labelled "Alias (Asset)" */
+            '.tlmg-agrp.tlmg-flat{border:0;background:transparent;}',
+            '.tlmg-agrp.tlmg-flat .tlmg-abody{padding:8px 12px;}',
+            '.tlmg-chip .tlmg-asub{font-weight:500;color:var(--e7-text-3,rgba(255,255,255,.5));}',
             '.tlmg-pop{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:min(360px,92vw);background:var(--e7-surface,#0e1530);border:1px solid var(--e7-border,rgba(255,255,255,.14));border-radius:12px;box-shadow:var(--e7-shadow-pop, 0 14px 40px rgba(0,0,0,.5));padding:10px;display:none;}',
             '.tlmg-pop.open{display:block;}',
             '.tlmg-pop-head{display:flex;align-items:center;gap:6px;margin-bottom:8px;}',
@@ -9139,7 +9144,7 @@ try {
             '<div class="tlmg-title"><i class="fas fa-chart-line"></i><div><b id="mgTitle">' + esc(titleText()) + '</b>' +
             '<div class="tlmg-sub">' + esc(siteName) + ' · ' + esc(mgG.typeName) + ' · History graph</div></div></div>' +
             '<div class="tlmg-range" id="mgRange">' +
-            '<div class="tlmg-assets"><button type="button" class="tlmg-btn" id="mgAssetsBtn" aria-haspopup="true" aria-expanded="false"><i class="fas fa-cubes"></i> Assets <span id="mgAssetsN">' + mgG.assetIds.length + '</span> <i class="fas fa-chevron-down" style="font-size:9px;opacity:.6;"></i></button>' +
+            '<div class="tlmg-assets"><span class="tlmg-asel-lbl">Choose Asset</span><button type="button" class="tlmg-btn" id="mgAssetsBtn" title="Choose the assets shown in the graph" aria-haspopup="true" aria-expanded="false"><i class="fas fa-cubes"></i> Assets <span id="mgAssetsN">' + mgG.assetIds.length + '</span> <i class="fas fa-chevron-down" style="font-size:9px;opacity:.6;"></i></button>' +
             '<div class="tlmg-pop" id="mgPop" role="dialog" aria-label="Choose assets"></div></div>' +
             '<div class="tlgv-seg tlgv-mini tlmg-quick" role="group" aria-label="Quick range">' +
             [['1', 'Last 1 hour'], ['6', 'Last 6 hours'], ['24', 'Last 24 hours']].map(function (q) { return '<button type="button" data-mg-quick="' + q[0] + '" title="' + q[1] + '">' + q[0] + 'h</button>'; }).join('') +
@@ -9768,19 +9773,49 @@ try {
     // which asset row a series belongs to: IPS bank breakdown series sit under their Σ group
     function ownerAid(s) { return s.memberOf ? s.groupAid : s.assetId; }
     function seriesOfAsset(aid) { return mgG.order.filter(function (k) { return ownerAid(mgG.series[k]) === aid; }).map(function (k) { return mgG.series[k]; }); }
+    // multi-asset view: readings are labelled "Alias (Asset)" and laid out in one grid
+    function multiAsset() { return !mgG.single && mgG.assetIds.length > 1; }
+    function ownerName(s) { var A = mgG.assets[ownerAid(s)]; return (A && A.name) || s.assetName || ''; }
     function chipHtml(s) {
         var checked = mgG.checked[s.key] !== false;
         var last = s.actual.length ? s.actual[s.actual.length - 1][1] : (s.pts.length ? s.pts[s.pts.length - 1][1] : null);
         var label = s.memberOf ? s.assetName + ' · ' + s.name : s.name;
-        return '<label class="tlmg-chip' + (checked ? '' : ' off') + (passesFilter(s) ? '' : ' hide') + '" data-mg-chip="' + esc(s.key) + '" style="--ac:' + s.color + '" title="' + esc(s.assetName + ' · ' + s.name) + ' — ' + kindLabel(s.kind) + '">' +
+        var sub = (multiAsset() && !s.memberOf) ? ownerName(s) : '';
+        var full = sub ? (label + ' (' + sub + ')') : (s.assetName + ' · ' + s.name);
+        return '<label class="tlmg-chip' + (checked ? '' : ' off') + (passesFilter(s) ? '' : ' hide') + '" data-mg-chip="' + esc(s.key) + '" style="--ac:' + s.color + '" title="' + esc(full) + ' — ' + kindLabel(s.kind) + '">' +
             '<input type="checkbox" data-mg-key="' + esc(s.key) + '" ' + (checked ? 'checked' : '') + '/>' +
             '<span class="tlmg-dot" style="background:' + s.color + '"></span>' +
-            '<span class="tlmg-an">' + esc(label) + '</span>' +
+            '<span class="tlmg-an">' + esc(label) + (sub ? ' <span class="tlmg-asub">(' + esc(sub) + ')</span>' : '') + '</span>' +
             '<span class="tlmg-kind">' + (s.kind === 'bin' ? '0/1' : s.kind === 'drv' ? 'DRV' : (s.unit || kindLabel(s.kind))) + '</span>' +
             '<span class="tlmg-av" data-mg-val style="color:' + s.color + '">' + (s.kind === 'bin' ? valHtml(last, 'bin') : fmtVal(last)) + '</span></label>';
     }
+    // Σ row + its expandable per-bank breakdown (shared by grouped and flat layouts)
+    function chipWithBreakdown(s, list) {
+        var h = chipHtml(s);
+        if (!s.isGroup) return h;
+        var mem = list.filter(function (m) { return m.memberOf === s.key; });
+        if (!mem.length) return h;
+        mgG.bkOpen = mgG.bkOpen || {};
+        var open = !!mgG.bkOpen[s.key];
+        return h + '<div class="tlmg-bk' + (open ? ' open' : '') + '" data-mg-bkwrap="' + esc(s.key) + '">' +
+            '<button type="button" class="tlmg-mini" data-mg-bk="' + esc(s.key) + '" aria-expanded="' + open + '">' +
+            '<i class="fas fa-chevron-' + (open ? 'down' : 'right') + '"></i> ' + esc(s.name) + ' — ' + (open ? 'hide' : 'show') + ' breakdown (' + mem.length + ' bank' + (mem.length > 1 ? 's' : '') + ')</button>' +
+            '<div class="tlmg-bk-list">' + mem.map(chipHtml).join('') + '</div></div>';
+    }
     function renderPanel() {
         var h = '';
+        if (multiAsset()) {
+            /* several assets (IPS, PM, Track multi-select): one track-style grid of every
+               reading, each labelled "Alias (Asset)", instead of one block per asset */
+            var body = '';
+            mgG.assetIds.forEach(function (aid) {
+                var list = seriesOfAsset(aid);
+                list.forEach(function (s) { if (!s.memberOf) body += chipWithBreakdown(s, list); });
+            });
+            $('#mgPanel').html(body ? '<div class="tlmg-agrp tlmg-flat"><div class="tlmg-abody">' + body + '</div></div>' : '<div class="tlgv-empty">No attributes</div>');
+            updateCount(); refreshLive(true);
+            return;
+        }
         mgG.assetIds.forEach(function (aid) {
             var A = mgG.assets[aid], list = seriesOfAsset(aid), failed = !!mgG.failed[aid], folded = !!mgG.fold[aid], collapsed = !!mgG.collapsed[aid];
             var on = list.filter(function (s) { return mgG.checked[s.key] !== false; }).length;
@@ -9928,7 +9963,7 @@ try {
             var pts = compress(s.pts.slice());
             var A = mgG.assets[ownerAid(s)] || { name: s.assetName, color: '#22d3ee', idx: 0 };
             var nm = s.memberOf ? (s.assetName + ' · ' + s.name) : s.name;   // bank line: say which bank
-            var m = { key: k, name: (many && !s.memberOf) ? (A.name + ' · ' + nm) : nm, short: nm, sub: A.name, color: s.color, kind: s.kind, unit: s.unit, pts: pts, actual: s.actual, live: s.live, asset: A };
+            var m = { key: k, name: (many && !s.memberOf) ? (nm + ' (' + A.name + ')') : nm, short: nm, sub: A.name, color: s.color, kind: s.kind, unit: s.unit, pts: pts, actual: s.actual, live: s.live, asset: A };
             m.stats = computeStats(m, mgG.start, mgG.end);
             out.push(m);
         });

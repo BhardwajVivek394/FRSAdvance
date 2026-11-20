@@ -377,7 +377,14 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         public JsonResult GetWithOutAcknowledgementAlert(Domain.FRSAlertLister mFRSAlertLister)
         {
             var mFRSAlerts = new List<Domain.FRSAlert>();
-            mFRSAlertLister.SearchCriteria.AlertStatus = (int)E7FRSAdvance.Utility.Utility.AlertStatus.Active;
+            // 2026-11-20 -- 616 parity (616 commit e174514). 616 no longer filters on AlertStatus=Active;
+            // it asks for alerts whose acknowledgement is still Pending (IsAcknowledgement=false), whatever
+            // their set/reset status. With AlertStatus=Active 617 got 3 rows for Bhestan where 616 got 10
+            // (7 extra Point Machine failures still awaiting acknowledgement).
+            if (mFRSAlertLister.SearchCriteria.AcknowledgemenStatusIds == null)
+                mFRSAlertLister.SearchCriteria.AcknowledgemenStatusIds = new List<int>();
+            mFRSAlertLister.SearchCriteria.AcknowledgemenStatusIds.Add((int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Pending);
+            mFRSAlertLister.SearchCriteria.IsAcknowledgement = false;
             if (mFRSAlertLister.Pager == null) mFRSAlertLister.Pager = new Domain.Pager();
             mFRSAlertLister.Pager.Take = -1;
 
@@ -425,11 +432,29 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 // One row per asset AND alert type, so an asset with both a Failure and a
                 // Predictive alert keeps both (grouping by AssetId alone dropped the Predictive one).
                 mFRSAlerts = mFRSAlertLister.mFRSAlerts.GroupBy(x => new { x.AssetId, x.AlertTypeId }).Select(g => g.First()).ToList();
+
+                // 616 parity: IPS counts one alert per site (matches the per-site IPS asset count)
+                mFRSAlerts = OneIpsAlertPerSite(mFRSAlerts);
             }
 
             var jsonResult = Json(mFRSAlerts, JsonRequestBehavior.AllowGet);
             jsonResult.MaxJsonLength = int.MaxValue;
             return jsonResult;
+        }
+
+        // Ported from 616: IPS alerts collapse to one per site and alert type; everything else unchanged.
+        private static List<Domain.FRSAlert> OneIpsAlertPerSite(List<Domain.FRSAlert> alerts)
+        {
+            if (alerts == null || alerts.Count == 0)
+                return alerts ?? new List<Domain.FRSAlert>();
+
+            int ipsTypeId = (int)E7FRSAdvance.Utility.Utility.AssetType.IPS;
+            var result = alerts.Where(x => x.AssetTypeId != ipsTypeId).ToList();
+            result.AddRange(alerts
+                .Where(x => x.AssetTypeId == ipsTypeId)
+                .GroupBy(x => new { x.SiteId, x.AlertTypeId })
+                .Select(g => g.First()));
+            return result;
         }
 
         //public JsonResult GetDivisionByZoneId(int zoneId)
@@ -924,39 +949,26 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             public int FailurCount { get; set; }
         }
 
-        // Controller method — cached for 45 seconds to avoid ~1.8s DB hit on every page
+        // 2026-11-20 -- 616 parity: GetIOTCount returns the same cached AssetInfo/GetRDPMSHealthLive
+        // feed GetAssetList uses (filtered by Zone / Division / Site, 10-min per-user cache), not
+        // Asset/GetRDPMSHealthLiveDetails, which returned nothing for an Admin with no station picked
+        // and left the sensor popup's point-machine names blank. Only the popup lookup reads this.
         [HttpPost]
         public JsonResult GetIOTCount(Domain.SearchCriteria searchCriteria)
         {
+            RDPMSHealthLiveLister data;
             try
             {
-                // Build a cache key from the search criteria that vary per user/filter
-                string cacheKey = "IOTCount_" + ClsHttpContent.LoginUser.Id
-                    + "_" + (searchCriteria.ZoneIds != null ? string.Join(",", searchCriteria.ZoneIds) : "")
-                    + "_" + (searchCriteria.DivisionIds != null ? string.Join(",", searchCriteria.DivisionIds) : "")
-                    + "_" + (searchCriteria.SiteIds != null ? string.Join(",", searchCriteria.SiteIds) : "");
-
-                var cached = MemoryCache.Default.Get(cacheKey);
-                if (cached != null)
-                {
-                    var jsonResultCached = Json(cached, JsonRequestBehavior.AllowGet);
-                    jsonResultCached.MaxJsonLength = Int32.MaxValue;
-                    return jsonResultCached;
-                }
-
-                var data = GetRDPMSHealthLive(searchCriteria);
-                MemoryCache.Default.Set(cacheKey, data, DateTimeOffset.UtcNow.AddSeconds(45));
-
-                var jsonResult = Json(data, JsonRequestBehavior.AllowGet);
-                jsonResult.MaxJsonLength = Int32.MaxValue;
-                return jsonResult;
+                data = BindDashboardHealthData(searchCriteria);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                var jsonResult = Json(GetRDPMSHealthLive(searchCriteria), JsonRequestBehavior.AllowGet);
-                jsonResult.MaxJsonLength = Int32.MaxValue;
-                return jsonResult;
+                data = new RDPMSHealthLiveLister();
             }
+
+            var jsonResult = Json(data, JsonRequestBehavior.AllowGet);
+            jsonResult.MaxJsonLength = Int32.MaxValue;
+            return jsonResult;
         }
 
         // Sensor live data — polled every 60s from the dashboard.
@@ -1034,7 +1046,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             var mFRSAlerts = new List<Domain.FRSAlert>();
             int requestedTypeId = mFRSAlertLister.SearchCriteria.AssetTypeId;
-            mFRSAlertLister.SearchCriteria.AlertStatus = (int)E7FRSAdvance.Utility.Utility.AlertStatus.Active;
+            // 616 parity: popup lists the same Pending-acknowledgement alerts the card counts (no AlertStatus filter)
+            mFRSAlertLister.SearchCriteria.IsAcknowledgement = false;
+            if (mFRSAlertLister.SearchCriteria.AcknowledgemenStatusIds == null)
+                mFRSAlertLister.SearchCriteria.AcknowledgemenStatusIds = new List<int>();
+            mFRSAlertLister.SearchCriteria.AcknowledgemenStatusIds.Add((int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.Pending);
             // Calling / Route / Shunt cards (virtual ids) query the API as SIGNAL
             mFRSAlertLister.SearchCriteria.AssetTypeId = Helper.SignalAspect.ToApiAssetTypeId(requestedTypeId);
             // Same source as the cards (and 616), so the popup lists what the card counts

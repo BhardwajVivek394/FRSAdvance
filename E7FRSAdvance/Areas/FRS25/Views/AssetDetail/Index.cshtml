@@ -170,6 +170,7 @@
                 <div class="filter-item"><label>Station</label><div class="select-btn" id="btnSite" data-target="ddSite"><span class="text" id="txtSite">All</span><i class="fas fa-chevron-down"></i></div></div>
                 <div class="filter-item"><label>Asset Type</label><div class="select-btn" id="btnAssetType" data-target="ddAssetType"><span class="text" id="txtAssetType">All</span><i class="fas fa-chevron-down"></i></div></div>
                 <div class="filter-item"><label>Asset Make</label><div class="select-btn" id="btnAssetMake" data-target="ddAssetMake"><span class="text" id="txtAssetMake">All</span><i class="fas fa-chevron-down"></i></div></div>
+                <div class="filter-item"><label>Asset Number</label><div class="select-btn" id="btnAssetNumber" data-target="ddAssetNumber"><span class="text" id="txtAssetNumber">All</span><i class="fas fa-chevron-down"></i></div></div>
                 <div class="filter-item"><label>&nbsp;</label><button type="button" class="btn-search" id="btnSearch" onclick="asSearch()"><i class="fa-solid fa-magnifying-glass"></i></button></div>
             </div>
         </div>
@@ -209,6 +210,11 @@
             <div class="dropdown-search"><input type="text" placeholder="Search asset make..." onkeyup="asFilterDropdown('assetMake', this.value)"></div>
             <div class="dropdown-header"><input type="checkbox" id="chkAllAssetMake"><label for="chkAllAssetMake">Select All</label></div>
             <div class="dropdown-list" id="listAssetMake"><div class="dropdown-empty">Select a station first</div></div><div class="dropdown-no-results">No results found</div>
+        </div>
+        <div class="filter-dropdown" id="ddAssetNumber">
+            <div class="dropdown-search"><input type="text" placeholder="Search asset number..." onkeyup="asFilterDropdown('assetNumber', this.value)"></div>
+            <div class="dropdown-header"><input type="checkbox" id="chkAllAssetNumber"><label for="chkAllAssetNumber">Select All</label></div>
+            <div class="dropdown-list" id="listAssetNumber"><div class="dropdown-empty">Select Station &amp; Asset Type</div></div><div class="dropdown-no-results">No results found</div>
         </div>
     </div></div></div></div>
 
@@ -353,7 +359,7 @@
     // =====================================================================
     //  UTILS
     // =====================================================================
-    function asCap(s) { if (s === 'assetType') return 'AssetType'; if (s === 'assetMake') return 'AssetMake'; return s.charAt(0).toUpperCase() + s.slice(1); }
+    function asCap(s) { if (s === 'assetType') return 'AssetType'; if (s === 'assetMake') return 'AssetMake'; if (s === 'assetNumber') return 'AssetNumber'; return s.charAt(0).toUpperCase() + s.slice(1); }
     function asEsc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
     function asEscRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
     function asGetValues(type) { var v = []; $('.cb-' + type + ':checked').each(function () { v.push($(this).val()); }); return v; }
@@ -434,8 +440,8 @@
         $('#chkAll' + asCap(type)).prop('checked', false); $('#txt' + asCap(type)).text('All');
     }
     function asResetDownstream(changed) {
-        var order = ['zone', 'division', 'site', 'assetType', 'assetMake'], idx = order.indexOf(changed);
-        for (var i = idx + 1; i < order.length; i++) { var t = order[i]; if (t === 'assetMake' || t === 'assetType') asMsg(t, 'Select a station first'); else asClear(t); }
+        var order = ['zone', 'division', 'site', 'assetType', 'assetMake', 'assetNumber'], idx = order.indexOf(changed);
+        for (var i = idx + 1; i < order.length; i++) { var t = order[i]; if (t === 'assetNumber') asMsg(t, 'Select Station &amp; Asset Type'); else if (t === 'assetMake' || t === 'assetType') asMsg(t, 'Select a station first'); else asClear(t); }
     }
     function asLoadDivisions() {
         var zoneIds = asGetValues('zone').map(Number); asResetDownstream('division');
@@ -463,6 +469,26 @@
                     $('#listAssetType').html(html);
                 } else asMsg('assetType', 'No asset types found');
             }, error: function () { asMsg('assetType', 'Failed to load asset types'); } });
+        asLoadMakes();   // 616: makes load as soon as a station is selected (all types)
+    }
+    // 616 Utilization: Asset Number list for the selected stations + asset types (sent as AssetIds)
+    var _asNumXhr = null;
+    function asLoadAssetNumbers() {
+        var siteIds = asGetValues('site').filter(function (id) { return id && id !== '0'; });
+        var typeIds = asGetValues('assetType').filter(function (id) { return id && id !== '0'; });
+        if (_asNumXhr) { _asNumXhr.abort(); _asNumXhr = null; }
+        if (!siteIds.length || !typeIds.length) { asMsg('assetNumber', 'Select Station &amp; Asset Type'); return; }
+        $('#listAssetNumber').html('<div class="dropdown-empty">Loading...</div>'); asResetText('assetNumber');
+        _asNumXhr = $.ajax({ url: '/FRS25/AssetDetail/GetUtilizationAssestBy', type: 'POST', contentType: 'application/json', dataType: 'json',
+            data: JSON.stringify({ assetTypeIds: typeIds, siteIds: siteIds }),
+            success: function (data) {
+                var seen = {}, list = [];
+                if (data && data.length) data.forEach(function (it) { if (it && it.Id && !seen[it.Id]) { seen[it.Id] = true; list.push({ Id: it.Id, Name: it.Name || it.AssetName || '' }); } });
+                list.sort(function (a, b) { return (a.Name || '').localeCompare(b.Name || ''); });
+                if (list.length) asBuildList('assetNumber', list, 'Id', 'Name'); else asMsg('assetNumber', 'No assets found');
+            },
+            error: function (x, s) { if (s === 'abort') return; asMsg('assetNumber', 'No assets found'); },
+            complete: function () { _asNumXhr = null; } });
     }
     function asLoadMakes() {
         var siteIds = asGetValues('site').map(Number);
@@ -493,7 +519,7 @@
     }
     function asFetchUtil(siteIds, typeIds, days) {
         var r = asRange(days);
-        var payload = { SearchCriteria: { ZoneIds: asGetValues('zone'), DivisionIds: asGetValues('division'), SiteIds: siteIds, AssetTypeIds: typeIds, AssetIds: [], StartDate: asToServerDate(r.from), EndDate: asToServerDate(r.to) } };
+        var payload = { SearchCriteria: { ZoneIds: asGetValues('zone'), DivisionIds: asGetValues('division'), SiteIds: siteIds, AssetTypeIds: typeIds, AssetIds: asGetValues('assetNumber'), StartDate: asToServerDate(r.from), EndDate: asToServerDate(r.to) } };
         return $.ajax({ url: '/FRS25/AssetDetail/_Utilization', type: 'POST', contentType: 'application/json', data: JSON.stringify(payload), dataType: 'html', timeout: AS_FETCH_TIMEOUT_MS });
     }
     function asSearch() {
@@ -741,12 +767,22 @@
     function asDrSearch(custom) {
         var g = asGroupIdx[asDrKey]; if (!g) return;
         var from, to;
-        if (custom) { from = $('#asDrFrom').val(); to = $('#asDrTo').val(); if (!from || !to) { asNotify('From and To dates are required.'); return; } $('#asDrChips button').removeClass('active'); }
+        if (custom) {
+            from = $('#asDrFrom').val(); to = $('#asDrTo').val();
+            if (!from || !to) { asNotify('From and To dates are required.'); return; }
+            // 616 Utilization date checks
+            var pd = function (s) { var p = s.split('/'); return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0])); };
+            var dFrom = pd(from), dTo = pd(to), today = new Date(); today.setHours(0, 0, 0, 0);
+            if (dFrom > today) { asNotify('From Date cannot be a future date'); $('#asDrFrom').focus(); return; }
+            if (dTo > today) { asNotify('To Date cannot be a future date'); $('#asDrTo').focus(); return; }
+            if (dFrom > dTo) { asNotify('From Date must be less than or equal to To Date'); $('#asDrFrom').focus(); return; }
+            $('#asDrChips button').removeClass('active');
+        }
         else { var r = asRange(asDrDays); from = r.from; to = r.to; }
         if (g.siteId == null || g.typeId == null || Number(g.siteId) <= 0) { $('#asDrTop').html('<div class="asx-dr-msg">Utilization unavailable: this row has no station / asset type id.</div>'); return; }
         if (_asDrXhr) _asDrXhr.abort();
         $('#asDrSearchBtn').prop('disabled', true); $('#asDrChart').css('opacity', .5);
-        var payload = { SearchCriteria: { SiteIds: [String(g.siteId)], AssetTypeIds: [String(g.typeId)], AssetIds: [], StartDate: asToServerDate(from), EndDate: asToServerDate(to) } };
+        var payload = { SearchCriteria: { SiteIds: [String(g.siteId)], AssetTypeIds: [String(g.typeId)], AssetIds: asGetValues('assetNumber'), StartDate: asToServerDate(from), EndDate: asToServerDate(to) } };
         _asDrXhr = $.ajax({ url: '/FRS25/AssetDetail/_Utilization', type: 'POST', contentType: 'application/json', data: JSON.stringify(payload), dataType: 'html',
             success: function (html) {
                 asDrPts = [];
@@ -821,19 +857,19 @@
         $('.select-btn').on('click', function (e) { e.stopPropagation(); asToggleDD($(this).data('target'), this); });
         $('#backdrop').on('click', asCloseDD);
         $(document).on('click', '.dropdown-search', function (e) { e.stopPropagation(); });
-        $(document).on('click', '#ddZone .dropdown-item, #ddDivision .dropdown-item, #ddSite .dropdown-item, #ddAssetType .dropdown-item, #ddAssetMake .dropdown-item', function (e) {
+        $(document).on('click', '#ddZone .dropdown-item, #ddDivision .dropdown-item, #ddSite .dropdown-item, #ddAssetType .dropdown-item, #ddAssetMake .dropdown-item, #ddAssetNumber .dropdown-item', function (e) {
             e.stopPropagation();
             var $cb = $(this).find('input[type="checkbox"]');
             if (!$(e.target).is('input[type="checkbox"]')) $cb.prop('checked', !$cb.prop('checked'));
             $(this).toggleClass('checked', $cb.prop('checked'));
             var type = ($cb.attr('class') || '').replace('cb-', '');
             asUpdateAllState(type); asUpdateText(type);
-            if (type === 'zone') asLoadDivisions(); else if (type === 'division') asLoadSites(); else if (type === 'site') asLoadAssetTypes(); else if (type === 'assetType') asLoadMakes();
+            if (type === 'zone') asLoadDivisions(); else if (type === 'division') asLoadSites(); else if (type === 'site') asLoadAssetTypes(); else if (type === 'assetType') { asLoadMakes(); asLoadAssetNumbers(); }
         });
         $(document).on('click', '.dropdown-header', function (e) {
             e.stopPropagation();
             var $chk = $(this).find('input[type="checkbox"]'), raw = $chk.attr('id').replace('chkAll', ''), type = raw.charAt(0).toLowerCase() + raw.slice(1);
-            var apply = function (st) { asSelectAll(type, st); if (type === 'zone') asLoadDivisions(); else if (type === 'division') asLoadSites(); else if (type === 'site') asLoadAssetTypes(); else if (type === 'assetType') asLoadMakes(); };
+            var apply = function (st) { asSelectAll(type, st); if (type === 'zone') asLoadDivisions(); else if (type === 'division') asLoadSites(); else if (type === 'site') asLoadAssetTypes(); else if (type === 'assetType') { asLoadMakes(); asLoadAssetNumbers(); } };
             if ($(e.target).is('input[type="checkbox"]') || $(e.target).is('label')) setTimeout(function () { apply($chk.prop('checked')); }, 0); else { var ns = !$chk.prop('checked'); $chk.prop('checked', ns); apply(ns); }
         });
 
