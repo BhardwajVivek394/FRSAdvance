@@ -31,19 +31,12 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         [HttpGet]
         public async Task<ActionResult> GetSites()
         {
-            var u = ClsHttpContent.LoginUser;
-            var siteIds = (u != null && u.UserSites != null) ? u.UserSites.Select(x => x.SiteId).ToList() : new List<int>();
             try
             {
+                var allowed = await AiSiteAccess.GetAllowedSiteIdsAsync();   // same site set as the rest of the app (Admin = all)
                 var r = await client.GetAsync("api/historian/sites"); var j = await r.Content.ReadAsStringAsync();
                 if (!r.IsSuccessStatusCode) return new HttpStatusCodeResult((int)r.StatusCode, j);
-                if (siteIds.Any())
-                {
-                    var allowed = new HashSet<int>(siteIds);
-                    var sites = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(j);
-                    sites = sites.Where(s => s.ContainsKey("SiteId") && allowed.Contains(Convert.ToInt32(s["SiteId"]))).ToList();
-                    j = JsonConvert.SerializeObject(sites);
-                }
+                j = AiSiteAccess.FilterSiteArray(j, allowed, "SiteId");
                 return Content(j, "application/json");
             }
             catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); }

@@ -52,7 +52,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         //  GET /FRS25/ChatBot/Index — the fullscreen chat page itself
         // ═════════════════════════════════════════════════════════
         // v1.1.0: there was NO version constant in this file -- you could not tell what was deployed.
-        public const string ComponentVersion = "1.5.0.0";   // 1.5.0.0: chat-app UI (Views\ChatBot\Index.cshtml); controller logic unchanged since 1.4.1.0.   // 1.4.0.0: logic -> E7.AiCore.ChatEngine, bash removed; 1.4.1.0: [Authenticate] on, 13 copies -> shared core implementations
+        public const string ComponentVersion = "1.6.0.1";   // 1.6.0.1: fast plan service reads now run with the request HttpContext (they failed silently on pool threads), FASTPLAN lines in ai-log, empty site list never cached.   // 1.6.0.0: ChatBotNew merged in -- fast maintenance plan (ChatBotController.FastPlan.cs, off unless ChatBotFastPlan=true), plan cards in the view, per-chat usage log line.   // 1.5.0.0: chat-app UI (Views\ChatBot\Index.cshtml); controller logic unchanged since 1.4.1.0.   // 1.4.0.0: logic -> E7.AiCore.ChatEngine, bash removed; 1.4.1.0: [Authenticate] on, 13 copies -> shared core implementations
 
         public ActionResult Index()
         {
@@ -178,6 +178,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             Engine._chatPrivileged = _privileged;   // v1.2.4.0: the tool merge runs post-await
             Engine._chatStations = ChatEngine.GetAssignedStations();   // v1.2.9.6 (#2): LoginUser is null after the first await
             Engine._chatStationNames = ResolveStationNames(Engine._chatStations);   // v1.0.182.0
+            string chatUser = ChatUserId();   // 1.6.0.0 (from ChatBotNew): read before the first await (LoginUser is null after it)
+            CaptureFastPlanContext();         // 1.6.0.0 (from ChatBotNew): LoginUser and services, before the first await
             string body;
             using (System.IO.StreamReader sr = new System.IO.StreamReader(Request.InputStream, Encoding.UTF8))
                 body = await sr.ReadToEndAsync().ConfigureAwait(false);
@@ -192,6 +194,7 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 _reqProv = ChatEngine.ResolveEngineAlias(_reqProv);   // v1.2.7.0: opaque id -> raw provider BEFORE gating
                 Engine._provider = Engine.GateProviderForRole(_reqProv, _privileged);
                 Engine._pageContext = payload["pageContext"] as JObject;   // v1.2.9.6 (#5): optional sub-page context
+                LogChatUsage(chatUser);   // 1.6.0.0 (from ChatBotNew): one CHATBOT line per chat
                 if (messagesRaw == null) messagesRaw = new JArray();
             }
             catch
@@ -233,7 +236,14 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     return new EmptyResult();
                 }
 
-                await Engine.RunAgenticLoop(messagesRaw).ConfigureAwait(false);
+                // 1.6.0.0 (from ChatBotNew 1.3.0.0): a maintenance-plan question is answered by the fast
+                // plan path; every other question, and any fast-plan failure, runs the agentic loop
+                // exactly as before. Off unless ChatBotFastPlan=true.
+                bool planHandled = await TryRunFastPlanAsync(messagesRaw).ConfigureAwait(false);
+                if (!planHandled)
+                {
+                    await Engine.RunAgenticLoop(messagesRaw).ConfigureAwait(false);
+                }
             }
             catch (Exception ex)
             {
@@ -245,6 +255,35 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             }
 
             return new EmptyResult();
+        }
+
+        // 1.6.0.0 (from ChatBotNew 1.0.194.0): who used which engine/model, one line per chat.
+        private static string ChatUserId()
+        {
+            try
+            {
+                var lu = E7FRSAdvance.Utility.ClsHttpContent.LoginUser;
+                return lu == null ? "" : lu.Id.ToString();
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private void LogChatUsage(string chatUser)
+        {
+            try
+            {
+                string model = "";
+                try { model = Engine.AiRow != null ? (Engine.AiRow.ModelName ?? "") : ""; } catch { model = ""; }
+                E7.AiCore.AnalysisEngine.AiLogStatic("INFO", "CHATBOT", "page=ChatBot engine=" + Engine._provider
+                    + " provider=" + Engine.ProviderKind + " model=" + model + " user=" + chatUser);
+            }
+            catch
+            {
+                // logging must never break a chat
+            }
         }
 
         private void WriteSse(string type, object data)

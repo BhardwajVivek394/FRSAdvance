@@ -5632,10 +5632,9 @@ var netWirelessFaulty =
  */
 var netUniverseTotal = nfNetworkUniverseTotal();
 if (netUniverseTotal > 0) {
-    /* Wired universe excludes wireless-only clusters (WireguardIP null). */
-    netWiredTotal = Math.max(0, netUniverseTotal -
-        ((typeof window.nfWirelessOnlyClusterCount === 'function')
-            ? window.nfWirelessOnlyClusterCount() : 0));
+    /* Wired total = every cluster, same as 616. CardLine WireguardIP only
+       drives the per-row Wired/Wireless badge, not this KPI. */
+    netWiredTotal = netUniverseTotal;
     netWirelessTotal = netUniverseTotal;
     netWiredFaulty = Math.min(netWiredFaulty, netWiredTotal);
     netWirelessFaulty = Math.min(netWirelessFaulty, netUniverseTotal);
@@ -8082,6 +8081,7 @@ sensorFaults = _picSensorFaults;
             var ai = infos[i];
             if (!ai) { continue; }
             if (String(ai.AssetId) !== String(assetId)) { continue; }
+            if (rdpmsIsUnsensedTrackAttr(ai)) { continue; }
             if (siteId && ai.SiteId != null &&
                 String(ai.SiteId) !== String(siteId)) { continue; }
 
@@ -8161,6 +8161,78 @@ sensorFaults = _picSensorFaults;
         return window.rdpmsCollapsePmAttributes
             ? window.rdpmsCollapsePmAttributes(assetId, raw, siteId)
             : raw;
+    }
+
+    /* Track derived values (ref: Telemetry Live WS_IGNORED_TRACK_DERIVED_NAMES)
+       are calculated, not sensed, so they have no sensor of their own and are
+       left out of the sensor drawer. Matched by normalized name, since the
+       AttrId differs per site. */
+    var RDPMS_IGNORED_DERIVED_NAMES = {
+        itcbattcharg: true,
+        vtcvarres: true,
+        rtcchfeedend: true,
+        rtcchrelayend: true,
+        rtcvarres: true,
+        rrail: true,
+        ibalst: true,
+        iblast: true
+    };
+
+    /* Names carry a unit suffix ('IBLAST(A)', 'RRAIL (Ohm)'), so drop any
+       trailing "(...)" before normalizing. */
+    function rdpmsDerivedKey(n) {
+        return String(n || '').replace(/\s*\([^)]*\)\s*$/, '')
+            .toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function rdpmsIsDerivedAttrName(name) {
+        if (RDPMS_IGNORED_DERIVED_NAMES[rdpmsDerivedKey(name)] === true) { return true; }
+        var alias = window.rdpmsAliasForAttributeName
+            ? window.rdpmsAliasForAttributeName(name) : '';
+        return RDPMS_IGNORED_DERIVED_NAMES[rdpmsDerivedKey(alias)] === true;
+    }
+
+    /* TRACK attributes with no physical sensor: calculated values, and
+       attributes configured in mAssetInfos with no CardLine channel (for
+       example VTC RELAY END at Bhinwaliya and Somesar). The tile and the
+       drawer both skip these, so Total reads the wired channel count.
+       AssetInfo.AssetAttributeId carries the same id as CardLine.AttributeId.
+       An asset with no CardLine ids to compare is kept, not hidden on a guess. */
+    var _rdpmsTrackWired = null;
+
+    function rdpmsTrackWiredIndex() {
+        var rows = (window.json && $.isArray(window.json.mCardLines))
+            ? window.json.mCardLines : [];
+        if (_rdpmsTrackWired && _rdpmsTrackWired.rows === rows) {
+            return _rdpmsTrackWired;
+        }
+
+        var idx = { rows: rows, assets: {}, attrs: {} };
+        for (var i = 0; i < rows.length; i++) {
+            var cl = rows[i];
+            if (!cl || cl.AssetId == null || cl.AttributeId == null) { continue; }
+            var aid = String(cl.AssetId).trim();
+            idx.assets[aid] = true;
+            idx.attrs[aid + '|' + String(cl.AttributeId).trim()] = true;
+        }
+
+        _rdpmsTrackWired = idx;
+        return idx;
+    }
+
+    function rdpmsIsUnsensedTrackAttr(ai) {
+        if (!ai || String(ai.AssetTypeId).trim() !== '1') { return false; }
+
+        if (rdpmsIsDerivedAttrName(ai.AttributeAliasName || ai.AliasName ||
+            ai.AttributeName || ai.AssetAttributeName)) { return true; }
+
+        var idx = rdpmsTrackWiredIndex();
+        var aid = String(ai.AssetId).trim();
+        if (!idx.assets[aid]) { return false; }
+
+        var gid = ai.AttributeId != null ? String(ai.AttributeId).trim() : '';
+        var lid = ai.AssetAttributeId != null ? String(ai.AssetAttributeId).trim() : '';
+        return !(idx.attrs[aid + '|' + gid] || idx.attrs[aid + '|' + lid]);
     }
 
     /* Attribute-level status list for the sensor drawer: every configured
@@ -11249,11 +11321,10 @@ if (_nwHealthyModems.length) {
                         ? String(parseInt(cluster.clusterId, 10))
                         : '';
 
-                /* Wireless-only modem (CardLine WireguardIP null): it is not
-                   part of the Wired universe at all, Online or Faulty. */
-                var _hasWired =
-                    nfModemHasWired(clusterSiteId, cluster.modemId) !== false;
-                if (_hasWired) { wiredTotal++; }
+                /* Wired KPI counts every modem, same as 616 - CardLine
+                   WireguardIP only drives the per-row badge, not this count. */
+                var _hasWired = true;
+                wiredTotal++;
 
                 var flagValue = null;
 
@@ -12665,7 +12736,10 @@ if (_nwHealthyModems.length) {
             for (var ii = 0; ii < _vinfos.length; ii++) {
                 var ai = _vinfos[ii];
                 if (!ai) { continue; }
-                if (sel && sel.indexOf(window.rdpmsInfoAssetTypeId(ai)) === -1) { continue; }
+
+                if (sel && ai.AssetTypeId != null &&
+                    sel.indexOf(String(ai.AssetTypeId).trim()) === -1) { continue; }
+                if (rdpmsIsUnsensedTrackAttr(ai)) { continue; }
                 if (ai.SiteId != null && !_siteOk(String(ai.SiteId))) { continue; }
 
                 var _sid = String(ai.SiteId != null ? ai.SiteId : '');
@@ -13278,7 +13352,9 @@ console.log(
             for (var ii = 0; ii < vinfos.length; ii++) {
                 var ai = vinfos[ii];
                 if (!ai) { continue; }
-                if (sel && sel.indexOf(rdpmsInfoAssetTypeId(ai)) === -1) { continue; }
+                if (sel && ai.AssetTypeId != null &&
+                    sel.indexOf(String(ai.AssetTypeId).trim()) === -1) { continue; }
+                if (rdpmsIsUnsensedTrackAttr(ai)) { continue; }
                 if (ai.SiteId != null && !_siteOk(ai.SiteId)) { continue; }
 
                 var _sid = String(ai.SiteId != null ? ai.SiteId : '');
@@ -13369,11 +13445,9 @@ console.log(
                frame that omits modemTotal. */
             var netTotal = (g.modemTotal > 0) ? g.modemTotal : g.clustersTotal;
 
-            /* Wired denominator excludes wireless-only modems (CardLine
-               WireguardIP null) - they have no Wired link to be up or down. */
-            var _wOnly = (typeof window.nfWirelessOnlyModemCount === 'function')
-                ? window.nfWirelessOnlyModemCount(sid) : 0;
-            var wiredNetTotal = Math.max(0, netTotal - _wOnly);
+            /* Wired denominator = every modem, same as 616. CardLine
+               WireguardIP only drives the per-row badge, not this KPI. */
+            var wiredNetTotal = netTotal;
             var _wDown = Math.min(Math.max(0, g.modemWiredDown || 0), wiredNetTotal);
 
             wiredFaulty += _wDown;
@@ -13485,15 +13559,10 @@ console.log(
      *   Partial selection -> filtered row/inventory calculation owns it.
      */
     if (rdpmsTileOwner() === 'summary') {
-        /* Total uses the SAME inventory counter as a single-type search
-           (point machine A/B collapse, vibration merge, de-dup), so the
-           per-type totals add up to the all-types total. The server's
-           station-wide sensorTotal counts raw channels and read 475 where
-           the per-type tiles summed to 479 (GCBC). It stays the fallback
-           when the page has no inventory. */
-        var _invAll = rdpmsCountSensorsFromInventory(null, sel);
-        if (_invAll > 0) { senTotal = Math.max(_invAll, senFaulty); }
-
+        /* Same as 616: the station-wide sensorHealthSummary total is the only
+           source while all asset types are selected. Overriding it with the
+           page's inventory count made the tile alternate between the two
+           numbers (flicker) and read lower than 616. */
         $('#spnTotalSensor')
             .removeData('nm-text')
             .text(senTotal)

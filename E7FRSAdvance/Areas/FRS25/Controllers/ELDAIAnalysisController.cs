@@ -37,10 +37,9 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 var j = await r.Content.ReadAsStringAsync();
                 if (!r.IsSuccessStatusCode) return new HttpStatusCodeResult((int)r.StatusCode, j);
 
-                var siteIds = ClsHttpContent.LoginUser.UserSites.Select(x => x.SiteId).ToList();
-                if (siteIds.Any())
+                var allowed = await AiSiteAccess.GetAllowedSiteIdsAsync();   // same site set as the rest of the app (Admin = all)
+                if (allowed != null)
                 {
-                    var allowed = new HashSet<int>(siteIds);
                     var wrapper = JsonConvert.DeserializeObject<Dictionary<string, object>>(j);
                     var sitesArray = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(wrapper["sites"].ToString());
                     sitesArray = sitesArray.Where(s => allowed.Contains(Convert.ToInt32(s["id"]))).ToList();

@@ -197,10 +197,10 @@ namespace E7FRSAdvance.MenuBuilder
             }
             trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Chatbot", ControllerName.ChatBot, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
 
-            if (loginUser.IsSiteKeeping || ClsHttpContent.LoginUser.EmailAddress.Trim() == "9410500007@energy7.in")
-            {
-                trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("ChatbotNew", ControllerName.ChatbotNew, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
-            }
+            //if (loginUser.IsSiteKeeping || ClsHttpContent.LoginUser.EmailAddress.Trim() == "9410500007@energy7.in")
+            //{
+            //    trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("ChatbotNew", ControllerName.ChatbotNew, ActionName.Index, FRSIconName.UserMgmt, "FRS25"));
+            //}
             if (loginUser.IsSiteKeeping || loginUser.RoleId == (int)E7FRSAdvance.Utility.Utility.Role.Admin)
             {
                 trackLeakage.Childs.Add(trackLeakage.SetMenuAttribute("Wisdom Manage", ControllerName.AiChat, ActionName.WisdomManage, FRSIconName.UserMgmt, "FRS25"));

@@ -5232,7 +5232,7 @@ function processItemsInternal(items) {
         var incomingTimestampDevice = d.TimestampDevice || null;
 
 
-        if (existingAttr && existingAttr.TimestampDevice && incomingTimestampDevice) {
+        if (existingAttr && existingAttr.TimestampDevice && incomingTimestampDevice && tlSameAttrSlot(existingAttr, d)) {
             var existingDeviceTs = new Date(existingAttr.TimestampDevice).getTime();
             var newDeviceTs = new Date(incomingTimestampDevice).getTime();
 
@@ -5843,43 +5843,11 @@ function renderRDPMSView() {
             }
         }
 
-        // Get current values
-        var rgMa = val('RG mA');
-        var dgMa = val('DG mA');
-        var hgMa = val('HG mA');
-        var hhgMa = val('HHG mA');
+        // 616 parity (SL#1): aspect from the single maintained signalState, same as the painter.
 
-        // Check relay states
-        var recrPickup = isRelayPickup('RECR');
-        var decrPickup = isRelayPickup('DECR');
-        var hecrPickup = isRelayPickup('HECR');
-        var hhecrPickup = isRelayPickup('HHECR');
+        var _ss = getSignalState(assetId);
 
-        // Determine aspect based on formula (same as updateMainSignalLights)
-        // Priority: RED (1) > DOUBLE YELLOW (2) > SINGLE YELLOW (3) > GREEN (4) > INACTIVE (99)
-
-        // RED: RECR=1 OR RG mA > threshold
-        if (recrPickup || rgMa > threshold) {
-            return { aspect: 'RED', priority: 1, armCount: armCount };
-        }
-
-        // DOUBLE YELLOW: (HECR=1 & HHECR=1) OR HHG mA > threshold
-        if ((hecrPickup && hhecrPickup) || hhgMa > threshold) {
-            return { aspect: 'DOUBLE_YELLOW', priority: 2, armCount: armCount };
-        }
-
-        // SINGLE YELLOW: HECR=1 OR HG mA > threshold
-        if (hecrPickup || hgMa > threshold) {
-            return { aspect: 'SINGLE_YELLOW', priority: 3, armCount: armCount };
-        }
-
-        // GREEN: DECR=1 OR DG mA > threshold
-        if (decrPickup || dgMa > threshold) {
-            return { aspect: 'GREEN', priority: 4, armCount: armCount };
-        }
-
-        // No aspect matched - INACTIVE (dark signal)
-        return { aspect: 'INACTIVE', priority: 99, armCount: armCount };
+        return { aspect: _ss.aspect, priority: _signalAspectPriority(_ss.aspect), armCount: armCount };
     }
 
     // Separate main signals from shunt signals
@@ -6230,34 +6198,11 @@ function doReorderRdpmsCards() {
             }
         }
 
-        var rgMa = val('RG mA');
-        var dgMa = val('DG mA');
-        var hgMa = val('HG mA');
-        var hhgMa = val('HHG mA');
+        // 616 parity (SL#1): aspect from the single maintained signalState, same as the painter.
 
-        var recrPickup = isRelayPickup('RECR');
-        var decrPickup = isRelayPickup('DECR');
-        var hecrPickup = isRelayPickup('HECR');
-        var hhecrPickup = isRelayPickup('HHECR');
+        var _ss = getSignalState(assetId);
 
-        // RED
-        if (recrPickup || rgMa > threshold) {
-            return { aspect: 'RED', priority: 1, armCount: armCount };
-        }
-        // DOUBLE YELLOW
-        if ((hecrPickup && hhecrPickup) || hhgMa > threshold) {
-            return { aspect: 'DOUBLE_YELLOW', priority: 2, armCount: armCount };
-        }
-        // SINGLE YELLOW
-        if (hecrPickup || hgMa > threshold) {
-            return { aspect: 'SINGLE_YELLOW', priority: 3, armCount: armCount };
-        }
-        // GREEN
-        if (decrPickup || dgMa > threshold) {
-            return { aspect: 'GREEN', priority: 4, armCount: armCount };
-        }
-        // INACTIVE
-        return { aspect: 'INACTIVE', priority: 99, armCount: armCount };
+        return { aspect: _ss.aspect, priority: _signalAspectPriority(_ss.aspect), armCount: armCount };
     }
 
     // Sort function: aspect priority -> arm count -> name
@@ -18255,7 +18200,7 @@ function processSingleLiveUpdateFixed(d) {
     //        return; // Skip older or same timestamp data - always show live
     //    }
     //}
-    if (existingAttr && existingAttr.TimestampDevice && incomingTimestampDevice) {
+    if (existingAttr && existingAttr.TimestampDevice && incomingTimestampDevice && tlSameAttrSlot(existingAttr, d)) {
         var existingDeviceTs = new Date(existingAttr.TimestampDevice).getTime();
         var newDeviceTs = new Date(incomingTimestampDevice).getTime();
 
@@ -19250,7 +19195,7 @@ function processItemsFixed(items) {
         var existingAttr = wsLiveData[aid].attrs[attrName];
         var incomingTimestampDevice = d.TimestampDevice || null;
 
-        if (existingAttr && existingAttr.TimestampDevice && incomingTimestampDevice) {
+        if (existingAttr && existingAttr.TimestampDevice && incomingTimestampDevice && tlSameAttrSlot(existingAttr, d)) {
             var existingDeviceTs = new Date(existingAttr.TimestampDevice).getTime();
             var newDeviceTs = new Date(incomingTimestampDevice).getTime();
 
@@ -23270,8 +23215,13 @@ function tlBulkSchedulePlaceholderRender(delayMs) {
                     if (liveAsset && liveAsset.dlRelays) {
                         var rawAttr = dl.AssetAttributeName;
                         // If the raw key exists and points to same data as display key, remove raw
+                        // Only when both keys really hold the SAME relay object. resolvedName comes
+                        // from the mixed id/Role map; on an id collision (Bhestan S12: HHECR id 47 =
+                        // RECR Role 47) it names a different relay, and re-pointing rawAttr would hide
+                        // the real HHECR/RECR entry from isSignalRelayPickup (616 has no such step).
                         if (liveAsset.dlRelays.hasOwnProperty(rawAttr) &&
-                            liveAsset.dlRelays.hasOwnProperty(resolvedName)) {
+                            liveAsset.dlRelays.hasOwnProperty(resolvedName) &&
+                            liveAsset.dlRelays[rawAttr] === liveAsset.dlRelays[resolvedName]) {
                             // Make raw key non-enumerable so it doesn't show as duplicate pill
                             try {
                                 var relayRef = liveAsset.dlRelays[resolvedName];
@@ -23581,7 +23531,7 @@ function getSignalAspectGlobal(assetId) {
 
     var attrs = asset.attrs || {};
     var dlRelays = asset.dlRelays || {};
-    var threshold = parseFloat(asset.ZeroOffsetValue || RDPMS_DEFAULT_THRESHOLD);
+    var threshold = parseFloat(asset.ZeroOffsetValue || 0.1);
 
     function val(name) {
         if (attrs[name] && attrs[name].Value !== null && attrs[name].Value !== undefined) {
@@ -23637,10 +23587,7 @@ function getSignalThreshold(assetId) {
     var a = wsLiveData[assetId];
     var v = a ? parseFloat(a.ZeroOffsetValue) : NaN;
     if (!isNaN(v) && v > 0) return { value: v, source: 'asset' };
-    // Match the old updateMainSignalLights() fallback (RDPMS_DEFAULT_THRESHOLD = 5.0).
-    // 0.1 let OFF-lamp residual/leakage currents (0.3–3 mA on HG) register as active,
-    // making SINGLE_YELLOW beat a genuinely lit DG in the most-restrictive-wins pick.
-    return { value: RDPMS_DEFAULT_THRESHOLD, source: 'default' };
+    return { value: 0.1, source: 'default' };   // 616 parity: governs only pre-fetch/uncovered gap
 }
 
 function _signalAspectPriority(aspect) {
@@ -24067,28 +24014,6 @@ function computeSignalState(assetId) {
         if (chosen) { aspect = chosen.aspect; activeLamp = chosen.activeLamp; source = chosen.source; }
     }
 
-    // ============================================================================
-    // S-35 / 2-ASPECT RESOLVER (clearance item #2). A 2-aspect head exposes only
-    // RG + HG lamps (no DG/HHG). Reusing the 4-aspect ladder above can leave such a
-    // head INACTIVE when every freshness-aware tier abstains (e.g. HG dark and RG's
-    // IsFresh flag withheld on the first paint) even though RECR / an energised RG
-    // clearly mean RED. Resolve explicitly here, and never allow a dark head while
-    // RG is energised. Runs ONLY when nothing above resolved, so it can never
-    // override a real aspect.
-    if (aspect === 'INACTIVE') {
-        var _isTwoAspect = rg.present && hg.present && !dg.present && !hhg.present;
-        var _rgOn = (rg.present && rg.value > thr);   // energised RG current
-        var _hgOn = (hg.present && hg.value > thr);   // energised HG current
-        var _rgEnergised = _rgOn || recr;             // current OR relay pickup
-        var _hgEnergised = _hgOn || hecr;
-        if (_isTwoAspect) {
-            if (_rgEnergised) { aspect = 'RED'; activeLamp = 'RG'; source = _rgOn ? 'RDPMS_2ASP' : 'DL_2ASP'; }
-            else if (_hgEnergised) { aspect = 'SINGLE_YELLOW'; activeLamp = 'HG'; source = _hgOn ? 'RDPMS_2ASP' : 'DL_2ASP'; }
-        }
-        // Fail-safe for ANY head type: an energised RG must never render dark.
-        if (aspect === 'INACTIVE' && _rgEnergised) { aspect = 'RED'; activeLamp = 'RG'; source = 'RG_FAILSAFE'; }
-    }
-
     // Informational source when no aspect resolved.
     if (aspect === 'INACTIVE') {
         source = (rgF || dgF || hgF || hhgF) ? 'RDPMS' : ((dlRelays && Object.keys(dlRelays).length > 0) ? 'DL' : 'NONE');
@@ -24188,6 +24113,15 @@ function needsCardRebuild(assetId) {
 }
 
 // [616:1108-1209] storeWsAttribute
+// 616 parity: the "skip strictly older" gate must only compare like with like. When
+// attrs[name] holds a DIFFERENT attribute id (e.g. a DataLogger relay sharing the name
+// of an RDPMS analog), its newer timestamp must not reject this message.
+function tlSameAttrSlot(existing, d) {
+    var exId = parseInt(existing.AssetAttributeId || existing.AttrId || 0, 10);
+    var inId = parseInt((d && d.AssetAttributeId) || 0, 10);
+    return !exId || !inId || exId === inId;
+}
+
 function storeWsAttribute(d) {
     if (!d) return null;
     var _rawFresh = (d.IsFresh !== undefined && d.IsFresh !== null) ? d.IsFresh : d.isFresh;
@@ -24220,13 +24154,12 @@ function storeWsAttribute(d) {
     if (!wsLiveData[aid].attrsById) wsLiveData[aid].attrsById = {};
     if (!wsLiveData[aid].dlRelays) wsLiveData[aid].dlRelays = {};
     // false-preserving IsFresh (matches every other ingest path)
-    // PC-06: RawIsFresh-aware freshness via common parser (false wins; string/number handled)
-    var rawFresh = (d.RawIsFresh !== undefined && d.RawIsFresh !== null) ? d.RawIsFresh
-                 : ((d.IsFresh !== undefined && d.IsFresh !== null) ? d.IsFresh
-                 : ((d.rawIsFresh !== undefined && d.rawIsFresh !== null) ? d.rawIsFresh : d.isFresh));
-    var _ff = getFreshFlag(d);
-    var hasFreshFlag = (_ff !== null);
-    var isFresh = (_ff === true);
+    // 616 parity: signal freshness comes from the server IsFresh flag ONLY. The PC-06
+    // variant preferred RawIsFresh, so a lamp with RawIsFresh=true / IsFresh=false was
+    // treated as fresh by computeSignalState and lit from a stale held value.
+    var rawFresh = (d.IsFresh !== undefined && d.IsFresh !== null) ? d.IsFresh : d.isFresh;
+    var hasFreshFlag = !(rawFresh === undefined || rawFresh === null);
+    var isFresh = (rawFresh === true || rawFresh === 'true' || rawFresh === 1 || rawFresh === '1');
     var broadcastKind = String(d.BroadcastKind || '').toLowerCase();
     // change tracking from the existing exact-key attr (preserves batch/single semantics)
     var existing = wsLiveData[aid].attrs[attrName];

@@ -42,23 +42,16 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         [HttpGet]
         public async Task<ActionResult> GetSites()
         {
-            var siteIds = ClsHttpContent.LoginUser.UserSites.Select(x => x.SiteId).ToList();
             try
             {
+                // Same site set as the rest of the app (Admin = all); see AiSiteAccess.
+                var allowed = await AiSiteAccess.GetAllowedSiteIdsAsync();
                 var r = await client.GetAsync("api/sites");
                 var j = await r.Content.ReadAsStringAsync();
                 if (!r.IsSuccessStatusCode)
                     return new HttpStatusCodeResult((int)r.StatusCode, j);
 
-                // Only return sites assigned to the logged-in user
-                if (siteIds.Any())
-                {
-                    var allowed = new HashSet<int>(siteIds);
-                    var sites = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(j);
-                    sites = sites.Where(s => allowed.Contains(Convert.ToInt32(s["id"]))).ToList();
-                    j = JsonConvert.SerializeObject(sites);
-                }
-
+                j = AiSiteAccess.FilterSiteArray(j, allowed, "id");
                 return Content(j, "application/json");
             }
             catch (Exception ex) { return new HttpStatusCodeResult(500, ex.Message); }

@@ -378,14 +378,45 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             var mFRSAlerts = new List<Domain.FRSAlert>();
             mFRSAlertLister.SearchCriteria.AlertStatus = (int)E7FRSAdvance.Utility.Utility.AlertStatus.Active;
-            // Same source as 616: GetListerWithPagination counts every active alert for every role.
-            // GetWithOutAcknowledgementAlert (FRSAlert/GetLister) also dropped acknowledged alerts and,
-            // for role User, watch-listed ones — so JE/SE saw fewer Predictive/Failure than Admin.
             if (mFRSAlertLister.Pager == null) mFRSAlertLister.Pager = new Domain.Pager();
             mFRSAlertLister.Pager.Take = -1;
-            mFRSAlertLister = _alertService.GetListerWithPagination(mFRSAlertLister);
 
-            if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts.Count > 0)
+            // 2026-11-19 -- 616 parity for the Predictive / Failure counts. 616 reads the dashboard's
+            // active alerts from FRSAlert/GetFRSAlertDashbord (spGetFRSAlertDashbord). 617 had moved
+            // first to FRSAlert/GetLister (dropped acknowledged and, for role User, watch-listed alerts)
+            // and then to FRSAlert/GetListerWithPagination (spGetFRSAlertWithPaginationV1), which still
+            // returned no open alerts where 616 shows them: Bhestan showed Point Machine 18/18 healthy and
+            // 0 failures in 617 against 15 healthy / 3 failures in 616, and Total Assets 97/97 healthy
+            // against 94 / 3. Same API, same endpoint, same parameters as 616 now.
+            mFRSAlertLister.SearchCriteria.RoleId = ClsHttpContent.LoginUser.RoleId;
+            mFRSAlertLister.SearchCriteria.UserId = ClsHttpContent.LoginUser.Id;
+            if (ClsHttpContent.LoginUser.IsSiteKeeping)
+                mFRSAlertLister.SearchCriteria.RoleId = (int)E7FRSAdvance.Utility.Utility.Role.Admin;
+
+            try
+            {
+                using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
+                {
+                    var jsonStr = JsonConvert.SerializeObject(mFRSAlertLister);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("FRSAlert/GetFRSAlertDashbord", str).Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        mFRSAlertLister = JsonConvert.DeserializeObject<Domain.FRSAlertLister>(jsonString);
+                    }
+                    else
+                    {
+                        mFRSAlertLister = null;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                mFRSAlertLister = null;
+            }
+
+            if (mFRSAlertLister != null && mFRSAlertLister.mFRSAlerts != null && mFRSAlertLister.mFRSAlerts.Count > 0)
             {
                 // 616 parity: Signal alerts move to the Calling / Route / Shunt card by CauseCode
                 foreach (var fRSAlert in mFRSAlertLister.mFRSAlerts)

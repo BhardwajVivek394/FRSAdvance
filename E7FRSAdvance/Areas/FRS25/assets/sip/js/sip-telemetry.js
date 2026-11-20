@@ -3202,24 +3202,6 @@
             if (lamps.DG && !lamps.DG.hasFresh && lamps.DG.Value > thr) cand.push({ aspect: 'GREEN', p: 4, v: lamps.DG.Value });
             chosen = pickBest(cand);
         }
-        /* S-35 two-aspect resolver + RG fail-safe — PARITY with the host
-           computeSignalState (telemetrylive.js). In SIP-only mode the host
-           store is empty so resolveSignalState falls back here; without this,
-           a 2-aspect RG+HG head whose RG mA is energised but server-flagged
-           IsFresh=false (and no RECR) would render dark in the schematic while
-           the Signal Card / Live view shows RED. Runs only when nothing above
-           resolved, so it can never override a real aspect. */
-        if (!chosen) {
-            var rgOn = !!(lamps.RG && lamps.RG.Value > thr);   // energised RG current (ignores fresh flag)
-            var hgOn = !!(lamps.HG && lamps.HG.Value > thr);
-            var rgEnergised = rgOn || recr;                    // current OR relay pickup
-            var hgEnergised = hgOn || hecr;
-            if (lamps.RG && lamps.HG && !lamps.DG && !lamps.HHG) {   // 2-aspect head
-                if (rgEnergised) chosen = { aspect: 'RED', p: 1, v: 0 };
-                else if (hgEnergised) chosen = { aspect: 'SINGLE_YELLOW', p: 3, v: 0 };
-            }
-            if (!chosen && rgEnergised) chosen = { aspect: 'RED', p: 1, v: 0 };   // any head: energised RG never dark
-        }
         var aspect = chosen ? chosen.aspect : 'INACTIVE';
         var hasRelays = relayPresent(rec, 'RECR') || relayPresent(rec, 'DECR') || relayPresent(rec, 'HECR') || relayPresent(rec, 'HHECR');
         return {

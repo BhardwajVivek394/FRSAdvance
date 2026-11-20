@@ -219,10 +219,11 @@
                 <h4>Asset Status <span class="asx-meta" id="asMeta"></span></h4>
             </div>
             <div class="d-flex align-items-center flex-wrap" style="gap:10px;">
-                <span class="asx-pill" id="asRangePill" style="display:none;"><span class="dot"></span><span id="asRangeText">Last 30 days</span></span>
+                <span class="asx-pill" id="asRangePill" style="display:none;"><span class="dot"></span><span id="asRangeText">Today</span></span>
                 <div class="asx-seg sm" id="asRangeChips" style="display:none;">
+                    <button type="button" class="active" data-days="0">Today</button>
                     <button type="button" data-days="7">7d</button>
-                    <button type="button" class="active" data-days="30">30d</button>
+                    <button type="button" data-days="30">30d</button>
                     <button type="button" data-days="90">90d</button>
                 </div>
                 <div class="asx-seg" id="asViewToggle" style="display:none;">
@@ -298,7 +299,7 @@
         </div>
         <div class="asx-dr-tools">
             <div class="asx-seg sm" id="asDrChips">
-                <button type="button" data-days="7">7d</button><button type="button" class="active" data-days="30">30d</button><button type="button" data-days="90">90d</button>
+                <button type="button" class="active" data-days="0">Today</button><button type="button" data-days="7">7d</button><button type="button" data-days="30">30d</button><button type="button" data-days="90">90d</button>
             </div>
             <input type="text" class="filter-input" id="asDrFrom" readonly style="width:118px;height:34px;padding:4px 10px;font-size:13px;">
             <span style="color:var(--e7-text-4);">&rarr;</span>
@@ -338,12 +339,14 @@
     // =====================================================================
     //  STATE
     // =====================================================================
-    var asView = 'rank', asRankSortKey = 'ops', asDays = 30;
+    var asView = 'rank', asRankSortKey = 'ops', asDays = 0;   // 0 = today only: the range 616's Utilization page sends by default
     var asOpenDropdown = null, asTypeMap = {};
     var asGroups = [];               // merged model: [{key, zone, division, station, type, siteId, typeId, count, makes:{}, ops, hours, assets, items}]
     var asGroupIdx = {};             // key -> group
-    var asDrKey = null, asDrDays = 30, asDrPts = [], asDrChartObj = null, asDrFullOpen = false;
-    var _asInvXhr = null, _asUtilXhr = null, _asDrXhr = null, _asMakeXhr = null;
+    var asDrKey = null, asDrDays = 0, asDrPts = [], asDrChartObj = null, asDrFullOpen = false;
+    var _asInvXhr = null, _asUtilXhr = null, _asDrXhr = null, _asMakeXhr = null, _asTypesXhr = null, _asSearchQueued = false, asUtilState = 'idle';   // idle | loading | ok | failed
+    var asInvState = 'idle', asInvHtml = '', asUtilHtml = '';             // latest responses; the model is rebuilt from both
+    var AS_FETCH_TIMEOUT_MS = 180000;   // never leave the loading skeleton up forever
     var _asOrigDivision = null, _asOrigSite = null;
     var asTablePage = 1, AS_TABLE_PAGE = 15;
 
@@ -358,6 +361,8 @@
     function asFmtDMY(d) { return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear(); }
     function asToServerDate(s) { if (!s) return ''; var p = s.split('/'); if (p.length !== 3) return s; return p[1] + '/' + p[0] + '/' + p[2]; }
     function asRange(days) { var to = new Date(), from = new Date(); from.setDate(from.getDate() - days); return { from: asFmtDMY(from), to: asFmtDMY(to) }; }
+    function asRangeLabel(d) { return d > 0 ? 'Last ' + d + ' days' : 'Today'; }
+    function asRangeShort(d) { return d > 0 ? d + 'd' : 'today'; }
     function asNum(n, d) { return (Math.round((n + Number.EPSILON) * Math.pow(10, d || 0)) / Math.pow(10, d || 0)).toLocaleString(); }
     function asTypeIcon(t) {
         t = (t || '').toLowerCase();
@@ -448,7 +453,9 @@
         var siteIds = asGetValues('site'); asResetDownstream('assetType'); asTypeMap = {};
         if (!siteIds.length) { asMsg('assetType', 'Select a station first'); return; }
         $('#listAssetType').html('<div class="dropdown-empty">Loading...</div>');
-        $.ajax({ url: '/FRS25/AssetDetail/GetAssetTypeBySiteIds', type: 'POST', contentType: 'application/json', data: JSON.stringify(siteIds),
+        if (_asTypesXhr) _asTypesXhr.abort();
+        _asTypesXhr = $.ajax({ url: '/FRS25/AssetDetail/GetAssetTypeBySiteIds', type: 'POST', contentType: 'application/json', data: JSON.stringify(siteIds),
+            complete: function () { _asTypesXhr = null; },
             success: function (d) {
                 if (d && d.length) {
                     var html = '';
@@ -482,37 +489,65 @@
     function asFetchInventory(siteIds) {
         var payload = { SearchCriteria: { ZoneIds: asGetValues('zone'), DivisionIds: asGetValues('division'), SiteIds: siteIds,
             AssetTypes: $('.cb-assetType:checked').map(function () { return $(this).closest('.dropdown-item').data('name'); }).get(), siteAttributeDatasList: asGetValues('assetMake') } };
-        return $.ajax({ url: '/FRS25/AssetDetail/_Details', type: 'POST', contentType: 'application/json', data: JSON.stringify(payload), dataType: 'html' });
+        return $.ajax({ url: '/FRS25/AssetDetail/_Details', type: 'POST', contentType: 'application/json', data: JSON.stringify(payload), dataType: 'html', timeout: AS_FETCH_TIMEOUT_MS });
     }
     function asFetchUtil(siteIds, typeIds, days) {
         var r = asRange(days);
-        var payload = { SearchCriteria: { SiteIds: siteIds, AssetTypeIds: typeIds, AssetIds: [], StartDate: asToServerDate(r.from), EndDate: asToServerDate(r.to) } };
-        return $.ajax({ url: '/FRS25/AssetDetail/_Utilization', type: 'POST', contentType: 'application/json', data: JSON.stringify(payload), dataType: 'html' });
+        var payload = { SearchCriteria: { ZoneIds: asGetValues('zone'), DivisionIds: asGetValues('division'), SiteIds: siteIds, AssetTypeIds: typeIds, AssetIds: [], StartDate: asToServerDate(r.from), EndDate: asToServerDate(r.to) } };
+        return $.ajax({ url: '/FRS25/AssetDetail/_Utilization', type: 'POST', contentType: 'application/json', data: JSON.stringify(payload), dataType: 'html', timeout: AS_FETCH_TIMEOUT_MS });
     }
     function asSearch() {
         var siteIds = asGetValues('site');
         if (!siteIds.length) { asNotify('Station is required.'); return; }
-        var typeIds = asGetValues('assetType'); if (!typeIds.length) typeIds = Object.keys(asTypeMap).map(function (k) { return String(asTypeMap[k]); });
+        // The station's asset types are still loading (e.g. the favourite station was
+        // just ticked and Search clicked right after). Utilization needs those type ids,
+        // so wait for them instead of searching with none and silently skipping it.
+        if (_asTypesXhr) {
+            if (!_asSearchQueued) {
+                _asSearchQueued = true;
+                asShowLoading(); $('#btnSearch').prop('disabled', true);
+                _asTypesXhr.always(function () { _asSearchQueued = false; $('#btnSearch').prop('disabled', false); setTimeout(asSearch, 0); });
+            }
+            return;
+        }
         if (_asInvXhr) _asInvXhr.abort(); if (_asUtilXhr) _asUtilXhr.abort();
         asShowLoading(); $('#btnSearch').prop('disabled', true);
-        var inv = _asInvXhr = asFetchInventory(siteIds);
-        var util = typeIds.length ? (_asUtilXhr = asFetchUtil(siteIds, typeIds, asDays)) : $.Deferred().resolve('').promise();
-        $.when(inv, util).done(function (invRes, utilRes) {
-            var invHtml = $.isArray(invRes) ? invRes[0] : invRes, utilHtml = $.isArray(utilRes) ? utilRes[0] : utilRes;
-            asBuildModel(invHtml, utilHtml || '');
-            asRenderAll();
-        }).fail(function (x, s) { if (s === 'abort') return; asNotify('Something went wrong!'); asShowEmpty(); })
-          .always(function () { _asInvXhr = null; _asUtilXhr = null; $('#btnSearch').prop('disabled', false); });
+        // In 616 Asset Detail (inventory) and Asset Utilization were separate pages with
+        // separate requests. Keep them independent here: both requests run in parallel and
+        // the view is rebuilt from whatever has arrived, so either one can show data even
+        // when the other is empty, slow or failed.
+        asGroups = []; asGroupIdx = {}; asInvHtml = ''; asUtilHtml = ''; asInvState = 'loading'; asUtilState = 'idle';
+        var invX = _asInvXhr = asFetchInventory(siteIds).done(function (html) { asInvHtml = html; asInvState = 'ok'; })
+            .fail(function (x, s) {
+                if (s === 'abort') return;
+                asInvState = 'failed';
+                asNotify(s === 'timeout' ? 'Asset details took too long to load. Utilization is still shown if available.' : 'Could not load asset details. Utilization is still shown if available.');
+            })
+            .always(function (a, s) { if (_asInvXhr === invX) { _asInvXhr = null; $('#btnSearch').prop('disabled', false); } if (s !== 'abort') asRebuild(); });
+        asRefreshUtil();
     }
-    function asRefreshUtil() {   // range chip change: re-fetch utilization only
-        if (!asGroups.length) return;
+    function asRefreshUtil() {   // on search, and on range chip change: (re)fetch utilization only
         var siteIds = asGetValues('site'); var typeIds = asGetValues('assetType'); if (!typeIds.length) typeIds = Object.keys(asTypeMap).map(function (k) { return String(asTypeMap[k]); });
         if (!siteIds.length || !typeIds.length) return;
         if (_asUtilXhr) _asUtilXhr.abort();
+        asUtilState = 'loading'; asUtilHtml = ''; asRebuild();
         $('#asRangePill').css('opacity', .5);
-        _asUtilXhr = asFetchUtil(siteIds, typeIds, asDays).done(function (html) { asApplyUtil(html); asRenderAll(); })
-            .fail(function (x, s) { if (s !== 'abort') asNotify('Could not refresh utilization.'); })
-            .always(function () { _asUtilXhr = null; $('#asRangePill').css('opacity', 1); });
+        var xhr = _asUtilXhr = asFetchUtil(siteIds, typeIds, asDays).done(function (html) { asUtilHtml = html; asUtilState = 'ok'; asRebuild(); })
+            .fail(function (x, s) {
+                if (s === 'abort') return;
+                asUtilHtml = ''; asUtilState = 'failed'; asRebuild();
+                asNotify(s === 'timeout' ? 'Utilization is taking too long for this range. Try a shorter range.' : 'Could not load utilization for this range.');
+            })
+            .always(function () { if (_asUtilXhr === xhr) { _asUtilXhr = null; $('#asRangePill').css('opacity', 1); } });
+    }
+    // Rebuilds the merged model from the latest inventory + utilization responses and renders it.
+    function asRebuild() {
+        asBuildModel(asInvHtml, asUtilHtml);
+        if (asGroups.length) { asRenderAll(); return; }
+        if (asInvState === 'loading' || asUtilState === 'loading') { asShowLoading(); return; }
+        asShowEmpty();
+        if (asInvState === 'failed' && asUtilState !== 'ok') $('#asEmpty').html('<i class="fas fa-triangle-exclamation fa-2x d-block mb-3" style="color:var(--e7-text-4);"></i>Could not load assets for this selection.');
+        else $('#asEmpty').html('<i class="fas fa-inbox fa-2x d-block mb-3" style="color:var(--e7-text-4);"></i>No assets found for this selection.');
     }
     function asBuildModel(invHtml, utilHtml) {
         asGroups = []; asGroupIdx = {};
@@ -536,7 +571,14 @@
             var $tr = $(this); if ($tr.find('td[colspan]').length) return;
             var td = $tr.find('td'), st = $.trim(td.eq(3).text()), type = $.trim(td.eq(4).text()), name = $.trim(td.eq(5).text());
             var cell = td.eq(6), raw = parseFloat(cell.attr('data-raw')) || 0, sig = String(cell.attr('data-signal')) === '1';
-            var g = asGroupIdx[st + '|' + type]; if (!g) return;
+            var key = st + '|' + type, g = asGroupIdx[key];
+            if (!g) {   // utilization row with no inventory record: still show it (independent of Asset Detail)
+                var sid = $tr.attr('data-siteid'), tid = $tr.attr('data-typeid'), sel = asGetValues('site');
+                if (!sid && sel.length === 1) sid = sel[0];
+                if (!tid && asTypeMap[type] != null) tid = String(asTypeMap[type]);
+                g = { key: key, zone: $.trim(td.eq(1).text()), division: $.trim(td.eq(2).text()), station: st, type: type, siteId: sid, typeId: tid, count: 0, noInv: true, makes: {}, ops: 0, hours: 0, assets: 0, items: [] };
+                asGroupIdx[key] = g; asGroups.push(g);
+            }
             g.assets++; if (sig) g.hours += raw; else g.ops += raw;
             g.items.push({ name: name, value: raw, signal: sig });
         });
@@ -547,6 +589,8 @@
     // =====================================================================
     function asShowLoading() { $('#asEmpty, #asRank, #asCards, #asTable').hide(); $('#asLoading').show(); }
     function asShowEmpty() { $('#asLoading, #asRank, #asCards, #asTable, #asKpis, #asViewToggle, #asDownloadWrap, #asRangeChips, #asRangePill').hide(); $('#asEmpty').show(); }
+    function asUtilTxt() { return asUtilState === 'loading' ? '…' : asUtilState === 'failed' ? 'n/a' : null; }
+    function asCnt(g) { return g.noInv ? '—' : asNum(g.count); }   // utilization-only row: no inventory count
     function asUnit(g) { return g.hours > 0 && g.ops === 0 ? 'hrs' : 'ops'; }
     function asValue(g) { return asUnit(g) === 'hrs' ? g.hours : g.ops; }
     function asMaxValue() { var m = 0; asGroups.forEach(function (g) { m = Math.max(m, asValue(g)); }); return m || 1; }
@@ -561,7 +605,7 @@
         $('#asLoading, #asEmpty').hide();
         if (!asGroups.length) { asShowEmpty(); $('#asEmpty').html('<i class="fas fa-inbox fa-2x d-block mb-3" style="color:var(--e7-text-4);"></i>No assets found for this selection.'); return; }
         $('#asMeta').text('As on ' + asFmtDMY(new Date()));
-        $('#asRangeText').text('Last ' + asDays + ' days'); $('#asRangePill').css('display', 'inline-flex'); $('#asRangeChips').css('display', 'inline-flex');
+        $('#asRangeText').text(asRangeLabel(asDays)); $('#asRangePill').css('display', 'inline-flex'); $('#asRangeChips').css('display', 'inline-flex');
         $('#asViewToggle').css('display', 'inline-flex'); $('#asDownloadWrap').show();
         asRenderKpis(); asRenderRank(); asRenderCards(); asTablePage = 1; asRenderTable();
         asSetView(asView);
@@ -571,9 +615,13 @@
         asGroups.forEach(function (g) { total += g.count; stations[g.station] = 1; ops += g.ops; assets += g.assets; if (!top || asValue(g) > asValue(top)) top = g; });
         $('#asK1').text(asNum(total)); $('#asK1S').text(asGroups.length + ' station · type groups');
         $('#asK2').text(Object.keys(stations).length); $('#asK2S').text('reporting inventory');
-        if (top && asValue(top) > 0) { $('#asK3').html(asEsc(top.type) + ' <small>' + asEsc(top.station) + '</small>'); $('#asK3S').text(asNum(asValue(top), 1) + ' ' + asUnit(top) + ' in last ' + asDays + ' days'); }
-        else { $('#asK3').text('—'); $('#asK3S').text('no utilization in range'); }
-        $('#asK4').text(assets ? asNum(ops / assets, 1) : '—'); $('#asK4S').text(assets ? assets + ' assets with operations' : 'no operation data');
+        var ut = asUtilTxt(), utMsg = asUtilState === 'loading' ? 'loading utilization…' : 'utilization unavailable';
+        if (ut) { $('#asK3').text(ut); $('#asK3S').text(utMsg); $('#asK4').text(ut); $('#asK4S').text(utMsg); }
+        else {
+            if (top && asValue(top) > 0) { $('#asK3').html(asEsc(top.type) + ' <small>' + asEsc(top.station) + '</small>'); $('#asK3S').text(asNum(asValue(top), 1) + ' ' + asUnit(top) + ' · ' + asRangeLabel(asDays).toLowerCase()); }
+            else { $('#asK3').text('—'); $('#asK3S').text('no utilization in range'); }
+            $('#asK4').text(assets ? asNum(ops / assets, 1) : '—'); $('#asK4S').text(assets ? assets + ' assets with operations' : 'no operation data');
+        }
         $('#asKpis').css('display', 'grid');
     }
     function asRenderRank() {
@@ -582,14 +630,14 @@
             var v = asValue(g), pct = Math.round(v / max * 100), unit = asUnit(g);
             html += '<div class="asx-rank-row' + (i < 3 && v > 0 ? ' top' : '') + '" data-key="' + asEsc(g.key) + '">' +
                 '<span class="rk-no">' + (i + 1) + '</span>' +
-                '<div><div class="rk-name"><i class="fas ' + asTypeIcon(g.type) + '" style="color:var(--e7-accent-ink);margin-right:8px;"></i>' + asEsc(g.type) + '</div><div class="rk-sub">' + asEsc(g.station) + ' · ' + asEsc(g.division) + ' · ' + Object.keys(g.makes).length + ' make' + (Object.keys(g.makes).length === 1 ? '' : 's') + '</div></div>' +
-                '<div class="rk-count"><b>' + asNum(g.count) + '</b> assets</div>' +
+                '<div><div class="rk-name"><i class="fas ' + asTypeIcon(g.type) + '" style="color:var(--e7-accent-ink);margin-right:8px;"></i>' + asEsc(g.type) + '</div><div class="rk-sub">' + asEsc(g.station) + ' · ' + asEsc(g.division) + ' · ' + (g.noInv ? 'no inventory record' : Object.keys(g.makes).length + ' make' + (Object.keys(g.makes).length === 1 ? '' : 's')) + '</div></div>' +
+                '<div class="rk-count"><b>' + asCnt(g) + '</b> assets</div>' +
                 '<div class="asx-bar"><i style="width:' + pct + '%"></i></div>' +
-                '<div class="rk-val">' + asNum(v, unit === 'hrs' ? 1 : 0) + '<small>' + (unit === 'hrs' ? 'signal hours' : 'operations') + '</small></div>' +
+                '<div class="rk-val">' + (asUtilTxt() || asNum(v, unit === 'hrs' ? 1 : 0)) + '<small>' + (unit === 'hrs' ? 'signal hours' : 'operations') + '</small></div>' +
                 '<div class="rk-go"><i class="fas fa-chevron-right"></i></div></div>';
         });
         $('#asRankList').html(html);
-        $('#asRankInfo').text(list.length + ' groups · ranked by ' + (asRankSortKey === 'ops' ? 'utilization' : asRankSortKey === 'count' ? 'asset count' : 'name') + ' · last ' + asDays + ' days');
+        $('#asRankInfo').text(list.length + ' groups · ranked by ' + (asRankSortKey === 'ops' ? 'utilization' : asRankSortKey === 'count' ? 'asset count' : 'name') + ' · ' + asRangeLabel(asDays).toLowerCase());
     }
     function asRenderCards() {
         var max = asMaxValue(), html = '';
@@ -597,11 +645,11 @@
             var v = asValue(g), pct = Math.round(v / max * 100), unit = asUnit(g), makes = Object.keys(g.makes);
             html += '<div class="asx-card" data-key="' + asEsc(g.key) + '">' +
                 '<div class="c-head"><div class="c-ico"><i class="fas ' + asTypeIcon(g.type) + '"></i></div><div style="min-width:0;"><div class="c-title">' + asEsc(g.type) + '</div><div class="c-sub">' + asEsc(g.station) + ' · ' + asEsc(g.division) + '</div></div></div>' +
-                '<div class="c-stats"><div class="c-stat"><div class="l">Assets</div><div class="v">' + asNum(g.count) + '</div></div>' +
-                '<div class="c-stat"><div class="l">' + (unit === 'hrs' ? 'Signal hours' : 'Operations') + '</div><div class="v">' + asNum(v, unit === 'hrs' ? 1 : 0) + '<small> / ' + asDays + 'd</small></div></div></div>' +
+                '<div class="c-stats"><div class="c-stat"><div class="l">Assets</div><div class="v">' + asCnt(g) + '</div></div>' +
+                '<div class="c-stat"><div class="l">' + (unit === 'hrs' ? 'Signal hours' : 'Operations') + '</div><div class="v">' + (asUtilTxt() || asNum(v, unit === 'hrs' ? 1 : 0)) + '<small> / ' + asRangeShort(asDays) + '</small></div></div></div>' +
                 '<div class="c-gauge"><span>Utilization</span><div class="asx-bar"><i style="width:' + pct + '%"></i></div><span>' + pct + '%</span></div>' +
                 '<div>' + makes.slice(0, 3).map(function (m) { return '<span class="asx-chip">' + asEsc(m) + ' · ' + g.makes[m] + '</span>'; }).join('') + (makes.length > 3 ? '<span class="asx-chip">+' + (makes.length - 3) + '</span>' : '') + '</div>' +
-                '<div class="c-foot"><span>' + (g.assets ? g.assets + ' assets reporting' : 'no operation data') + '</span><b>Details <i class="fas fa-arrow-right"></i></b></div></div>';
+                '<div class="c-foot"><span>' + (asUtilState === 'loading' ? 'loading utilization…' : asUtilState === 'failed' ? 'utilization unavailable' : g.assets ? g.assets + ' assets reporting' : 'no operation data') + '</span><b>Details <i class="fas fa-arrow-right"></i></b></div></div>';
         });
         $('#asCards').html(html);
     }
@@ -613,8 +661,8 @@
             var v = asValue(g), pct = Math.round(v / max * 100), makes = Object.keys(g.makes);
             html += '<tr data-key="' + asEsc(g.key) + '"><td>' + (start + i + 1) + '</td><td>' + asEsc(g.zone) + '</td><td>' + asEsc(g.division) + '</td><td>' + asEsc(g.station) + '</td><td>' + asEsc(g.type) + '</td>' +
                 '<td>' + makes.map(function (m) { return asEsc(m) + ' (' + g.makes[m] + ')'; }).join(', ') + '</td>' +
-                '<td class="text-center"><b>' + asNum(g.count) + '</b></td><td><div class="asx-bar"><i style="width:' + pct + '%"></i></div></td>' +
-                '<td class="text-right">' + asNum(g.ops) + '</td><td class="text-right">' + asNum(g.hours, 1) + '</td></tr>';
+                '<td class="text-center"><b>' + asCnt(g) + '</b></td><td><div class="asx-bar"><i style="width:' + pct + '%"></i></div></td>' +
+                '<td class="text-right">' + (asUtilTxt() || asNum(g.ops)) + '</td><td class="text-right">' + (asUtilTxt() || asNum(g.hours, 1)) + '</td></tr>';
         });
         $('#asTableBody').html(html || '<tr><td colspan="10" class="text-center text-muted py-4">No records found.</td></tr>');
         $('#asTableInfo').text(total ? 'Showing ' + (start + 1) + ' to ' + Math.min(start + AS_TABLE_PAGE, total) + ' of ' + total + ' groups' : '');
@@ -659,8 +707,8 @@
     }
     function asDownload(type) {
         var rows = [];
-        asSorted().forEach(function (g, i) { rows.push([i + 1, g.zone, g.division, g.station, g.type, Object.keys(g.makes).map(function (m) { return m + ' (' + g.makes[m] + ')'; }).join('; '), g.count, g.ops, Math.round(g.hours * 10) / 10]); });
-        asDoExport(type, { headers: ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Makes', 'Assets', 'Operations (' + asDays + 'd)', 'Signal hrs (' + asDays + 'd)'], rows: rows, name: 'Asset_' + new Date().toISOString().slice(0, 10), title: 'Asset inventory & utilization (last ' + asDays + ' days)' });
+        asSorted().forEach(function (g, i) { rows.push([i + 1, g.zone, g.division, g.station, g.type, Object.keys(g.makes).map(function (m) { return m + ' (' + g.makes[m] + ')'; }).join('; '), g.noInv ? '' : g.count, g.ops, Math.round(g.hours * 10) / 10]); });
+        asDoExport(type, { headers: ['Sr.No', 'Zone', 'Division', 'Station', 'Asset Type', 'Makes', 'Assets', 'Operations (' + asRangeShort(asDays) + ')', 'Signal hrs (' + asRangeShort(asDays) + ')'], rows: rows, name: 'Asset_' + new Date().toISOString().slice(0, 10), title: 'Asset inventory & utilization (' + asRangeLabel(asDays).toLowerCase() + ')' });
     }
     function asDrDownload(type) {
         var g = asGroupIdx[asDrKey]; if (!g) return;
@@ -717,7 +765,7 @@
     }
     function asDrPaint(g) {
         var ops = 0, hours = 0; asDrPts.forEach(function (p) { if (p.signal) hours += p.value; else ops += p.value; });
-        $('#asDrTAssets').html(asNum(g.count) + '<small> / ' + asDrPts.length + ' reporting</small>');
+        $('#asDrTAssets').html(asCnt(g) + '<small> / ' + asDrPts.length + ' reporting</small>');
         $('#asDrTOps').text(asNum(ops)); $('#asDrTHours').text(asNum(hours, 1)); $('#asDrTMakes').text(Object.keys(g.makes).length);
         // top assets
         var top = asDrPts.slice().sort(function (a, b) { return b.value - a.value; }).slice(0, 8), max = top.length ? top[0].value || 1 : 1, html = '';
