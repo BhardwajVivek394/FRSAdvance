@@ -5017,6 +5017,9 @@ try {
         if (isDataLogger) return 'digital';
         var hay = (String(attrKey || '') + ' ' + String(attrLabel || '')).toUpperCase();
         if (hay.indexOf('IIPS') !== -1) return 'current';
+        if (hay.indexOf('VIPS') !== -1) return 'voltage';
+        /* no IIPS / VIPS prefix (SAKHUN "IPS Batterry charging Current 1"): the word names it */
+        if (/\bCURRENT\b/.test(hay)) return 'current';
         return 'voltage';
     }
     W.ipsClassifyTab = ipsClassifyTab;
@@ -5147,9 +5150,10 @@ try {
             if (IPS_SHOW_BANK_BREAKUP && r && r.isGroup && r.members && r.members.length) {
                 for (var m = 0; m < r.members.length; m++) {
                     var mr = r.members[m];
+                    /* bank rows in AMPERES like their Σ row (were raw mA under an "(A)" total) */
                     flat.push({
-                        assetId: mr.assetId, assetName: mr.assetName, attr: mr.attr, attrKey: mr.attrKey,
-                        value: mr.value, ts: mr.ts, dlClass: mr.dlClass || '', isDataLogger: false, ipsTab: 'current',
+                        assetId: mr.assetId, assetName: mr.assetName, attr: W.ipsBattAmpLabel(mr.attr), attrKey: mr.attrKey,
+                        value: W.ipsBattFormatAmps(mr.value, EMPTY), ts: mr.ts, dlClass: mr.dlClass || '', isDataLogger: false, ipsTab: 'current',
                         isStale: !!mr.isStale, staleTitle: mr.staleTitle || '', isChild: true, parentId: r.assetId
                     });
                 }
@@ -8661,7 +8665,9 @@ try {
         if (span > 0) st.avg = area / span; else { var sum = 0; src.forEach(function (p) { sum += p[1]; }); st.avg = sum / src.length; }
         return st;
     }
-    function kindLabel(kind) { return { ma: 'Current', v: 'Voltage', bin: 'Relay', drv: 'Derived', other: 'Value' }[kind] || 'Value'; }
+    /* IPS calls its pickup / drop readings "Digital" (same name as the IPS Voltage /
+       Current / Digital tabs); other types keep "Relay" */
+    function kindLabel(kind) { return { ma: 'Current', v: 'Voltage', bin: (mgG && mgG.kind === 'ips') ? 'Digital' : 'Relay', drv: 'Derived', other: 'Value' }[kind] || 'Value'; }
     function unitFor(name, kind) {
         if (kind === 'bin') return '0/1';
         var n = String(name || ''), m = n.match(/\((mA|mV|V|Ω|A)\)\s*$/);
@@ -8673,23 +8679,24 @@ try {
         if (/\bV\b/.test(n)) return 'V';
         return '';
     }
-    function fmtVal(v, kind) {
+    /* amperes (IPS battery / IIPS current) keep 3 decimals, like the IPS cards and table */
+    function fmtVal(v, kind, unit) {
         if (v === null || v === undefined || isNaN(v)) return '—';
         if (kind === 'bin') return v >= 0.5 ? 'Pickup' : 'Drop';
-        return Number(zf(v)).toFixed(2);
+        return Number(zf(v)).toFixed(unit === 'A' ? 3 : 2);
     }
     function valHtml(v, kind, unit) {
         if (kind === 'bin') {
             if (v === null || v === undefined || isNaN(v)) return '<span class="tlgv-na">—</span>';
             return '<span class="tlgv-badge ' + (v >= 0.5 ? 'up' : 'dn') + '">' + (v >= 0.5 ? 'Pickup' : 'Drop') + '</span>';
         }
-        return '<b>' + fmtVal(v, kind) + '</b>' + (unit && v !== null && v !== undefined ? '<i>' + esc(unit) + '</i>' : '');
+        return '<b>' + fmtVal(v, kind, unit) + '</b>' + (unit && v !== null && v !== undefined ? '<i>' + esc(unit) + '</i>' : '');
     }
     function statsLine(s) {
         var st = s.stats || {};
         if (s.kind === 'bin') return '↑ ' + st.pickups + ' pickups · ↓ ' + st.drops + ' drops' + (st.onPct !== null ? ' · ' + st.onPct.toFixed(0) + '% up' : '');
         if (st.min === null) return 'no samples';
-        return 'min ' + fmtVal(st.min) + ' · max ' + fmtVal(st.max) + ' · avg ' + fmtVal(st.avg);
+        return 'min ' + fmtVal(st.min, s.kind, s.unit) + ' · max ' + fmtVal(st.max, s.kind, s.unit) + ' · avg ' + fmtVal(st.avg, s.kind, s.unit);
     }
     function download(url, name) {
         var a = document.createElement('a'); a.href = url; a.download = name;
@@ -8962,6 +8969,10 @@ try {
             '.tlmg-kind{font-size:8.5px;font-weight:800;letter-spacing:.4px;padding:0 4px;border-radius:3px;background:var(--e7-surface-3, rgba(255,255,255,.08));color:var(--e7-text-3,rgba(255,255,255,.5));flex-shrink:0;}',
             /* overlay */
             '.tlmg-legend{display:flex;flex-wrap:wrap;gap:6px;padding:8px 14px 0;}',
+            /* full reading / asset names everywhere in the graph view (wrapped, never cut with "...") */
+            '#mgWrap .tlmg-an,#mgWrap .tlmg-aname,#mgWrap .tlgv-lane-name,#mgWrap .tlgv-lane-sub,#mgWrap .tlmg-lane-asset,#mgWrap .tlgv-card-title b{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.25;}',
+            '#mgWrap .tlmg-chip{align-items:flex-start;padding-top:4px;padding-bottom:4px;}#mgWrap .tlmg-chip input,#mgWrap .tlmg-chip .tlmg-dot{margin-top:2px;}',
+            '#mgWrap .tlmg-fcnt{font-size:10px;font-weight:700;opacity:.7;margin-left:2px;}',
             '.tlmg-lg{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:99px;border:1px solid var(--e7-border,rgba(255,255,255,.10));font-size:11px;font-weight:700;color:var(--e7-heading,#fff);cursor:pointer;background:var(--ac-bg,rgba(255,255,255,.04));user-select:none;}',
             '.tlmg-lg.off{opacity:.45;text-decoration:line-through;}',
             '.tlmg-lg small{font-weight:600;color:var(--e7-text-3,rgba(255,255,255,.5));font-family:"JetBrains Mono",monospace;}',
@@ -9107,8 +9118,18 @@ try {
            keeps the split (e7mriv2web differentiates IPS readings). */
         var splitByKind = mgG.kind === 'ips';
         if (!splitByKind && mgG.filter !== 'all') mgG.filter = 'all';
-        var shows = [['all', 'All', ''], ['ma', 'Current', 'Current readings (mA / A)'], ['v', 'Voltage', 'Voltage readings (V)'],
-            ['bin', 'Relays', 'Relay pickup / drop (0 / 1)']];
+        /* counts per kind on the buttons, so an empty kind is visible before clicking */
+        var cnt = { all: 0, ma: 0, v: 0, bin: 0 };
+        (mgG.order || []).forEach(function (k) {
+            var s = mgG.series && mgG.series[k]; if (!s || s.memberOf) return;
+            cnt.all++;
+            var kk = s.kind === 'other' ? 'v' : s.kind;
+            if (cnt.hasOwnProperty(kk)) cnt[kk]++;
+        });
+        var shows = [['all', 'All', ''], ['ma', 'Current', 'Current readings (A)'], ['v', 'Voltage', 'Voltage readings (V)'],
+            ['bin', 'Digital', 'Digital readings: pickup / drop (0 / 1)']].map(function (f) {
+                return [f[0], f[1] + (mgG.order && mgG.order.length ? ' <small class="tlmg-fcnt">' + cnt[f[0]] + '</small>' : ''), f[2]];
+            });
         return '<div class="tlgv-bar tlmg-simple" data-tlgv="multi" data-mode="' + m + '">' +
             '<span class="tlgv-lbl">View</span>' +
             '<div class="tlgv-seg" role="group" aria-label="Graph view">' +
@@ -9167,7 +9188,7 @@ try {
         h += '<div id="mgLoad" class="tlmg-load"><div class="tlmg-spin"></div><span id="mgLoadTxt">Loading telemetry data…</span><div class="tlmg-prog"><i id="mgProg"></i></div></div>';
         h += '<div id="mgChart" class="tlmg-chart"></div>';
         h += '<div id="mgAlt" class="tlgv-host" data-tlgv-host="multi" style="display:none;"></div>';
-        h += '<div id="mgEmpty" class="tlmg-empty"><i class="fas fa-chart-line"></i><div style="font-weight:700;color:var(--e7-text-2,rgba(255,255,255,.72));margin-bottom:6px;">No data available</div><div style="font-size:11px;">Try a different time range, tick more attributes or check asset connectivity</div></div>';
+        h += '<div id="mgEmpty" class="tlmg-empty"><i class="fas fa-chart-line"></i><div data-mg-empty-t style="font-weight:700;color:var(--e7-text-2,rgba(255,255,255,.72));margin-bottom:6px;">No data available</div><div data-mg-empty-s style="font-size:11px;">Try a different time range, tick more attributes or check asset connectivity</div></div>';
         h += '</div>';
         $('#divTelemetryLive').empty().append(h);
 
@@ -9506,7 +9527,7 @@ try {
         /* IPS: same rule as the Voltage / Current / Digital tabs (ipsClassifyTab) so a
            reading is in the same category everywhere; before, any name starting
            with 'I' (e.g. 'IPS ...') was counted as a current */
-        if (mgG.kind === 'ips') { var tb = fn('ipsClassifyTab') ? window.ipsClassifyTab(false, n, n, assetName) : 'voltage'; return tb === 'current' ? 'ma' : 'v'; }
+        if (mgG.kind === 'ips') { var tb = fn('ipsClassifyTab') ? window.ipsClassifyTab(false, n, n, assetName) : (/IIPS/i.test(n) ? 'current' : 'voltage'); return tb === 'current' ? 'ma' : 'v'; }
         var l = n.toLowerCase();
         if (l.indexOf('ma') > -1 || l.indexOf('mv') > -1 || l.indexOf('-c') > -1) return 'ma';
         if (/\bv\b|volt/.test(l) || /v\)?$/.test(l)) return 'v';
@@ -9565,6 +9586,26 @@ try {
         return dn || ('Attr ' + id);
     }
     function keyOf(aid, id) { return String(aid) + '||' + String(id); }
+    // IPS: is this history column a DataLogger reading per the LIVE store (attr DataType
+    // 'DataLogger', or a dlRelays entry by id / name) -- the IPS table's Digital rule.
+    function ipsLiveIsDl(live, id, rawName) {
+        if (!live) return false;
+        var sid = String(id), rn = String(rawName || '').trim().toLowerCase();
+        var attrs = live.attrs || {}, rl = live.dlRelays || {};
+        for (var k in attrs) {
+            if (!Object.prototype.hasOwnProperty.call(attrs, k)) continue;
+            var a = attrs[k]; if (!a) continue;
+            if (String(a.AttrId || a.AssetAttributeId || '') !== sid) continue;
+            if (String(a.DataType || '').trim().toLowerCase() === 'datalogger' || Object.prototype.hasOwnProperty.call(rl, k)) return true;
+        }
+        if (Object.prototype.hasOwnProperty.call(rl, sid)) return true;
+        if (rn) for (var r in rl) {
+            if (!Object.prototype.hasOwnProperty.call(rl, r)) continue;
+            var x = rl[r] || {};
+            if (String(r).toLowerCase() === rn || String(x.displayName || '').toLowerCase() === rn || String(x.role || '') === sid) return true;
+        }
+        return false;
+    }
 
     function buildSeries() {
         mgG.series = {}; mgG.order = [];
@@ -9601,7 +9642,10 @@ try {
                 var dlName = dlMeta[String(id)] || '';
                 var histDL = dt === 'datalogger' || (!!dlName && dt === '');
                 var isRelay, mappedRelay = true;
-                if (mgG.kind === 'ips') { isRelay = histDL && allBin; mappedRelay = false; }   // IPS Digital tab: Pickup / Drop, IPS names
+                // IPS Digital tab: Pickup / Drop, IPS names. A column the live store knows as a
+                // DataLogger reading (DataType or dlRelays, same rule as the IPS table) is
+                // Digital too -- the History API often sends it with an empty DataType.
+                if (mgG.kind === 'ips') { isRelay = (histDL || ipsLiveIsDl(live, id, rawName)) && allBin; mappedRelay = false; }
                 else if (mgG.kind === 'eld') isRelay = histDL || allBin;
                 else if (histDL && allBin) {
                     // Every DataLogger 0/1 attribute is a relay (Pickup / Drop), not a plain
@@ -9631,16 +9675,34 @@ try {
                 // never merges into the analog attribute with the same number (Track #6).
                 var key = keyOf(aid, id) + (histDL ? '||dl' : '');
                 if (mgG.series[key]) {          // History API can repeat AssetId+AttributeId: merge
-                    var ex = mgG.series[key], merged = ex.pts.concat(pts).sort(function (a, b) { return a[0] - b[0]; }), uniq = [], seen = {};
+                    var ex = mgG.series[key], exDiv = (ex.live && ex.live.div) || 1;
+                    if (exDiv !== 1) {   // the first copy is in amperes: scale this copy alike
+                        pts = pts.map(function (q) { return [q[0], Number(zf(q[1] / exDiv))]; });
+                        actual = actual.map(function (q) { return [q[0], Number(zf(q[1] / exDiv))]; });
+                    }
+                    var merged = ex.pts.concat(pts).sort(function (a, b) { return a[0] - b[0]; }), uniq = [], seen = {};
                     merged.forEach(function (q) { var sig = q[0] + '|' + q[1]; if (seen[sig]) return; seen[sig] = true; uniq.push(q); });
                     ex.pts = uniq; ex.actual = ex.actual.concat(actual).sort(function (a, b) { return a[0] - b[0]; });
                     return;
                 }
-                var kind = classify(name, isRelay, false, A.name);
+                // IPS: classify on the display name AND the raw / live attribute name -- the
+                // alias often drops the IIPS marker, which put every current under Voltage.
+                var kind = mgG.kind === 'ips' && !isRelay
+                    ? classify(name + ' ' + rawName + ' ' + (liveNames[id] || ''), false, false, A.name)
+                    : classify(name, isRelay, false, A.name);
+                // IPS current is plotted in AMPERES (raw mA / IPS_BATT_MA_PER_AMP), as on the
+                // IPS cards / table and the 616 IPS graph; its own "A" axis.
+                var div = 1;
+                if (mgG.kind === 'ips' && kind === 'ma') {
+                    div = parseFloat(window.IPS_BATT_MA_PER_AMP) || 1000;
+                    pts = pts.map(function (q) { return [q[0], Number(zf(q[1] / div))]; });
+                    actual = actual.map(function (q) { return [q[0], Number(zf(q[1] / div))]; });
+                    name = fn('ipsBattAmpLabel') ? window.ipsBattAmpLabel(name) : (/\(\s*A\s*\)\s*$/.test(name) ? name : name + ' (A)');
+                }
                 mgG.series[key] = {
-                    key: key, assetId: String(aid), attrId: id, name: name, assetName: A.name, kind: kind, unit: unitFor(name, kind),
+                    key: key, assetId: String(aid), attrId: id, name: name, assetName: A.name, kind: kind, unit: div !== 1 ? 'A' : unitFor(name, kind),
                     color: seriesColor(A.idx, attrIdx++), pts: pts, actual: actual, isBin: isRelay,
-                    live: isRelay ? { src: 'ws', aid: aid, name: name, attrId: id, dl: true } : (mgG.kind === 'ips' ? { src: 'ips', aid: aid, attrId: id } : { src: 'ws', aid: aid, name: name, attrId: id, dl: false })
+                    live: isRelay ? { src: 'ws', aid: aid, name: name, attrId: id, dl: true } : (mgG.kind === 'ips' ? { src: 'ips', aid: aid, attrId: id, div: div } : { src: 'ws', aid: aid, name: name, attrId: id, dl: false })
                 };
                 mgG.order.push(key);
                 if (mgG.checked[key] === undefined) mgG.checked[key] = true;
@@ -9737,10 +9799,12 @@ try {
             var V = mgG.assets[vAid];
             var key = 'battgrp::' + gk, attrIdx = Object.keys(mgG.series).filter(function (k) { return mgG.series[k].assetId === vAid; }).length;
             var pts = sumStep(mem.map(function (s) { return s.pts; }));
+            // members are current ('ma') series, already in amperes: the Σ is a current in A
+            var gDiv = (mem[0].live && mem[0].live.div) || 1;
             mgG.series[key] = {
-                key: key, assetId: vAid, attrId: g.attrId, name: g.name, assetName: V.name, kind: classify(g.name, false, false, V.name), unit: unitFor(g.name, classify(g.name, false, false, V.name)),
+                key: key, assetId: vAid, attrId: g.attrId, name: 'Σ ' + g.name, assetName: V.name, kind: 'ma', unit: gDiv !== 1 ? 'A' : unitFor(g.name, 'ma'),
                 color: seriesColor(V.idx, attrIdx), pts: pts, actual: pts.slice(0, Math.max(1, pts.length - 1)), isBin: false, isGroup: true,
-                members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }), live: { src: 'sum', members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }) }
+                members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }), live: { src: 'sum', div: gDiv, members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }) }
             };
             /* keep each bank's own series as a breakdown under the Σ row (was deleted, so the
                BATT CHARGING / DISCHARGING group could not be expanded). Off the graph until ticked. */
@@ -9787,7 +9851,7 @@ try {
             '<span class="tlmg-dot" style="background:' + s.color + '"></span>' +
             '<span class="tlmg-an">' + esc(label) + (sub ? ' <span class="tlmg-asub">(' + esc(sub) + ')</span>' : '') + '</span>' +
             '<span class="tlmg-kind">' + (s.kind === 'bin' ? '0/1' : s.kind === 'drv' ? 'DRV' : (s.unit || kindLabel(s.kind))) + '</span>' +
-            '<span class="tlmg-av" data-mg-val style="color:' + s.color + '">' + (s.kind === 'bin' ? valHtml(last, 'bin') : fmtVal(last)) + '</span></label>';
+            '<span class="tlmg-av" data-mg-val style="color:' + s.color + '">' + (s.kind === 'bin' ? valHtml(last, 'bin') : fmtVal(last, s.kind, s.unit)) + '</span></label>';
     }
     // Σ row + its expandable per-bank breakdown (shared by grouped and flat layouts)
     function chipWithBreakdown(s, list) {
@@ -9899,8 +9963,8 @@ try {
         var L = s.live; if (!L) return null;
         if (L.src === 'sum') {
             var sum = 0, has = false;
-            L.members.forEach(function (m) { var v = liveIndex(m.aid, cache).byId[parseInt(m.attrId, 10)]; if (v !== undefined && v !== null) { sum += v; has = true; } });
-            return has ? sum : null;
+            L.members.forEach(function (m) { var v = liveIndex(m.aid, cache).byId[parseInt(m.attrId, 10)]; if (v !== undefined && v !== null) { sum += Number(zf(v)); has = true; } });
+            return has ? sum / (L.div || 1) : null;
         }
         var idx = liveIndex(L.aid, cache);
         if (L.src === 'drv') {
@@ -9908,7 +9972,7 @@ try {
             var calc = fn('calculateDerivedValues'); if (!calc) return null;
             try { var dv = calc(idx.attrs, L.aid) || {}; var x = dv[L.key]; return (x === undefined || x === null || isNaN(x)) ? null : x; } catch (e) { return null; }
         }
-        if (L.src === 'ips') { var v1 = idx.byId[parseInt(L.attrId, 10)]; return v1 === undefined ? null : v1; }
+        if (L.src === 'ips') { var v1 = idx.byId[parseInt(L.attrId, 10)]; return (v1 === undefined || v1 === null) ? null : v1 / (L.div || 1); }
         if (L.dl) {
             var d = idx.dl[L.name]; if (d === undefined && L.attrId !== undefined) d = idx.dl[String(L.attrId)];
             if (d !== undefined) return d;
@@ -9931,7 +9995,7 @@ try {
             if (v !== null && v !== undefined && s.kind !== 'bin') v = Number(zf(v));
             var $pv = $('#mgPanel .tlmg-chip[data-mg-chip="' + cssKey(k) + '"] [data-mg-val]');
             if ($pv.length) {
-                var html = s.kind === 'bin' ? valHtml(v, 'bin') : fmtVal(v);
+                var html = s.kind === 'bin' ? valHtml(v, 'bin') : fmtVal(v, s.kind, s.unit);
                 if ($pv.html() !== html) { $pv.html(html); if (!force) { $pv.removeClass('tlgv-flash'); void $pv[0].offsetWidth; $pv.addClass('tlgv-flash'); } }
             }
             if (!lanes && !cards) return;
@@ -10001,7 +10065,16 @@ try {
         var model = buildModel();
         syncBar();
         $('#mgLoad').hide();
-        if (!model.series.length) { disposeAlt(); if (mgG.chart) { mgG.chart.dispose(); mgG.chart = null; } $('#mgChart,#mgAlt,#mgLegend').hide(); $('#mgEmpty').show(); return; }
+        if (!model.series.length) {
+            disposeAlt(); if (mgG.chart) { mgG.chart.dispose(); mgG.chart = null; } $('#mgChart,#mgAlt,#mgLegend').hide();
+            /* say WHY it is empty: the Show filter has no readings of that kind, vs no data at all */
+            var fl = { ma: 'current', v: 'voltage', bin: mgG.kind === 'ips' ? 'digital' : 'relay', drv: 'derived' }[mgG.filter];
+            var anyOfKind = mgG.order.some(function (k) { return passesFilter(mgG.series[k]); });
+            $('#mgEmpty [data-mg-empty-t]').text(fl && !anyOfKind ? 'No ' + fl + ' readings' : 'No data available');
+            $('#mgEmpty [data-mg-empty-s]').text(fl && !anyOfKind ? 'The selected assets have no ' + fl + ' readings in this range. Choose All or another reading type.'
+                : fl ? 'Tick ' + fl + ' readings in the list above to draw them.' : 'Try a different time range, tick more attributes or check asset connectivity');
+            $('#mgEmpty').show(); return;
+        }
         $('#mgEmpty').hide();
         if (mgG.mode === 'overlay') {
             disposeAlt(); $('#mgAlt').empty().hide();
@@ -10106,7 +10179,7 @@ try {
                     g.list.forEach(function (s) {
                         var v = valueAt(s.pts, t), on = mgG.focusShown === s.key;
                         var val = s.kind === 'bin' ? valHtml(v, 'bin')
-                            : '<b style="font-family:JetBrains Mono,monospace;">' + fmtVal(v, s.kind) + (v === null ? '' : ' ' + esc(s.unit)) + '</b>';
+                            : '<b style="font-family:JetBrains Mono,monospace;">' + fmtVal(v, s.kind, s.unit) + (v === null ? '' : ' ' + esc(s.unit)) + '</b>';
                         h += '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;' + (on ? 'background:' + hexA(s.color, .16) + ';border-radius:4px;margin:0 -4px;padding:0 4px;font-weight:700;' : (mgG.focusShown ? 'opacity:.6;' : '')) + '"><span style="width:8px;height:8px;border-radius:50%;background:' + s.color + ';flex-shrink:0;"></span>' +
                             '<span style="opacity:.8;flex:1;">' + esc(s.short) + '</span><span style="margin-left:8px;">' + val + '</span></div>';
                     });
@@ -10121,11 +10194,40 @@ try {
             { type: 'value', name: hasBin ? '0/1' : '', min: 0, max: 1, interval: 1, show: hasBin, position: 'right', offset: (hasV ? 52 : 0) + (hasO ? 52 : 0), nameTextStyle: { color: T.txt, fontSize: 10 }, axisLabel: { color: T.txt, fontSize: 10, formatter: function (v) { return v === 1 ? 'P' : v === 0 ? 'D' : ''; } }, splitLine: { show: false }, axisLine: { show: false }, axisTick: { show: false } },
             { type: 'value', name: hasO ? Object.keys(oUnits).join(' / ') : '', min: 0, max: niceMax(maxO), show: hasO, position: 'right', offset: hasV ? 52 : 0, nameTextStyle: { color: T.txt, fontSize: 10 }, axisLabel: { color: T.txt, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', formatter: function (v) { return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : String(+v.toFixed(2)); } }, splitLine: { show: !hasMA && !hasV, lineStyle: { color: T.split, type: 'dashed' } }, axisLine: { show: false }, axisTick: { show: false } }
         ];
+        /* current axis: amperes when every current series is in A (IPS), else mA */
+        var maUnits = {};
+        list.forEach(function (s) { if (s.kind !== 'bin' && axisOf(s) === 0) maUnits[String(s.unit || 'mA').trim() || 'mA'] = 1; });
+        var maName = Object.keys(maUnits).join(' / ') || 'mA', maIsA = maName === 'A';
+        yAxes[0].name = hasMA ? maName : '';
+        if (maIsA) yAxes[0].axisLabel.formatter = function (v) { return String(+v.toFixed(3)); };
+        /* Digital / relay lines: with analog lines on the chart they sit in a band at the
+           bottom (0/1 on the lowest quarter) instead of spanning the full height and
+           covering the analog readings; alone they use the whole plot */
+        var analog = hasMA || hasV || hasO;
+        yAxes[2].max = analog ? 4 : 1.15;
+        yAxes[2].name = hasBin ? (mgG.kind === 'ips' ? 'Digital' : '0/1') : '';
+        yAxes[2].nameLocation = 'start';
+        /* LEGEND: full names, wrapped on as many rows as needed (was one scroll row,
+           which cut most names off). Rows are measured so the plot starts below it. */
+        var gl = narrow ? 44 : 58;
         var rAxes = (hasV ? 1 : 0) + (hasO ? 1 : 0) + (hasBin ? 1 : 0);
+        var gr = (rAxes ? rAxes * 52 - (hasBin ? 8 : 0) : 18) + (narrow ? 0 : 8);
+        var lgW = Math.max(200, (el.clientWidth || $('#mgWrap').width() || 900) - 24), rows = 1, rowW = 0;
+        var mctx = null; try { mctx = document.createElement('canvas').getContext('2d'); mctx.font = '10.5px system-ui,-apple-system,"Segoe UI",sans-serif'; } catch (e) { mctx = null; }
+        list.forEach(function (s) {
+            var w = 12 + 5 + (mctx ? mctx.measureText(s.name).width : String(s.name).length * 6) + 10;
+            if (rowW && rowW + w > lgW) { rows++; rowW = 0; }
+            rowW += w;
+        });
+        var lgH = rows * 18, hintTop = 8 + lgH + 4, gridTop = hintTop + 22;
+        mgG.hintTop = hintTop;
+        /* taller chart when the legend takes several rows, so the plot keeps its height */
+        el.style.height = rows > 2 ? ('calc(clamp(380px,56vh,680px) + ' + ((rows - 2) * 18) + 'px)') : '';
+        chart.resize();
         chart.setOption({
             backgroundColor: 'transparent', animation: false,
-            legend: { type: 'scroll', top: 6, left: 12, right: 12, selectedMode: false, icon: 'roundRect', itemWidth: 12, itemHeight: 6, textStyle: { color: T.txt2, fontSize: 10.5 }, pageTextStyle: { color: T.txt }, pageIconColor: '#22d3ee', pageIconInactiveColor: T.axis, data: list.map(function (s) { return { name: s.name, itemStyle: { color: s.color } }; }) },
-            grid: { left: narrow ? 44 : 58, right: (rAxes ? rAxes * 52 - (hasBin ? 8 : 0) : 18) + (narrow ? 0 : 8), top: 58, bottom: 64, containLabel: false },
+            legend: { type: 'plain', top: 8, left: 12, right: 12, selectedMode: false, icon: 'roundRect', itemWidth: 12, itemHeight: 6, itemGap: 10, textStyle: { color: T.txt2, fontSize: 10.5 }, data: list.map(function (s) { return { name: s.name, itemStyle: { color: s.color } }; }) },
+            grid: { left: gl, right: gr, top: gridTop, bottom: 64, containLabel: false },
             tooltip: tip,
             xAxis: { type: 'time', min: model.xMin, max: model.xMax, boundaryGap: false, splitNumber: narrow ? 4 : 8, axisLine: { lineStyle: { color: T.axis } }, axisLabel: { color: T.txt, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', hideOverlap: true, formatter: function (v) { return fmtAxis(v, span); } }, splitLine: { show: true, lineStyle: { color: T.split } } },
             yAxis: yAxes,
@@ -10153,7 +10255,7 @@ try {
         function hint(k) {
             var m = k && byKey[k];
             return [{
-                id: 'mgFocusHint', type: 'text', left: gridLeft + 8, top: 40, z: 50, silent: true,
+                id: 'mgFocusHint', type: 'text', left: gridLeft + 8, top: mgG.hintTop || 40, z: 50, silent: true,
                 style: {
                     text: m ? (m.s.name + (mgG.focusPin === k ? '   · pinned (click again to release)' : '   · click to pin')) : 'Hover a line to focus it · click to pin',
                     fill: m ? m.s.color : (isLight() ? '#8391A3' : '#7C8BA0'), font: (m ? '700 ' : '') + '11.5px system-ui,-apple-system,"Segoe UI",sans-serif'
@@ -10371,7 +10473,7 @@ try {
                 var st = s.stats || {};
                 var stats = s.kind === 'bin'
                     ? '<span>Pickups <b>' + st.pickups + '</b></span><span>Drops <b>' + st.drops + '</b></span><span>Up <b>' + (st.onPct !== null ? st.onPct.toFixed(0) + '%' : '—') + '</b></span><span>Events <b>' + st.count + '</b></span>'
-                    : '<span>Min <b>' + fmtVal(st.min) + '</b></span><span>Max <b>' + fmtVal(st.max) + '</b></span><span>Avg <b>' + fmtVal(st.avg) + '</b></span><span>Samples <b>' + st.count + '</b></span>';
+                    : '<span>Min <b>' + fmtVal(st.min, s.kind, s.unit) + '</b></span><span>Max <b>' + fmtVal(st.max, s.kind, s.unit) + '</b></span><span>Avg <b>' + fmtVal(st.avg, s.kind, s.unit) + '</b></span><span>Samples <b>' + st.count + '</b></span>';
                 h += '<div class="tlgv-card" data-key="' + esc(s.key) + '" style="--lane-c:' + esc(s.color) + '">' +
                     '<div class="tlgv-card-head"><span class="tlgv-card-dot"></span>' +
                     '<div class="tlgv-card-title"><b title="' + esc(s.name) + '">' + esc(s.short) + '</b><small><span style="color:' + esc(g.asset.color) + ';font-weight:700;">' + esc(g.asset.name) + '</span> · ' + kindLabel(s.kind) + (s.unit ? ' · ' + esc(s.unit) : '') + '</small></div>' +
@@ -10412,7 +10514,7 @@ try {
                     if (!params || !params.length) return '';
                     var t = params[0].axisValue != null ? Number(params[0].axisValue) : Number(params[0].value[0]), v = valueAt(s.pts, t);
                     return '<div style="font-family:JetBrains Mono,monospace;color:var(--e7-accent, #22d3ee);font-weight:700;margin-bottom:4px;">' + fmtFull(t) + '</div>' +
-                        '<div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:50%;background:' + s.color + '"></span><span style="opacity:.75">' + esc(s.name) + '</span><b style="margin-left:10px;">' + fmtVal(v, s.kind) + (isBin || v === null ? '' : ' ' + esc(s.unit)) + '</b></div>';
+                        '<div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:50%;background:' + s.color + '"></span><span style="opacity:.75">' + esc(s.name) + '</span><b style="margin-left:10px;">' + fmtVal(v, s.kind, s.unit) + (isBin || v === null ? '' : ' ' + esc(s.unit)) + '</b></div>';
                 }
             },
             xAxis: { type: 'time', min: model.xMin, max: model.xMax, splitNumber: 4, axisLabel: { color: T.txt, fontSize: 9.5, fontFamily: 'JetBrains Mono,monospace', hideOverlap: true, formatter: function (v) { return fmtAxis(v, span); } }, axisLine: { lineStyle: { color: T.axis } }, splitLine: { show: true, lineStyle: { color: T.split } } },

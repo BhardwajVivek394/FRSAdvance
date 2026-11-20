@@ -340,51 +340,195 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return View(new Domain.Login());
         }
 
+        // =====================================================
+        // FORGOT PASSWORD — ported from 616 (phone → OTP → pick email + new password)
+        // =====================================================
+
         [HttpPost]
-        public ActionResult ForgotPassword(Domain.Login mLogin)
+        public JsonResult ForgotPasswordSendOtp(string phoneNumber)
         {
+            dynamic data = new ExpandoObject();
             try
             {
-                APIResponse mAPIResponse = new APIResponse();
-                ModelState.Remove("Password");
-                if (ModelState.IsValid)
+                using (var hcf = new HttpClientFactory())
                 {
-                    using (var hcf = new HttpClientFactory())
+                    var payload = new { PhoneNumber = phoneNumber };
+                    var jsonStr = JsonConvert.SerializeObject(payload);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("Login/ForgotPasswordSendOtp", str).Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
                     {
-                        var jsonStr = JsonConvert.SerializeObject(mLogin);
-                        StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
-                        var response = hcf.client.PostAsync(String.Format("Login/ForgotPassword"), str).Result;
-                        if (response.StatusCode == HttpStatusCode.OK)
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        var result = JsonConvert.DeserializeObject<dynamic>(jsonString);
+                        bool success = result.Success;
+
+                        if (success)
                         {
-                            string jsonString = response.Content.ReadAsStringAsync().Result;
-                            mAPIResponse = JsonConvert.DeserializeObject<APIResponse>(jsonString);
-                            if (mAPIResponse.IsSuccess)
+                            data = new
                             {
-                                ViewBag.Success = "Password has been sent to your registered email.";
-                                ModelState.Clear();
-                                mLogin = new Domain.Login();
-                            }
-                            else
-                            {
-                                ViewBag.Error = mAPIResponse.Message;
-                            }
+                                type = "success",
+                                message = (string)result.Message,
+                                phoneNumber = (string)result.PhoneNumber
+                            };
                         }
                         else
                         {
-                            ViewBag.Error = "Email id does not exist";
+                            data = new { type = "error", message = (string)result.Message };
                         }
                     }
-                }
-                else
-                {
-                    ViewBag.Error = "Email address is required";
+                    else
+                    {
+                        data = new { type = "error", message = "Unable to process your request. Please try again." };
+                    }
                 }
             }
             catch (Exception ex)
             {
-                ViewBag.Error = ex.Message;
+                data = new { type = "error", message = "Something went wrong. Please try again later." };
             }
-            return View("ForgotPassword", mLogin);
+            return Json(data, JsonRequestBehavior.AllowGet);
+        }
+
+        [HttpPost]
+        public JsonResult ForgotPasswordVerifyOtp(string mobileNumber, string otp)
+        {
+            dynamic data = new ExpandoObject();
+            try
+            {
+                using (var hcf = new HttpClientFactory())
+                {
+                    var payload = new { Mobile = mobileNumber, Otp = otp };
+                    var jsonStr = JsonConvert.SerializeObject(payload);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("Login/ForgotPasswordVerifyOtp", str).Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        // Same shape as 616's Domain.Dto.ForgotPasswordOtpResult
+                        var result = JObject.Parse(jsonString);
+                        var emails = result["Emails"] as JArray;
+                        data = new
+                        {
+                            Success = (bool?)result["Success"] ?? false,
+                            Message = (string)result["Message"],
+                            ResetToken = (string)result["ResetToken"],
+                            Emails = emails != null ? emails.Select(e => (string)e).ToArray() : new string[0]
+                        };
+                        return Json(data, JsonRequestBehavior.AllowGet);
+                    }
+                    else
+                    {
+                        data = new { type = "error", Success = false, Message = "Verification failed. Please try again." };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                data = new { type = "error", Success = false, Message = "Something went wrong. Please try again later." };
+            }
+            return Json(data, JsonRequestBehavior.AllowGet);
+        }
+
+        [HttpPost]
+        public JsonResult ForgotPasswordResendOtp(string mobileNumber)
+        {
+            dynamic data = new ExpandoObject();
+            try
+            {
+                using (var hcf = new HttpClientFactory())
+                {
+                    var response = hcf.client.GetAsync($"Login/ForgotPasswordResendOtp/MobileNumber/{mobileNumber}").Result;
+                    string jsonString = response.Content.ReadAsStringAsync().Result;
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        var respon = JsonConvert.DeserializeObject<dynamic>(jsonString);
+                        if (respon.type == "success")
+                        {
+                            data = new { type = "success", message = "OTP sent successfully" };
+                        }
+                        else if (respon.type == "error")
+                        {
+                            data = new { type = "error", message = "Failed to send OTP" };
+                        }
+                    }
+                    else
+                    {
+                        data = new { type = "error", message = "Failed to resend OTP" };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                data = new { type = "error", message = "Something went wrong. Please try again later." };
+            }
+            return Json(data, JsonRequestBehavior.AllowGet);
+        }
+
+        [HttpPost]
+        public JsonResult ResetPassword(string emailAddress, string newPassword, string confirmPassword, string resetToken, string phoneNumber)
+        {
+            dynamic data = new ExpandoObject();
+            try
+            {
+                if (string.IsNullOrEmpty(newPassword) || string.IsNullOrEmpty(confirmPassword))
+                {
+                    data = new { type = "error", message = "Please fill in both password fields." };
+                    return Json(data, JsonRequestBehavior.AllowGet);
+                }
+
+                if (newPassword != confirmPassword)
+                {
+                    data = new { type = "error", message = "Passwords do not match." };
+                    return Json(data, JsonRequestBehavior.AllowGet);
+                }
+
+                if (newPassword.Length < 6)
+                {
+                    data = new { type = "error", message = "Password must be at least 6 characters." };
+                    return Json(data, JsonRequestBehavior.AllowGet);
+                }
+
+                using (var hcf = new HttpClientFactory())
+                {
+                    var payload = new
+                    {
+                        EmailAddress = emailAddress,
+                        PhoneNumber = phoneNumber,
+                        NewPassword = newPassword,
+                        ConfirmPassword = confirmPassword,
+                        ResetToken = resetToken
+                    };
+                    var jsonStr = JsonConvert.SerializeObject(payload);
+                    StringContent str = new StringContent(jsonStr, Encoding.UTF8, "application/json");
+                    var response = hcf.client.PostAsync("Login/ResetPassword", str).Result;
+
+                    if (response.StatusCode == HttpStatusCode.OK)
+                    {
+                        string jsonString = response.Content.ReadAsStringAsync().Result;
+                        var result = JsonConvert.DeserializeObject<dynamic>(jsonString);
+                        bool success = result.Success;
+                        if (success)
+                        {
+                            data = new { type = "success", message = (string)result.Message };
+                        }
+                        else
+                        {
+                            data = new { type = "error", message = (string)result.Message };
+                        }
+                    }
+                    else
+                    {
+                        data = new { type = "error", message = "Unable to reset password. Please try again." };
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                data = new { type = "error", message = "Something went wrong. Please try again later." };
+            }
+            return Json(data, JsonRequestBehavior.AllowGet);
         }
 
         public string GetIPAddress()

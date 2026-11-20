@@ -133,8 +133,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         // the web project's DivisionLister contract).
         public JsonResult GetDivisionByZoneId(int? zoneId, DivisionLister mDivisionLister)
         {
+            // Same binding as Home: a single zoneId goes through GetDivisionList too, so only
+            // divisions holding a station assigned to the user are returned
             if (zoneId.HasValue)
-                return Json(_divisionService.GetByZoneId(zoneId.Value), JsonRequestBehavior.AllowGet);
+            {
+                mDivisionLister = new DivisionLister();
+                mDivisionLister.SearchCriteria.ZoneIds = new List<int> { zoneId.Value };
+            }
 
             List<Division> mDivisions = new List<Division>();
             if (mDivisionLister != null && mDivisionLister.SearchCriteria != null &&

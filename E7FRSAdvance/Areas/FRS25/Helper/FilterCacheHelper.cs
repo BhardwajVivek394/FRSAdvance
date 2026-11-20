@@ -65,7 +65,10 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
             var cached = _cache.Get(key) as List<Division>;
             if (cached != null) return cached;
 
-            var data = divisionService.GetByZoneId(zoneId) ?? new List<Division>();
+            // Same binding as Home: only divisions holding a station assigned to the user
+            var lister = new DivisionLister();
+            lister.SearchCriteria.ZoneIds = new List<int> { zoneId };
+            var data = divisionService.GetDivisionList(lister) ?? new List<Division>();
             _cache.Set(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
             return data;
         }

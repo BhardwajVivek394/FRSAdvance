@@ -407,10 +407,14 @@
                     if (typeof window.ipsBattAmpLabel === 'function') lbl = window.ipsBattAmpLabel(lbl);
                 }
             }
+            /* a reading shown in amperes IS a current (the IPS card rule) even when its
+               alias dropped the IIPS marker; a DataLogger attribute is Digital */
+            var tabOf = isAmp ? 'current' : ipsTabOf(aid, k, title + ' ' + alias + ' ' + k);
+            if (String(a.DataType || '').trim().toLowerCase() === 'datalogger') tabOf = 'digital';
             rows.push({
                 k: k, key: norm(title), attrId: attrId, title: title, alias: alias,
                 label: lbl, sub: '',   /* v618.16: AliasName only, everywhere */
-                v: v, amp: isAmp, stale: a.IsFresh === false, ipsTab: ipsTabOf(aid, k, title + ' ' + alias),
+                v: v, amp: isAmp, stale: a.IsFresh === false, ipsTab: tabOf,
                 scaleMin: smin, scaleMax: smax,
                 range: rg
             });
@@ -714,7 +718,29 @@
         '.hv-trend .th{display:flex;justify-content:space-between;font-size:11.5px;color:var(--e7-text-3,#8D9CB2);}' +
         '.hv-trend .th b{color:var(--e7-heading,inherit);}' +
         '.hv-trend svg{display:block;width:100%;height:90px;}' +
-        '.hv-empty{padding:40px;text-align:center;color:var(--e7-text-3,#8D9CB2);}';
+        '.hv-empty{padding:40px;text-align:center;color:var(--e7-text-3,#8D9CB2);}' +
+        /* IPS: reading-kind counts on the toggle, Voltage / Current / Digital sections, Σ tiles + battery totals */
+        '.hv-seg .hv-segn{font-size:10.5px;font-weight:700;opacity:.75;margin-left:2px;}' +
+        '.hv-ipsec{margin-top:8px;}' +
+        '.hv-ipsec-h{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--e7-text-3,#8D9CB2);margin:0 0 5px;}' +
+        '.hv-ipsec-h small{font-weight:700;padding:0 6px;border-radius:999px;background:rgba(127,140,160,.15);letter-spacing:0;}' +
+        '.hv-ipsec[data-ipsec="voltage"] .hv-ipsec-h i{color:var(--e7-amber,#E0A100);}' +
+        '.hv-ipsec[data-ipsec="current"] .hv-ipsec-h i{color:var(--brand,#22d3ee);}' +
+        '.hv-ipsec[data-ipsec="digital"] .hv-ipsec-h i{color:var(--e7-green,#22A55B);}' +
+        '.hv-tile.hv-sumtile{cursor:default;border-style:dashed;border-color:var(--brand,#22d3ee);background:rgba(34,211,238,.06);}' +
+        '.hv-tile.hv-sumtile .lb{font-weight:800;color:var(--e7-heading,inherit);}' +
+        '.hv-tile.hv-sumtile .vl small,.hv-ipssum-t b small{font-size:11px;font-weight:600;opacity:.75;}' +
+        '.hv-ipssum{border:1px solid var(--e7-border,rgba(127,140,160,.25));border-radius:14px;background:var(--e7-surface-2,rgba(127,140,160,.05));padding:10px 12px;margin-bottom:12px;}' +
+        '.hv-ipssum-h{font-size:12px;font-weight:800;color:var(--e7-heading,inherit);margin-bottom:8px;display:flex;align-items:center;gap:7px;}' +
+        '.hv-ipssum-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;}' +
+        '.hv-ipssum-t{display:grid;grid-template-columns:1fr auto;grid-template-areas:"k b" "n b" "a c";gap:1px 10px;align-items:center;border-radius:10px;padding:8px 10px;border:1px solid var(--e7-border,rgba(127,140,160,.25));border-left:4px solid #22A55B;background:var(--e7-surface,transparent);}' +
+        '.hv-ipssum-t.discharging{border-left-color:#D97706;}' +
+        '.hv-ipssum-t .k{grid-area:k;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#22A55B;}' +
+        '.hv-ipssum-t.discharging .k{color:#D97706;}' +
+        '.hv-ipssum-t .n{grid-area:n;font-size:12.5px;font-weight:800;color:var(--e7-heading,inherit);overflow-wrap:anywhere;}' +
+        '.hv-ipssum-t .a{grid-area:a;font-size:11px;color:var(--e7-text-3,#8D9CB2);overflow-wrap:anywhere;}' +
+        '.hv-ipssum-t b{grid-area:b;font-size:18px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--e7-heading,inherit);white-space:nowrap;}' +
+        '.hv-ipssum-t .c{grid-area:c;font-size:10.5px;color:var(--e7-text-3,#8D9CB2);white-space:nowrap;text-align:right;}';
 
     function ensureCss() {
         if (document.getElementById('tlHealthCss')) return;
@@ -1538,7 +1564,9 @@
             (circuitAllowed() ? '<button type="button" class="hv-tool" data-hv-circ="' + esc(A.aid) + '" aria-pressed="' + co +
                 '" title="' + (co ? 'Hide circuit' : 'Show circuit') + '"><i class="fa-solid fa-project-diagram"></i></button>' : '') +
             '</div></div>';
-        if (A.relays.length) {
+        var ips = isIpsType();
+        /* IPS: the data-logger relays are already the Digital tiles below, so no pill row */
+        if (A.relays.length && !ips) {
             html += '<div class="hv-relays">';
             for (var i = 0; i < A.relays.length; i++) {
                 html += '<span class="hv-relay ' + (A.relays[i].up ? 'up' : 'dn') + '">' + esc(A.relays[i].name) + ' ' + (A.relays[i].up ? '&uarr; Pickup' : '&darr; Drop') + '</span>';
@@ -1555,6 +1583,8 @@
                 html += '<div class="hv-asp"><div class="hv-tiles hv-pair">' + tiles + '</div></div>';
             }
             html += '</div>';
+        } else if (ips) {
+            html += ipsCardBodyHtml(A);
         } else {
             if (!A.dlOnly) {   /* DL-only: the relay pills above are its readings */
                 html += '<div class="hv-rows hv-tiles">';
@@ -1572,6 +1602,77 @@
         }
         html += trendHtml(A) + '</article>';
         return html;
+    }
+
+    /* ---- IPS card body: readings segregated Voltage / Current / Digital ----
+       Same classification as the IPS table tabs. On a battery charging /
+       discharging asset the Current section opens with the Σ of its bank
+       readings (buildIpsCardSumModels -- the exact sum the IPS card shows). */
+    var IPS_SECTIONS = [['voltage', 'Voltage', 'fa-bolt'], ['current', 'Current', 'fa-wave-square'], ['digital', 'Digital', 'fa-toggle-on']];
+    function ipsCardSumTiles(A) {
+        if (typeof window.buildIpsCardSumModels !== 'function') return '';
+        var models = [];
+        try { models = window.buildIpsCardSumModels(A.aid) || []; } catch (e) { models = []; }
+        return models.map(function (m) {
+            var disp = typeof window.ipsCardSumDisplay === 'function' ? window.ipsCardSumDisplay(m) : fmt(m.sum);
+            var noVal = !m.count || disp === '—' || disp === '--';
+            return '<div class="hv-tile hv-sumtile' + (noVal ? ' st-none' : '') + '" title="' + esc('Sum of ' + m.members + ' bank readings -- ' + m.label) + '">' +
+                '<div class="hd"><span class="lb">&Sigma; ' + esc(m.label) + '</span></div>' +
+                '<div class="vl">' + esc(noVal ? '--' : disp) + (m.ampere && !noVal ? ' <small>A</small>' : '') + '</div>' +
+                '<div class="sl">sum of ' + m.members + ' bank' + (m.members > 1 ? 's' : '') + '</div></div>';
+        }).join('');
+    }
+    function ipsCardBodyHtml(A) {
+        var by = { voltage: [], current: [], digital: [] };
+        A.rows.forEach(function (r) { (by[r.ipsTab] || by.voltage).push(r); });
+        var tab = H.ipsTab || 'all';
+        var sums = (tab === 'all' || tab === 'current') ? ipsCardSumTiles(A) : '';
+        var h = '', any = false;
+        IPS_SECTIONS.forEach(function (S) {
+            if (tab !== 'all' && tab !== S[0]) return;
+            var list = by[S[0]], extra = S[0] === 'current' ? sums : '';
+            if (!list.length && !extra) return;
+            any = true;
+            h += '<div class="hv-ipsec" data-ipsec="' + S[0] + '"><div class="hv-ipsec-h"><i class="fa-solid ' + S[2] + '"></i> ' + S[1] +
+                ' <small>' + list.length + '</small></div><div class="hv-rows hv-tiles">' + extra;
+            for (var j = 0; j < list.length; j++) h += rowHtml(A, list[j]);
+            h += '</div></div>';
+        });
+        return any ? h : '<div class="hv-rows hv-tiles"><div class="hv-sum">No live readings yet.</div></div>';
+    }
+    /* Battery bank totals across assets (BATT CHARGING n / BATT DISCHARGING n):
+       the group rows of the IPS Live Grid (ipsGroupCurrentRows), so the Health
+       cards show the same Σ, in amperes, as the IPS table. */
+    function ipsBattSummaryHtml() {
+        if (typeof window.ipsBuildFullRows !== 'function') return '';
+        var rows = [];
+        try { rows = window.ipsBuildFullRows() || []; } catch (e) { rows = []; }
+        var groups = rows.filter(function (r) { return r && r.isGroup; });
+        if (!groups.length) return '';
+        var q = String(H.q || '').trim().toUpperCase();
+        if (q) groups = groups.filter(function (g) {
+            if (String(g.assetName || '').toUpperCase().indexOf(q) !== -1) return true;
+            return (g.members || []).some(function (m) { return String(m.assetName || '').toUpperCase().indexOf(q) !== -1; });
+        });
+        if (!groups.length) return '';
+        var bucketOf = function (g) {
+            var t = (String(g.assetName || '') + ' ' + String(g.assetId || '')).toUpperCase();
+            return t.indexOf('DISCHARG') !== -1 ? 'discharging' : 'charging';
+        };
+        groups.sort(function (a, b) {
+            var x = bucketOf(a), y = bucketOf(b);
+            return x === y ? String(a.assetName).localeCompare(String(b.assetName), undefined, { numeric: true }) : (x === 'charging' ? -1 : 1);
+        });
+        return '<div class="hv-ipssum" role="group" aria-label="Battery current totals"><div class="hv-ipssum-h"><i class="fa-solid fa-car-battery"></i> Battery current &middot; &Sigma; of banks</div><div class="hv-ipssum-row">' +
+            groups.map(function (g) {
+                var b = bucketOf(g), n = (g.members || []).length;
+                var val = String(g.value == null ? '' : g.value), noVal = !val || val === '—' || val === '--';
+                return '<div class="hv-ipssum-t ' + b + '" title="' + esc('Sum of ' + n + ' reading' + (n !== 1 ? 's' : '') + ' -- ' + g.assetName + ' / ' + g.attr) + '">' +
+                    '<span class="k">' + (b === 'charging' ? 'Charging' : 'Discharging') + '</span>' +
+                    '<span class="n">' + esc(g.assetName) + '</span><span class="a">' + esc(g.attr) + '</span>' +
+                    '<b>' + esc(noVal ? '--' : val) + (noVal ? '' : ' <small>A</small>') + '</b>' +
+                    '<span class="c">&Sigma; ' + n + ' reading' + (n !== 1 ? 's' : '') + '</span></div>';
+            }).join('') + '</div></div>';
     }
 
     /* ---- table view (v618.14) -------------------------------------------- */
@@ -1719,6 +1820,19 @@
            row filter only applies to the CARD view. */
         var ipsFlatTable = H.view === 'table' && isIpsType() && typeof window.ipsBuildTableHtml === 'function';
         var ipsTabNow = ipsFlatTable ? 'all' : H.ipsTab;
+        /* IPS cards: how many assets carry each kind of reading (shown on the
+           Voltage / Current / Digital buttons) and the battery bank totals,
+           both taken BEFORE the tab filter below trims the rows */
+        var ipsCnt = null, ipsSumHtml = '';
+        if (isIpsType() && !ipsFlatTable) {
+            ipsCnt = { all: list.length, voltage: 0, current: 0, digital: 0 };
+            list.forEach(function (A) {
+                var has = {};
+                A.rows.forEach(function (r) { has[r.ipsTab || 'voltage'] = 1; });
+                for (var t in has) if (ipsCnt.hasOwnProperty(t)) ipsCnt[t]++;
+            });
+            if (H.view !== 'table' && (ipsTabNow === 'all' || ipsTabNow === 'current')) ipsSumHtml = ipsBattSummaryHtml();
+        }
         if (isIpsType() && !ipsFlatTable && ipsTabNow && ipsTabNow !== 'all') {
             list.forEach(function (A) {
                 A.rows = A.rows.filter(function (r) { return (r.ipsTab || 'voltage') === ipsTabNow; });
@@ -1755,7 +1869,7 @@
             : function (a, b) { return (grp(a) - grp(b)) || a.name.localeCompare(b.name, undefined, { numeric: true }); });
 
         /* cheap signature: only rebuild DOM when something visible changed */
-        var sig = H.view + (H.ipsTab || '') + (H.ipsTableTab || '') + JSON.stringify(H.gopen) + H.sort + H.filter + q + JSON.stringify(H.trendKey) + JSON.stringify(H.circ) + JSON.stringify(H.circOff) + H.circAll +
+        var sig = H.view + (H.ipsTab || '') + (H.ipsTableTab || '') + ipsSumHtml + JSON.stringify(H.gopen) + H.sort + H.filter + q + JSON.stringify(H.trendKey) + JSON.stringify(H.circ) + JSON.stringify(H.circOff) + H.circAll +
             JSON.stringify(H.open) + (pageLight() ? 'L' : 'D') + '|' +
             shown.map(function (A) {
                 return A.aid + ':' + A.status + A.score + A.occ + A.relays.map(function (r) { return r.up ? 1 : 0; }).join('') + ':' +
@@ -1766,6 +1880,7 @@
         if (!force && sig === H.sig) return;
         H.sig = sig;
 
+        var ipsCntTxt = function (t) { return ipsCnt ? ' <small class="hv-segn">' + (ipsCnt[t] || 0) + '</small>' : ''; };
         var seg = function (key, val, label) {
             return '<button type="button" data-hv-' + key + '="' + val + '" aria-pressed="' + (H[key] === val) + '">' + label + '</button>';
         };
@@ -1777,8 +1892,8 @@
             '<span style="flex:1"></span>' +
             '<div class="hv-seg" role="group" aria-label="Filter">' + seg('filter', 'all', 'All') + seg('filter', 'attn', 'Needs attention') +
             (isTrackType() ? seg('filter', 'occ', 'Occupied') : '') + '</div>' +
-            (isIpsType() && H.view !== 'table' ? '<div class="hv-seg" role="group" aria-label="IPS readings">' + seg('ipsTab', 'all', 'All') + seg('ipsTab', 'voltage', 'Voltage') +
-                seg('ipsTab', 'current', 'Current') + seg('ipsTab', 'digital', 'Digital') + '</div>' : '') +
+            (isIpsType() && H.view !== 'table' ? '<div class="hv-seg" role="group" aria-label="IPS readings">' + seg('ipsTab', 'all', 'All' + ipsCntTxt('all')) + seg('ipsTab', 'voltage', 'Voltage' + ipsCntTxt('voltage')) +
+                seg('ipsTab', 'current', 'Current' + ipsCntTxt('current')) + seg('ipsTab', 'digital', 'Digital' + ipsCntTxt('digital')) + '</div>' : '') +
             '<div class="hv-seg" role="group" aria-label="Sort">' + seg('sort', 'worst', 'Worst first') + seg('sort', 'name', 'Name') + '</div>' +
             (H.grid ? '<button type="button" class="hv-tool" data-hv-classic="1" title="Show the classic grid table" style="width:auto;padding:0 10px">Classic grid</button>' :
                 '<div class="hv-seg" role="group" aria-label="Layout">' + seg('view', 'cards', '<i class="fa-solid fa-table-cells-large"></i> Cards') + seg('view', 'table', '<i class="fa-solid fa-table"></i> Table') + '</div>') +
@@ -1792,7 +1907,9 @@
             body = '<div class="hv-empty"><i class="fas fa-satellite-dish" style="font-size:22px;opacity:.5"></i><br>' +
                 'Select site and asset type, then Search to start live data.</div>';
         } else if (!shown.length && !(H.view === 'table' && isIpsType() && typeof (window.ipsBuildFullTableHtml || window.ipsBuildTableHtml) === 'function')) {
-            body = '<div class="hv-empty">Nothing matches this filter.</div>';
+            body = ipsCnt && ipsTabNow && ipsTabNow !== 'all' && !q
+                ? '<div class="hv-empty">No ' + esc(ipsTabNow) + ' readings for the selected IPS assets.</div>'
+                : '<div class="hv-empty">Nothing matches this filter.</div>';
         } else {
             /* IPS Table: the classic flat, segregated "IPS Live Grid" (616 parity) --
                one row per asset x attribute, Voltage / Current / Digital tabs, battery
@@ -1823,7 +1940,7 @@
                     ? tableHtml(shown)
                     : isSignalType()
                         ? sigGridHtml(sigSections(shown))
-                        : '<div class="hv-grid">' + shown.map(cardHtml).join('') + '</div>';
+                        : ipsSumHtml + '<div class="hv-grid">' + shown.map(cardHtml).join('') + '</div>';
         }
         /* IPS flat grid: on a live tick that did not change the grid's STRUCTURE
            (same assets / attributes / tab), refresh value + timestamp cells in

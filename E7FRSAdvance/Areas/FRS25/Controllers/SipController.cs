@@ -132,7 +132,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             var divisions = new List<Domain.Division>();
             try
             {
-                divisions = _divisionService.GetByZoneId(zoneId);
+                // Same binding as Home: only divisions holding a station assigned to the user
+                var lister = new Domain.DivisionLister();
+                lister.SearchCriteria.ZoneIds = new List<int> { zoneId };
+                divisions = _divisionService.GetDivisionList(lister);
             }
             catch (Exception)
             {

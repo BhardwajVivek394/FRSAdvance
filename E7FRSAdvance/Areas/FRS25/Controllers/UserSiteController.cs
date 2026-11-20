@@ -288,34 +288,18 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         public JsonResult GetDivisionByZoneId(int zoneId)
         {
             List<Division> mDivisions = new List<Division>();
+            // Same binding as Home: only divisions holding a station assigned to the user
+            var divisionService = new DivisionService(new SiteService());
             if (zoneId > 0)
             {
-                string result;
-                try
-                {
-                    using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
-                    {
-                        var response = hcf.client.GetAsync(String.Format("Division/GetAllDivisionsByZoneId/{0}", zoneId)).Result;
-                        string jsonString = response.Content.ReadAsStringAsync().Result;
-                        if (response.StatusCode == HttpStatusCode.OK)
-                        {
-                            mDivisions = JsonConvert.DeserializeObject<List<Division>>(jsonString);
-                        }
-                        else
-                        {
-                            result = "Internal server error.";
-                        }
-                    }
-
-                }
-                catch (Exception ex)
-                {
-                    result = ex.Message.ToString();
-                }
+                var lister = new DivisionLister();
+                lister.SearchCriteria.ZoneIds = new List<int> { zoneId };
+                mDivisions = divisionService.GetDivisionList(lister);
             }
             else
             {
-                mDivisions = GetDivisions();
+                try { mDivisions = divisionService.GetAllDivisions(); }
+                catch (Exception) { mDivisions = new List<Division>(); }
             }
 
             return Json(mDivisions, JsonRequestBehavior.AllowGet);
@@ -742,44 +726,41 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             var result = new { FailureAccuracy = 0.0, PredictiveAccuracy = 0.0, RdpmsCoverage = 0.0 };
             try
             {
+                // Same query and formulas as 616's Performance page
+                // (PerformanceController._List + Views/Performance/_List.cshtml), for one site.
                 var mPerformanceLister = new FRSAlertLister();
-                mPerformanceLister.SearchCriteria.SiteId = siteId;
-                // Match the proven AlertDetailReport query: a date window (this month),
-                // acknowledged alerts, and pagination set. Without these the paginated
-                // API returns no usable rows, so the tab rendered 0/0/0 ("no data").
-                mPerformanceLister.SearchCriteria.FromDate = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
+                mPerformanceLister.SearchCriteria.SiteIds = new List<int> { siteId };
+                // 616 default range: Monday of the current week -> now
+                var today = DateTime.Today;
+                int diff = (7 + (today.DayOfWeek - DayOfWeek.Monday)) % 7;
+                mPerformanceLister.SearchCriteria.FromDate = today.AddDays(-diff);
                 mPerformanceLister.SearchCriteria.ToDate = DateTime.Now;
-                // Fetch ALL of this month's alerts for the site (not only acknowledged ones).
-                // The accuracy numerator below already counts only the True / Partial
-                // (acknowledged-correct) alerts, so the denominator must include every alert
-                // of that type. Filtering the fetch to IsAcknowledgement=true meant a site
-                // with no acknowledged alerts this month returned zero rows -> the tab showed
-                // "No performance data" even though the site had alerts.
-                mPerformanceLister.Pager.Take = -1;
-                mPerformanceLister = frsAlertService.GetListerWithPagination(mPerformanceLister);
+                // acknowledged alerts incl. manual failures (FRSAlert/GetFRSLister), as in 616
+                mPerformanceLister = frsAlertService.GetWithAcknowledgementAlertWithManual(mPerformanceLister);
 
                 if (mPerformanceLister != null && mPerformanceLister.mFRSAlerts != null && mPerformanceLister.mFRSAlerts.Count > 0)
                 {
                     var perf = mPerformanceLister.mFRSAlerts;
 
-                    int failureTypeId = (int)E7FRSAdvance.Utility.Utility.AlertType.Failure;
-                    int predictiveTypeId = (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive;
+                    int failure = (int)E7FRSAdvance.Utility.Utility.AlertType.Failure;
+                    int predictive = (int)E7FRSAdvance.Utility.Utility.AlertType.Predictive;
                     int ackTrue = (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.True;
                     int ackPt = (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.PT;
+                    int ackFalse = (int)E7FRSAdvance.Utility.Utility.AcknowledgemenStatus.False;
 
-                    // (True + Partial) / Total, per alert type. Use AlertTypeId for both
-                    // (the old code compared the AlertType string for predictive, which
-                    // never matched, so predictive accuracy was always 0).
-                    double failureTotal = perf.Where(x => x.AlertTypeId == failureTypeId).Count();
-                    double failureTrue = perf.Where(x => x.AlertTypeId == failureTypeId && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt)).Count();
-                    double predictiveTotal = perf.Where(x => x.AlertTypeId == predictiveTypeId).Count();
-                    double predictiveTrue = perf.Where(x => x.AlertTypeId == predictiveTypeId && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt)).Count();
+                    // 616 counts by AlertCategoryId
+                    int failTruePt = perf.Count(x => x.AlertCategoryId == failure && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt) && x.isManual == 0);
+                    int failTruePtFalse = perf.Count(x => x.AlertCategoryId == failure && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt || x.AcknowledgemenStatusId == ackFalse) && x.isManual == 0);
+                    int predTruePt = perf.Count(x => x.AlertCategoryId == predictive && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt) && x.isManual == 0);
+                    int predTruePtFalse = perf.Count(x => x.AlertCategoryId == predictive && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt || x.AcknowledgemenStatusId == ackFalse) && x.isManual == 0);
+                    // RDPMS: True/PT failures raised by RDPMS out of all actual True/PT failures (incl. manual)
+                    int actualFailTruePt = perf.Count(x => x.AlertCategoryId == failure && (x.AcknowledgemenStatusId == ackTrue || x.AcknowledgemenStatusId == ackPt));
 
                     result = new
                     {
-                        FailureAccuracy = failureTotal > 0 ? Math.Round((failureTrue / failureTotal) * 100, 2) : 0.0,
-                        PredictiveAccuracy = predictiveTotal > 0 ? Math.Round((predictiveTrue / predictiveTotal) * 100, 2) : 0.0,
-                        RdpmsCoverage = failureTotal > 0 ? Math.Round((failureTrue / Math.Max(failureTotal, 1)) * 100, 2) : 0.0
+                        FailureAccuracy = failTruePtFalse > 0 ? Math.Round((double)failTruePt / failTruePtFalse * 100, 2) : 0.0,
+                        PredictiveAccuracy = predTruePtFalse > 0 ? Math.Round((double)predTruePt / predTruePtFalse * 100, 2) : 0.0,
+                        RdpmsCoverage = actualFailTruePt > 0 ? Math.Round((double)failTruePt / actualFailTruePt * 100, 2) : 0.0
                     };
                 }
             }

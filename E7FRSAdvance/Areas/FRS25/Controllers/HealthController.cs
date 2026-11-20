@@ -109,7 +109,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         {
             try
             {
-                return Json(_divisionService.GetByZoneId(zoneId), JsonRequestBehavior.AllowGet);
+                // Same binding as Home: only divisions holding a station assigned to the user
+                var lister = new DivisionLister();
+                lister.SearchCriteria.ZoneIds = new List<int> { zoneId };
+                return Json(_divisionService.GetDivisionList(lister), JsonRequestBehavior.AllowGet);
             }
             catch (Exception ex)
             {

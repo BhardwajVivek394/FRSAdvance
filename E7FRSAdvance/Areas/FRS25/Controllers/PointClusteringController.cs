@@ -399,32 +399,10 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             List<Division> mDivisions = new List<Division>();
             if (zoneId > 0)
             {
-                string result;
-                try
-                {
-                    using (var hcf = new HttpClientFactory(token: ClsHttpContent.LoginUser.Token))
-                    {
-                        var response = hcf.client.GetAsync(String.Format("Division/GetAllDivisionsByZoneId/{0}", zoneId)).Result;
-                        string jsonString = response.Content.ReadAsStringAsync().Result;
-                        if (response.StatusCode == HttpStatusCode.OK)
-                        {
-                            mDivisions = JsonConvert.DeserializeObject<List<Division>>(jsonString);
-                        }
-                        else
-                        {
-                            result = "Internal server error.";
-                        }
-                    }
-
-                }
-                catch (Exception ex)
-                {
-                    result = ex.Message.ToString();
-                }
-            }
-            else
-            {
-                // mDivisions = GetDivisions();
+                // Same binding as Home: only divisions holding a station assigned to the user
+                var lister = new DivisionLister();
+                lister.SearchCriteria.ZoneIds = new List<int> { zoneId };
+                mDivisions = _divisionService.GetDivisionList(lister);
             }
 
             return Json(mDivisions, JsonRequestBehavior.AllowGet);

@@ -264,6 +264,64 @@
         '.tld-btn{height:34px;padding:0 12px;border-radius:9px;border:1px solid var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);color:var(--e7-text-2,#415064);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;}' +
         '.tld-btn:hover{border-color:var(--e7-accent,#2f9ec4);color:var(--e7-accent,#2f9ec4);}' +
         '.tld-btn.sm{height:26px;padding:0 9px;font-size:11.5px;border-radius:7px;}' +
+        /* graph zoom toolbar + overview navigator */
+        '.tld-gz{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:8px 10px;margin:0 0 8px;border:1px solid var(--e7-border,#e7ebf1);border-radius:12px;background:var(--e7-surface-2,#f6f8fb);}' +
+        '.tld-gz-ctl{display:inline-flex;align-items:center;gap:4px;padding:3px;border-radius:999px;background:var(--e7-surface,#fff);border:1px solid var(--e7-border,#e7ebf1);box-shadow:0 1px 2px rgba(16,24,40,.06);}' +
+        '.tld-gz-ib{width:28px;height:28px;border-radius:50%;border:0;background:transparent;color:var(--e7-text-2,#415064);display:grid;place-items:center;cursor:pointer;transition:background .15s,color .15s,transform .1s;}' +
+        '.tld-gz-ib:hover:not(:disabled){background:rgba(47,158,196,.14);color:var(--e7-accent,#2f9ec4);}' +
+        '.tld-gz-ib:active:not(:disabled){transform:scale(.9);}' +
+        '.tld-gz-ib:disabled,.tld-gz-fit:disabled{opacity:.35;cursor:default;}' +
+        '.tld-gz-rng{-webkit-appearance:none;appearance:none;width:150px;height:6px;margin:0 4px;border-radius:999px;outline:none;cursor:pointer;background:linear-gradient(90deg,var(--e7-accent,#2f9ec4) var(--p,0%),rgba(127,140,160,.28) var(--p,0%));}' +
+        '.tld-gz-rng::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid var(--e7-accent,#2f9ec4);box-shadow:0 1px 4px rgba(0,0,0,.25);transition:transform .1s;}' +
+        '.tld-gz-rng::-webkit-slider-thumb:hover{transform:scale(1.15);}' +
+        '.tld-gz-rng::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:#fff;border:2px solid var(--e7-accent,#2f9ec4);}' +
+        '.tld-gz-lvl{min-width:44px;text-align:center;font:700 11.5px "JetBrains Mono",monospace;color:var(--e7-accent,#2f9ec4);padding:0 6px 0 2px;}' +
+        '.tld-gz-chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;background:var(--e7-surface,#fff);border:1px solid var(--e7-border,#e7ebf1);font-size:11.5px;font-weight:700;color:var(--e7-text,#1d2733);font-family:"JetBrains Mono",monospace;}' +
+        '.tld-gz-chip .d{font-family:inherit;color:var(--e7-text-3,#8492A6);font-weight:600;}' +
+        '.tld-gz-fit{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 11px;border-radius:999px;border:1px solid var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);color:var(--e7-text-2,#415064);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;}' +
+        '.tld-gz-fit:hover:not(:disabled){border-color:var(--e7-accent,#2f9ec4);color:var(--e7-accent,#2f9ec4);}' +
+        '.tld-gz-hint{margin-left:auto;font-size:10.5px;color:var(--e7-text-3,#8b98a8);}' +
+        /* selection popup on the drawer graph */
+        '.tld-gz-pop{position:absolute;z-index:5;display:flex;flex-direction:column;gap:4px;min-width:200px;max-width:320px;padding:8px;border-radius:12px;background:var(--e7-surface,#fff);border:1px solid var(--e7-border,#e7ebf1);box-shadow:0 12px 32px -8px rgba(15,27,42,.35);animation:tldGmIn .12s ease-out;}' +
+        '.tld-gz-pop-h{padding:2px 26px 4px 4px;font:700 11.5px "JetBrains Mono",monospace;color:var(--e7-text,#1d2733);}.tld-gz-pop-h span{font-family:inherit;color:var(--e7-text-3,#8492A6);font-weight:600;}' +
+        '.tld-gz-pop-b{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:6px 10px;border:1px solid var(--e7-border,#e7ebf1);border-radius:9px;background:var(--e7-surface,#fff);color:var(--e7-text-2,#415064);font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;}' +
+        '.tld-gz-pop-b span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+        '.tld-gz-pop-b:hover{border-color:var(--e7-accent,#2f9ec4);color:var(--e7-accent,#2f9ec4);}' +
+        '.tld-gz-pop-b.pri{background:var(--e7-accent,#2f9ec4);border-color:var(--e7-accent,#2f9ec4);color:#fff;}.tld-gz-pop-b.pri:hover{filter:brightness(1.08);color:#fff;}' +
+        '.tld-gz-pop-x{position:absolute;top:6px;right:6px;width:22px;height:22px;border:0;border-radius:50%;background:transparent;color:var(--e7-text-3,#8492A6);font-size:16px;line-height:1;cursor:pointer;}.tld-gz-pop-x:hover{background:rgba(127,140,160,.15);}' +
+        '#tldGraphMain svg{user-select:none;}' +
+        /* lane -> zoom modal entry points */
+        '.tld-lane-zoom{cursor:pointer;color:var(--e7-accent,#2f9ec4);opacity:.55;transition:opacity .15s;}.tld-lane-zoom:hover{opacity:1;}' +
+        '.tld-lane-zoom rect{fill:var(--e7-surface,#fff);stroke:var(--e7-accent,#2f9ec4);stroke-width:1;}.tld-lane-zoom:hover rect{fill:rgba(47,158,196,.14);}' +
+        '.tld-lane-name{cursor:pointer;}.tld-lane-name:hover{fill:var(--e7-accent,#2f9ec4);text-decoration:underline;}' +
+        /* zoom modal */
+        '.tld-gm-ov{position:fixed;inset:0;z-index:100050;background:rgba(10,18,30,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:16px;animation:tldGmFade .15s ease-out;}' +
+        '@keyframes tldGmFade{from{opacity:0}to{opacity:1}}@keyframes tldGmIn{from{transform:translateY(8px) scale(.98);opacity:0}to{transform:none;opacity:1}}' +
+        '.tld-gm{width:min(1120px,100%);max-height:calc(100vh - 32px);overflow:auto;display:flex;flex-direction:column;gap:10px;padding:14px 18px 12px;border-radius:16px;background:var(--e7-surface,#fff);color:var(--e7-text,#22303f);box-shadow:0 24px 60px -12px rgba(0,0,0,.45);font-size:14px;animation:tldGmIn .18s ease-out;}' +
+        '.tld-gm-head{display:flex;align-items:center;gap:12px;}' +
+        '.tld-gm-ico{width:38px;height:38px;flex:none;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,#2BC0C8,#2F6FDB);color:#fff;}' +
+        '.tld-gm-tt{flex:1;min-width:0;}' +
+        '.tld-gm-name{font-size:17px;font-weight:800;color:var(--e7-heading,#1b3c55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.tld-gm-sub{font-size:12px;color:var(--e7-text-3,#8492A6);margin-top:2px;}.tld-gm-sub b{color:var(--e7-text,#22303f);font-family:"JetBrains Mono",monospace;}' +
+        '.tld-gm-safe{color:var(--e7-green,#1F9D55);font-weight:600;}' +
+        '.tld-gm-lnav{display:inline-flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--e7-border,#e7ebf1);border-radius:999px;font:700 11.5px "JetBrains Mono",monospace;color:var(--e7-text-2,#415064);}' +
+        '.tld-gm-lnav span{padding:0 4px;}.tld-gm-lnav .tld-gz-ib{font-size:18px;line-height:1;}' +
+        '.tld-gm-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--e7-border,#e7ebf1);border-radius:12px;background:var(--e7-surface-2,#f6f8fb);}' +
+        '.tld-gm-seg{display:inline-flex;padding:3px;gap:2px;border-radius:999px;background:var(--e7-surface,#fff);border:1px solid var(--e7-border,#e7ebf1);}' +
+        '.tld-gm-seg button{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 11px;border:0;border-radius:999px;background:transparent;color:var(--e7-text-2,#415064);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;transition:background .15s,color .15s;}' +
+        '.tld-gm-seg button:hover{color:var(--e7-accent,#2f9ec4);}' +
+        '.tld-gm-seg button[aria-pressed="true"]{background:var(--e7-accent,#2f9ec4);color:#fff;}' +
+        '.tld-gm-pre{height:26px;padding:0 10px;border-radius:999px;border:1px solid var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);color:var(--e7-text-2,#415064);font:inherit;font-size:11px;font-weight:700;cursor:pointer;}' +
+        '.tld-gm-pre:hover{border-color:var(--e7-accent,#2f9ec4);color:var(--e7-accent,#2f9ec4);}' +
+        '.tld-gm-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;}' +
+        '.tld-gm-st{padding:7px 11px;border:1px solid var(--e7-border,#e7ebf1);border-radius:10px;background:var(--e7-surface-2,#f6f8fb);}' +
+        '.tld-gm-st span{display:block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--e7-text-3,#8492A6);}' +
+        '.tld-gm-st b{font:800 15px "JetBrains Mono",monospace;}' +
+        '.tld-gm-st.bad{border-color:rgba(229,72,77,.45);background:rgba(229,72,77,.06);}.tld-gm-st.bad b{color:var(--e7-red,#C8323A);}' +
+        '.tld-gm-st.up b{color:#1F9D55;}.tld-gm-st.dn b{color:#CA8A04;}' +
+        '.tld-gm-chart{padding:6px 4px 2px;border:1px solid var(--e7-border,#e7ebf1);border-radius:12px;background:var(--e7-surface,#fff);}' +
+        '#tldGmSvg{user-select:none;cursor:crosshair;}#tldGmSvg.pan{cursor:grab;}#tldGmSvg.panning{cursor:grabbing;}' +
+        '.tld-gm-hint{font-size:10.5px;text-align:center;color:var(--e7-text-3,#8b98a8);}' +
         '.tld-btn[aria-pressed="true"]{background:var(--e7-accent,#2f9ec4);border-color:var(--e7-accent,#2f9ec4);color:#fff;}' +
         '.tld-x{width:36px;height:36px;font-size:18px;padding:0;}' +
         '.tld-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:10px 18px;border-bottom:1px solid var(--e7-border,#e7ebf1);background:var(--e7-surface,#fff);}' +
@@ -451,6 +509,12 @@
         if (st === 'occ') return 'low -- track occupied';
         return 'at normal';
     }
+    /* 616 rule (telemetrylive.js graph: (!isDL && lastVal < 0) ? 0 : lastVal): a negative reading
+       is shown / plotted as 0. Exception: a TRACK circuit's ITC battery charging current, which
+       is negative when the battery discharges, keeps its sign. Display only -- health / ranges
+       still use the measured value. */
+    function allowNeg(name) { return kind() === 'track' && /BATT\s*CHAR/i.test(String(name || '')); }
+    function nz(v, name) { return (typeof v === 'number' && v < 0 && !allowNeg(name)) ? 0 : v; }
     function tileHtml(r) {
         var st = stOf(r), g = r.range;
         var lab = r.alias || r.label;
@@ -465,7 +529,7 @@
         /* a LOW / HIGH reading keeps its badge / status text but gets no styling class */
         return '<button type="button" class="tld-tile' + (st && st !== 'low' && st !== 'high' ? ' ' + st : '') + (sel ? ' sel' : '') + '" data-tld-k="' + esc(r.key) + '" aria-pressed="' + sel + '" title="' + esc(lab) + ' -- click for its trend"><div class="hd"><span class="lb">' + esc(lab) + '</span>' +
             (badge ? '<span class="bg">' + badge + '</span>' : '') + '</div>' +
-            '<div class="vl">' + fmt(r.v) + '<small>' + esc(unitOf(lab)) + '</small></div>' +
+            '<div class="vl">' + fmt(nz(r.v, lab + ' ' + (r.label || ''))) + '<small>' + esc(unitOf(lab)) + '</small></div>' +
             (function (t) { return t ? '<div class="sl">' + esc(t) + '</div>' : ''; })(statusLine(r, st)) + gauge + '</button>';
     }
     /* Signal tiles in the Telemetry Live table's column order (_signalColSeq via
@@ -556,7 +620,7 @@
         if (kind() === 'track' && A.derived && A.derived.length) {   /* calculated values exist for track circuits only */
             h += '<div class="tld-calc">' + A.derived.map(function (r) {
                 var sel = D.sel && D.sel.key === r.key;
-                return '<button type="button" data-tld-k="' + esc(r.key) + '" aria-pressed="' + sel + '" class="' + (sel ? 'sel' : '') + '" title="' + esc(r.alias || r.label) + ' -- click for details"><span>' + esc(r.alias || r.label) + '</span><b>' + fmt(r.v) + '</b></button>';
+                return '<button type="button" data-tld-k="' + esc(r.key) + '" aria-pressed="' + sel + '" class="' + (sel ? 'sel' : '') + '" title="' + esc(r.alias || r.label) + ' -- click for details"><span>' + esc(r.alias || r.label) + '</span><b>' + fmt(nz(r.v, (r.alias || '') + ' ' + (r.label || ''))) + '</b></button>';
             }).join('') + '</div>';
         }
         if (kind() === 'signal' && A.relays && A.relays.length) {
@@ -595,7 +659,8 @@
         var ci = colFor(G, r || { alias: lab, label: lab, key: D.sel.key });
         if (ci < 0) return head + '<div class="tld-empty">No history column for this reading in the period.</div>';
         var pts = [];
-        G.rows.forEach(function (row) { var v = parseFloat(row.v[ci]); if (!isNaN(v)) pts.push([row.t, v]); });
+        var tNm = lab + ' ' + G.cols[ci].name, tClamp = !G.cols[ci].dl && !allowNeg(tNm);   /* 616: negative -> 0 */
+        G.rows.forEach(function (row) { var v = parseFloat(row.v[ci]); if (!isNaN(v)) pts.push([row.t, tClamp && v < 0 ? 0 : v]); });
         if (!pts.length) return head + '<div class="tld-empty">No samples in this period.</div>';
         D.trendPts = pts;
         var g = r && r.range && r.range.min !== null && r.range.max > r.range.min ? r.range : null;
@@ -1936,48 +2001,133 @@
     function loadGraph() {
         var aid = D.aid, hours = D.graphHours, now = Date.now();
         D.graph = { loading: true };
+        D.gView = null;   /* new period / asset: zoom back to the full range */
+        gmClose();
         paintGraph();
-        $.ajax({
-            url: HIST_URL, type: 'GET', dataType: 'json',
-            data: { assetId: aid, startDate: histStamp(now - hours * 3600000), endDate: histStamp(now), page: 1, pageSize: 5000, sort: 'asc', fillGaps: 'true', cursor: '' },
-            success: function (resp) {
-                if (D.aid !== aid) return;
-                var pl = resp || {}, inner = pl.Data || pl.data;
-                if (inner && (inner.columns || inner.Columns)) pl = inner;
-                var cols = (pl.columns || pl.Columns || []).map(function (c) {
-                    var id = c.attrId !== null && c.attrId !== undefined ? c.attrId : c.AttrId;
-                    return { name: String(c.name || c.Name || ''), attrId: id === null || id === undefined ? '' : String(id),
-                        dl: String(c.dataType || c.DataType || '').toLowerCase() === 'datalogger', skip: id === null || id === undefined };
-                });
-                var rows = (pl.rows || pl.Rows || []).map(function (r) { return { t: new Date(r.ts || r.Ts).getTime(), v: r.v || r.V || [] }; })
-                    .filter(function (r) { return !isNaN(r.t); }).sort(function (p, q) { return p.t - q.t; });
-                D.graph = { cols: cols, rows: rows, t0: now - hours * 3600000, t1: now };
-                paintGraph();
-                paintTrend();
-            },
-            error: function (x) { if (D.aid === aid) { D.graph = { err: 'History could not be loaded (HTTP ' + (x && x.status) + ').' }; paintGraph(); } }
-        });
+        /* the history API is cursor-paginated: one page (asc) only covers the START of a long period,
+           which drew the lines over part of the chart only. Walk every page (nextCursor) up to a cap. */
+        var seq = D.graphSeq = (D.graphSeq || 0) + 1, t0req = now - hours * 3600000;
+        var cols = null, keyIdx = {}, rows = [], pages = 0, MAX_PAGES = 40;
+        var colKey = function (c) { return c.name + '|' + c.attrId; };
+        function finish(partial) {
+            rows.sort(function (p, q) { return p.t - q.t; });
+            /* the chart spans the data actually returned: starts at the first reading when it begins
+               after the requested start, so the lines fill the full chart width */
+            var t0 = rows.length && rows[0].t > t0req ? rows[0].t : t0req;
+            D.graph = { cols: cols || [], rows: rows, t0: t0, t1: now, partial: !!partial, req0: t0req };
+            paintGraph();
+            paintTrend();
+        }
+        function page(cursor) {
+            $.ajax({
+                url: HIST_URL, type: 'GET', dataType: 'json',
+                data: { assetId: aid, startDate: histStamp(t0req), endDate: histStamp(now), page: pages + 1, pageSize: 10000, sort: 'asc', fillGaps: 'true', cursor: cursor || '' },
+                success: function (resp) {
+                    if (D.aid !== aid || D.graphSeq !== seq) return;
+                    var outer = resp || {}, pl = outer, inner = outer.Data || outer.data;
+                    if (inner && (inner.columns || inner.Columns)) pl = inner;
+                    var pcols = (pl.columns || pl.Columns || []).map(function (c) {
+                        var id = c.attrId !== null && c.attrId !== undefined ? c.attrId : c.AttrId;
+                        return { name: String(c.name || c.Name || ''), attrId: id === null || id === undefined ? '' : String(id),
+                            dl: String(c.dataType || c.DataType || '').toLowerCase() === 'datalogger', skip: id === null || id === undefined };
+                    });
+                    /* later pages may order columns differently: map them onto the first page's columns */
+                    if (!cols) { cols = pcols; cols.forEach(function (c, i) { keyIdx[colKey(c)] = i; }); }
+                    var map = pcols.map(function (c) {
+                        var k = colKey(c);
+                        if (keyIdx[k] === undefined) { keyIdx[k] = cols.length; cols.push(c); }
+                        return keyIdx[k];
+                    });
+                    (pl.rows || pl.Rows || []).forEach(function (r) {
+                        var t = new Date(r.ts || r.Ts).getTime(), v = r.v || r.V || [];
+                        if (isNaN(t)) return;
+                        var vv = [];
+                        for (var i = 0; i < v.length; i++) if (map[i] !== undefined) vv[map[i]] = v[i];
+                        rows.push({ t: t, v: vv });
+                    });
+                    pages++;
+                    var next = pl.nextCursor || pl.NextCursor || outer.nextCursor || outer.NextCursor || '';
+                    var more = pl.hasNextPage !== undefined ? pl.hasNextPage : pl.HasNextPage !== undefined ? pl.HasNextPage : outer.hasNextPage !== undefined ? outer.hasNextPage : outer.HasNextPage;
+                    if (next && more !== false && pages < MAX_PAGES) {
+                        D.graph = { loading: true, progress: rows.length };
+                        paintGraph();
+                        page(next);
+                    } else finish(!!(next && more !== false));
+                },
+                error: function (x) {
+                    if (D.aid !== aid || D.graphSeq !== seq) return;
+                    if (rows.length) { finish(true); return; }   /* keep what arrived */
+                    D.graph = { err: 'History could not be loaded (HTTP ' + (x && x.status) + ').' };
+                    paintGraph();
+                }
+            });
+        }
+        page('');
     }
     var RL_UP = '#1F9D55', RL_DN = '#CA8A04';   /* relay Pickup / Drop, same as the relay chips */
     function graphHtml() {
         var G = D.graph;
-        if (!G || G.loading) return '<div class="tld-empty">Loading history...</div>';
+        if (!G || G.loading) return '<div class="tld-empty">Loading history...' + (G && G.progress ? ' ' + G.progress.toLocaleString() + ' readings so far' : '') + '</div>';
         if (G.err) return '<div class="tld-empty">' + esc(G.err) + '</div>';
         if (!G.rows) return '<div class="tld-empty">Loading history...</div>';
         if (!G.rows.length) return '<div class="tld-empty">No history in this period.</div>';
-        var idx = [];
-        G.cols.forEach(function (c, i) { if (!c.skip) idx.push(i); });
+        if (!graphLaneIdx(G).length) return '<div class="tld-empty">No ' + (kind() === 'pm' ? 'indication or datalogger ' : '') + 'readings to plot in this period.</div>';
+        setTimeout(function () { gUiSync(); }, 0);   /* also when the html is embedded by a full drawer render */
+        var note = '';
+        if (G.partial) note = 'Showing the first ' + G.rows.length.toLocaleString() + ' rows of this period (history limit reached).';
+        else if (G.t0 > G.req0 + 60000) note = 'History starts at ' + gStamp(G.t0, G.t1 - G.t0) + ' -- no readings before that in the selected period.';
+        return gzBarHtml() + (note ? '<div class="tld-note" style="margin:-2px 0 6px">' + esc(note) + '</div>' : '') +
+            '<div id="tldGraphMain" style="position:relative">' + graphMainHtml() + '</div>';
+    }
+    /* POINT MACHINE indication column (A/B VPT NWKR / RWKR, 24 V DC LOC N / R) */
+    function isPmIndCol(c) {
+        var m = /^0?\d+-PM-0?(\d+)-(\w+)$/i.exec(c.name || '');
+        var id = parseInt(m ? m[1] : c.attrId, 10);
+        return !isNaN(id) && !!PM_IND_NAMES[id];
+    }
+    /* lanes drawn in the graph: operation time (TPT / OperationTime) lanes are left out;
+       POINT MACHINE: only indication + datalogger (relay) readings -- no operation current / voltage */
+    function graphLaneIdx(G) {
+        var idx = [], pm = kind() === 'pm';
+        G.cols.forEach(function (c, i) {
+            if (c.skip || isOpTimeCol(c)) return;
+            if (pm && !c.dl && !isPmIndCol(c)) return;
+            idx.push(i);
+        });
+        return idx;
+    }
+    /* one lane's samples, change points only (+ the last one): a step line needs nothing else,
+       and 7 days of rows stay fast to draw / zoom. Cached on the loaded graph. */
+    function gLanePts(G, ci) {
+        if (!G.lanePts) G.lanePts = {};
+        if (G.lanePts[ci]) return G.lanePts[ci];
+        var pts = [], prev = null, lastRow = null, c = G.cols[ci];
+        var nm = c ? colLabel(c) + ' ' + c.name : '', clampNeg = !!c && !c.dl && !allowNeg(nm);   /* 616: negative -> 0 */
+        G.rows.forEach(function (r) {
+            var v = parseFloat(r.v[ci]);
+            if (isNaN(v)) return;
+            if (clampNeg && v < 0) v = 0;
+            if (prev === null || v !== prev) pts.push([r.t, v]);
+            prev = v; lastRow = [r.t, v];
+        });
+        if (lastRow && pts.length && pts[pts.length - 1][0] !== lastRow[0]) pts.push(lastRow);
+        return (G.lanePts[ci] = pts);
+    }
+    function graphMainHtml() {
+        var G = D.graph;
+        var idx = graphLaneIdx(G);
+        /* zoom: D.gView = visible time window {a, b} inside the loaded period (null = full period) */
+        var V = gViewOf(G), vt0 = V.a, vt1 = V.b;
         var w = 960, LH = 40, GAP = 8, top = 6, lab = 190, H = top + idx.length * (LH + GAP) + 24;
-        var gw = w - lab - 14, span = (G.t1 - G.t0) || 1;
-        var X = function (t) { return lab + Math.max(0, Math.min(1, (t - G.t0) / span)) * gw; };
+        var gw = w - lab - 14, span = (vt1 - vt0) || 1;
+        var X = function (t) { return lab + Math.max(0, Math.min(1, (t - vt0) / span)) * gw; };
         var cls = W.TlHealthView && W.TlHealthView.classify;
         var lanes = [];
-        D.graphGeo = { lab: lab, gw: gw, w: w, H: H, t0: G.t0, span: span, lanes: lanes };
+        D.graphGeo = { lab: lab, gw: gw, w: w, H: H, t0: vt0, span: span, lanes: lanes };
         var out = '<svg id="tldGraphSvg" viewBox="0 0 ' + w + ' ' + H + '" width="100%" role="img" aria-label="Every reading of this asset over the selected period" style="display:block;cursor:crosshair">';
         idx.forEach(function (ci, k) {
-            var c = G.cols[ci], y0 = top + k * (LH + GAP), pts = [], name = colLabel(c);
-            G.rows.forEach(function (r) { var v = parseFloat(r.v[ci]); if (!isNaN(v)) pts.push([r.t, v]); });
-            lanes.push({ pts: pts, y0: y0, LH: LH, dl: c.dl, Y: null, name: name });
+            var c = G.cols[ci], y0 = top + k * (LH + GAP), pts = gLanePts(G, ci), name = colLabel(c);
+            lanes.push({ pts: pts, y0: y0, LH: LH, dl: c.dl, Y: null, name: name, ci: ci });
             out += '<rect x="' + lab + '" y="' + y0 + '" width="' + gw + '" height="' + LH + '" fill="' + (k % 2 ? 'rgba(127,140,160,.07)' : 'rgba(127,140,160,.02)') + '"></rect>';
             var last = pts.length ? pts[pts.length - 1][1] : null;
             var cr = {};
@@ -1985,12 +2135,20 @@
             var rg = cr.range || null;
             /* only relays are coloured (Pickup green / Drop amber); readings stay in the normal text colour */
             var vcol = c.dl && last !== null ? (last >= 0.5 ? RL_UP : RL_DN) : 'currentColor';
-            out += '<text x="0" y="' + (y0 + 15) + '" font-size="11" fill="var(--e7-text-2,#4A5868)"><title>' + esc(name + (name !== c.name ? ' (' + c.name + ')' : '')) + '</title>' + esc(name.length > 30 ? name.slice(0, 29) + '…' : name) + '</text>' +
+            /* open this one reading in the zoom modal: click the name or the magnifier */
+            out += '<g class="tld-lane-zoom" data-tld-lz="' + ci + '"><title>Open ' + esc(name) + ' in the zoom view</title>' +
+                '<rect x="134" y="' + (y0 + 21) + '" width="20" height="17" rx="5"></rect>' +
+                '<g transform="translate(137.5 ' + (y0 + 22.5) + ') scale(.58)" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5L21 21M7.5 10.5h6M10.5 7.5v6"></path></g></g>';
+            out += '<text class="tld-lane-name" data-tld-lz="' + ci + '" x="0" y="' + (y0 + 15) + '" font-size="11" fill="var(--e7-text-2,#4A5868)"><title>' + esc(name + (name !== c.name ? ' (' + c.name + ')' : '')) + ' -- click to open in the zoom view</title>' + esc(name.length > 30 ? name.slice(0, 29) + '…' : name) + '</text>' +
                 '<text x="0" y="' + (y0 + 32) + '" font-size="13" font-weight="800" fill="' + vcol + '" font-family="JetBrains Mono, monospace">' +
                 (c.dl ? (last === null ? '--' : last >= 0.5 ? 'Pickup' : 'Drop') : fmt(last)) + '</text>';
             if (pts.length < 1) return;
+            /* only the samples in the visible window (plus the one carried in at its left edge) */
+            var s0 = lastAt(pts, vt0), s1 = lastAt(pts, vt1);
+            var vpts = s1 < 0 ? [] : pts.slice(Math.max(0, s0), s1 + 1);
+            if (!vpts.length) return;
             var lo = Infinity, hi = -Infinity;
-            pts.forEach(function (p) { if (p[1] < lo) lo = p[1]; if (p[1] > hi) hi = p[1]; });
+            vpts.forEach(function (p) { if (p[1] < lo) lo = p[1]; if (p[1] > hi) hi = p[1]; });
             if (rg && rg.min !== null && rg.max !== null) { lo = Math.min(lo, rg.min); hi = Math.max(hi, rg.max); }
             if (hi === lo) { hi += 1; lo -= 1; }
             var pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
@@ -2000,26 +2158,25 @@
             if (c.dl) {
                 /* relay: green while picked up, amber while dropped; the edge takes the new state's colour */
                 var seg = { up: '', dn: '' };
-                for (var i = 0; i < pts.length; i++) {
-                    var sx0 = X(pts[i][0]).toFixed(1), sx1 = X(i + 1 < pts.length ? pts[i + 1][0] : G.t1).toFixed(1), sy = Y(pts[i][1]).toFixed(1);
-                    var sk = pts[i][1] >= 0.5 ? 'up' : 'dn';
-                    if (i > 0) seg[sk] += 'M' + sx0 + ' ' + Y(pts[i - 1][1]).toFixed(1) + 'L' + sx0 + ' ' + sy;
+                for (var i = 0; i < vpts.length; i++) {
+                    var sx0 = X(vpts[i][0]).toFixed(1), sx1 = X(i + 1 < vpts.length ? vpts[i + 1][0] : vt1).toFixed(1), sy = Y(vpts[i][1]).toFixed(1);
+                    var sk = vpts[i][1] >= 0.5 ? 'up' : 'dn';
+                    if (i > 0) seg[sk] += 'M' + sx0 + ' ' + Y(vpts[i - 1][1]).toFixed(1) + 'L' + sx0 + ' ' + sy;
                     seg[sk] += 'M' + sx0 + ' ' + sy + 'L' + sx1 + ' ' + sy;
                 }
                 if (seg.up) out += '<path d="' + seg.up + '" fill="none" stroke="' + RL_UP + '" stroke-width="1.6"></path>';
                 if (seg.dn) out += '<path d="' + seg.dn + '" fill="none" stroke="' + RL_DN + '" stroke-width="1.6"></path>';
             } else {
-                var d = 'M' + X(pts[0][0]).toFixed(1) + ' ' + Y(pts[0][1]).toFixed(1);
-                for (var j = 1; j < pts.length; j++) d += 'L' + X(pts[j][0]).toFixed(1) + ' ' + Y(pts[j - 1][1]).toFixed(1) + 'L' + X(pts[j][0]).toFixed(1) + ' ' + Y(pts[j][1]).toFixed(1);
-                d += 'L' + X(G.t1).toFixed(1) + ' ' + Y(pts[pts.length - 1][1]).toFixed(1);
+                var d = 'M' + X(vpts[0][0]).toFixed(1) + ' ' + Y(vpts[0][1]).toFixed(1);
+                for (var j = 1; j < vpts.length; j++) d += 'L' + X(vpts[j][0]).toFixed(1) + ' ' + Y(vpts[j - 1][1]).toFixed(1) + 'L' + X(vpts[j][0]).toFixed(1) + ' ' + Y(vpts[j][1]).toFixed(1);
+                d += 'L' + X(vt1).toFixed(1) + ' ' + Y(vpts[vpts.length - 1][1]).toFixed(1);
                 out += '<path d="' + d + '" fill="none" stroke="#0A7C86" stroke-width="1.4"></path>';
             }
             out += '<text x="' + (lab - 4) + '" y="' + (y0 + 9) + '" text-anchor="end" font-size="8.5" fill="' + (c.dl ? RL_UP : 'var(--e7-text-3,#8492A6)') + '">' + (c.dl ? 'P' : fmt(hi - pad)) + '</text>' +
                 '<text x="' + (lab - 4) + '" y="' + (y0 + LH) + '" text-anchor="end" font-size="8.5" fill="' + (c.dl ? RL_DN : 'var(--e7-text-3,#8492A6)') + '">' + (c.dl ? 'D' : fmt(lo + pad)) + '</text>';
         });
         for (var t = 0; t <= 8; t++) {
-            var tx = lab + t * gw / 8, dt = new Date(G.t0 + span * t / 8);
-            var lb = D.graphHours > 48 ? (dt.getDate() + '/' + (dt.getMonth() + 1)) : ('0' + dt.getHours()).slice(-2) + ':' + ('0' + dt.getMinutes()).slice(-2);
+            var tx = lab + t * gw / 8, lb = gStamp(vt0 + span * t / 8, span);
             out += '<line x1="' + tx.toFixed(1) + '" x2="' + tx.toFixed(1) + '" y1="' + top + '" y2="' + (H - 20) + '" stroke="rgba(127,140,160,.25)"></line>' +
                 '<text x="' + tx.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="9.5" fill="var(--e7-text-3,#8492A6)">' + lb + '</text>';
         }
@@ -2034,9 +2191,619 @@
                 '<text font-size="10" font-weight="700" fill="var(--e7-text,#1d2733)" font-family="JetBrains Mono, monospace"></text></g>';
         });
         out += '</g>';
+        /* drag-to-zoom selection band */
+        out += '<rect id="tldGraphSel" x="0" y="' + top + '" width="0" height="' + (H - 20 - top) + '" fill="rgba(47,158,196,.14)" stroke="var(--e7-accent,#2f9ec4)" stroke-width="1" stroke-dasharray="4 3" style="display:none;pointer-events:none"></rect>';
         return out + '</svg><div class="tld-note">Hover the graph to read every value at that time and when it last changed. Own scale per reading, green band = safe range, relay: green = Pickup, amber = Drop, time axis shared by all lanes.</div>';
     }
-    function paintGraph() { var el = document.getElementById('tldGraph'); if (el) el.innerHTML = graphHtml(); }
+    function paintGraph() { var el = document.getElementById('tldGraph'); if (el) { el.innerHTML = graphHtml(); gUiSync(); } }
+    /* operation time column: PM offset 5 ("TPT"), or a name / alias saying operation time */
+    function isOpTimeCol(c) {
+        if (c.dl) return false;
+        if (/operation\s*time/i.test(c.name || '')) return true;
+        var l = colLabel(c) || '';
+        return /\bTPT\b/i.test(l) || /operation\s*time/i.test(l);
+    }
+    /* ---- graph zoom (time axis) ---- */
+    var GZ_MIN_MS = 60000;   /* zoom in down to a 1 minute window */
+    function gViewOf(G) {
+        var V = D.gView;
+        if (!V || !(V.b > V.a)) return { a: G.t0, b: G.t1 };
+        return V;
+    }
+    function gStamp(ms, span) {   /* axis / range label sized to the visible span */
+        var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; };
+        if (span > 48 * 3600000) return d.getDate() + '/' + (d.getMonth() + 1) + (span < 7 * 86400000 ? ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) : '');
+        if (span <= 30 * 60000) return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+        return p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function gDur(ms) {
+        if (ms < 3600000) return Math.max(1, Math.round(ms / 60000)) + ' min';
+        if (ms < 48 * 3600000) return (Math.round(ms / 360000) / 10) + ' h';
+        return (Math.round(ms / 8640000) / 10) + ' d';
+    }
+    /* geometry shared by the main graph and the overview navigator (same x scale, so they line up) */
+    var GW = { w: 960, lab: 190, gw: 756 };
+    function gZoomMax(G) { return Math.max(1, (G.t1 - G.t0) / GZ_MIN_MS); }
+    function gIco(k) {
+        var mag = '<circle cx="10.5" cy="10.5" r="6.5"></circle><path d="M15.5 15.5L21 21"></path>';
+        var p = { out: mag + '<path d="M7.5 10.5h6"></path>', zin: mag + '<path d="M7.5 10.5h6M10.5 7.5v6"></path>',
+            fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path>' }[k];
+        return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+    }
+    /* zoom toolbar: [- slider + level] [visible range chip] [Fit] hint -- state filled by gUiSync() */
+    function gzBarHtml() {
+        return '<div class="tld-gz" id="tldGz">' +
+            '<div class="tld-gz-ctl">' +
+            '<button type="button" class="tld-gz-ib" data-tld-gz="out" id="tldGzOut" title="Zoom out" aria-label="Zoom out">' + gIco('out') + '</button>' +
+            '<input type="range" class="tld-gz-rng" id="tldGzRng" min="0" max="100" step="1" value="0" aria-label="Zoom level" title="Drag to zoom">' +
+            '<button type="button" class="tld-gz-ib" data-tld-gz="in" id="tldGzIn" title="Zoom in" aria-label="Zoom in">' + gIco('zin') + '</button>' +
+            '<span class="tld-gz-lvl" id="tldGzLvl">1&#215;</span>' +
+            '</div>' +
+            '<span class="tld-gz-chip" id="tldGzRange"></span>' +
+            '<button type="button" class="tld-gz-fit" data-tld-gz="reset" id="tldGzFit" title="Show the full period">' + gIco('fit') + '<span>Fit</span></button>' +
+            '<span class="tld-gz-hint">Select a range on a reading, then zoom &#183; &#128269; opens one reading large &#183; double-click to fit</span>' +
+            '</div>';
+    }
+    /* sync toolbar + navigator with the current window (cheap: attribute updates only) */
+    function gUiSync(keepSlider) {
+        var G = D.graph;
+        if (!G || !G.rows) return;
+        var V = gViewOf(G), full = (G.t1 - G.t0) || 1, span = (V.b - V.a) || 1, zoomed = !!D.gView;
+        var z = full / span, zmax = gZoomMax(G), pct = zmax > 1 ? Math.round(Math.log(z) / Math.log(zmax) * 100) : 0;
+        var rng = document.getElementById('tldGzRng');
+        if (rng) {
+            if (!keepSlider) rng.value = pct;
+            rng.style.setProperty('--p', (keepSlider ? +rng.value : pct) + '%');
+        }
+        var lvl = document.getElementById('tldGzLvl');
+        if (lvl) lvl.innerHTML = (z < 10 ? Math.round(z * 10) / 10 : Math.round(z)) + '&#215;';
+        var chip = document.getElementById('tldGzRange');
+        if (chip) chip.innerHTML = zoomed ? esc(gStamp(V.a, span) + ' – ' + gStamp(V.b, span)) + ' <span class="d">' + esc(gDur(span)) + '</span>'
+            : 'Full period <span class="d">' + esc(gDur(full)) + '</span>';
+        var dis = function (id, on) { var el = document.getElementById(id); if (el) el.disabled = !!on; };
+        dis('tldGzOut', !zoomed);
+        dis('tldGzFit', !zoomed);
+        dis('tldGzIn', span <= GZ_MIN_MS + 1);
+    }
+    /* redraw only the lanes (toolbar / navigator stay, so drags are not interrupted); one per frame */
+    function gRender() {
+        if (D.gRaf) return;
+        D.gRaf = requestAnimationFrame(function () {
+            D.gRaf = 0;
+            var m = document.getElementById('tldGraphMain');
+            if (!m) { paintGraph(); return; }
+            m.innerHTML = graphMainHtml();
+        });
+    }
+    /* set the visible window to [a, b], clamped inside the loaded period; null when it covers all of it */
+    function gSetView(a, b, keepSlider) {
+        var G = D.graph;
+        if (!G || !G.rows) return;
+        var full = G.t1 - G.t0, w = Math.max(GZ_MIN_MS, Math.min(full, b - a));
+        if (w >= full) D.gView = null;
+        else {
+            if (a < G.t0) a = G.t0;
+            if (a + w > G.t1) a = G.t1 - w;
+            D.gView = { a: a, b: a + w };
+        }
+        graphHoverOff();
+        gUiSync(keepSlider);
+        gRender();
+    }
+    /* factor < 1 zooms in, > 1 zooms out; at = time kept fixed under the anchor (default: centre) */
+    function gZoom(factor, at) {
+        var G = D.graph;
+        if (!G || !G.rows) return;
+        var V = gViewOf(G), w = V.b - V.a;
+        if (at === undefined || at === null) at = V.a + w / 2;
+        var f = (at - V.a) / (w || 1), nw = w * factor;
+        gSetView(at - f * nw, at - f * nw + nw);
+    }
+    function gZoomAction(k) {
+        var G = D.graph;
+        if (!G || !G.rows) return;
+        if (k === 'in') gZoom(0.5);
+        else if (k === 'out') gZoom(2);
+        else if (k === 'reset') gSetView(G.t0, G.t1);
+    }
+    function onGraphWheel(e) {
+        if (!e.ctrlKey) return;   /* plain scroll keeps scrolling the drawer */
+        var svg = e.target && e.target.closest ? e.target.closest('#tldGraphSvg') : null;
+        var G = D.graphGeo;
+        if (!svg || !G) return;
+        e.preventDefault();
+        var rc = svg.getBoundingClientRect(), x = (e.clientX - rc.left) / rc.width * G.w;
+        var at = G.t0 + Math.max(0, Math.min(1, (x - G.lab) / G.gw)) * G.span;
+        gZoom(e.deltaY < 0 ? 0.7 : 1 / 0.7, at);
+    }
+    function onGraphInput(e) {
+        if (!e.target || e.target.id !== 'tldGzRng') return;
+        var G = D.graph;
+        if (!G || !G.rows) return;
+        var V = gViewOf(G), c = (V.a + V.b) / 2, z = Math.exp((+e.target.value) / 100 * Math.log(gZoomMax(G))), w = (G.t1 - G.t0) / z;
+        gSetView(c - w / 2, c + w / 2, true);
+    }
+    function onGraphDbl(e) {
+        if (e.target && e.target.closest && e.target.closest('#tldGraphSvg')) gZoomAction('reset');
+    }
+    /* lane (reading) under an svg y: rows are LH tall with an 8 px gap that belongs to the lane above */
+    function gLaneAt(GG, y) {
+        for (var q = 0; q < GG.lanes.length; q++) if (y >= GG.lanes[q].y0 && y < GG.lanes[q].y0 + GG.lanes[q].LH + 8) return GG.lanes[q];
+        return null;
+    }
+    /* mouse down on the plot: start a selection band over the reading under the mouse */
+    function onGraphDown(e) {
+        if (e.button !== 0 || !e.target || !e.target.closest) return;
+        if (e.target.closest('#tldGzPop')) return;   /* clicks inside the selection popup */
+        var G = D.graph;
+        if (!G || !G.rows) return;
+        var svg = e.target.closest('#tldGraphSvg'), GG = D.graphGeo;
+        if (!svg || !GG) return;
+        var r2 = svg.getBoundingClientRect(), sx = (e.clientX - r2.left) / r2.width * GG.w, sy = (e.clientY - r2.top) / r2.height * GG.H;
+        if (sx < GG.lab || sx > GG.lab + GG.gw) return;
+        gPopClose();
+        D.gDrag = { mode: 'sel', sx0: sx, rc: r2, lane: gLaneAt(GG, sy) };
+        e.preventDefault();
+        document.addEventListener('mousemove', onGraphDrag);
+        document.addEventListener('mouseup', onGraphUp);
+    }
+    function onGraphDrag(e) {
+        var g = D.gDrag, GG = D.graphGeo, sel = document.getElementById('tldGraphSel');
+        if (!g || !GG || !sel) return;
+        var sx = Math.max(GG.lab, Math.min(GG.lab + GG.gw, (e.clientX - g.rc.left) / g.rc.width * GG.w));
+        g.sx1 = sx;
+        sel.setAttribute('x', Math.min(g.sx0, sx).toFixed(1));
+        sel.setAttribute('width', Math.abs(sx - g.sx0).toFixed(1));
+        /* band covers only the selected reading's lane (whole height if none) */
+        if (g.lane) { sel.setAttribute('y', g.lane.y0); sel.setAttribute('height', g.lane.LH); }
+        else { sel.setAttribute('y', 6); sel.setAttribute('height', GG.H - 26); }
+        sel.style.display = '';
+    }
+    /* mouse up: keep the band and offer the zoom actions next to it */
+    function onGraphUp(e) {
+        document.removeEventListener('mousemove', onGraphDrag);
+        document.removeEventListener('mouseup', onGraphUp);
+        var g = D.gDrag, GG = D.graphGeo;
+        D.gDrag = null;
+        var sel = document.getElementById('tldGraphSel');
+        if (!g || !GG || g.sx1 === undefined || Math.abs(g.sx1 - g.sx0) < 6) { if (sel) sel.style.display = 'none'; return; }
+        var ta = GG.t0 + (Math.min(g.sx0, g.sx1) - GG.lab) / GG.gw * GG.span;
+        var tb = GG.t0 + (Math.max(g.sx0, g.sx1) - GG.lab) / GG.gw * GG.span;
+        gPopOpen(g, ta, tb, e);
+    }
+    /* selection popup: "Zoom <reading>" opens the zoom view on that range, "Zoom all graphs" zooms the drawer graph */
+    function gPopOpen(g, ta, tb, e) {
+        var host = document.getElementById('tldGraphMain');
+        if (!host) return;
+        D.gSel = { a: ta, b: tb, ci: g.lane ? g.lane.ci : null };
+        D.gPopAt = Date.now();
+        var span = tb - ta, hr = host.getBoundingClientRect();
+        var pop = document.createElement('div');
+        pop.id = 'tldGzPop'; pop.className = 'tld-gz-pop';
+        pop.innerHTML = '<div class="tld-gz-pop-h">' + esc(gStamp(ta, span) + ' – ' + gStamp(tb, span)) + ' <span>' + esc(gDur(span)) + '</span></div>' +
+            (g.lane ? '<button type="button" class="tld-gz-pop-b pri" data-tld-sel="one">' + gIco('zin') + '<span>Zoom <b>' + esc(g.lane.name) + '</b></span></button>' : '') +
+            '<button type="button" class="tld-gz-pop-b" data-tld-sel="all">' + gIco('fit') + '<span>Zoom all graphs</span></button>' +
+            '<button type="button" class="tld-gz-pop-x" data-tld-sel="cancel" title="Clear selection (Esc)" aria-label="Clear selection">&#215;</button>';
+        host.appendChild(pop);
+        var x = (e ? e.clientX : hr.left + hr.width / 2) - hr.left + 10, y = (e ? e.clientY : hr.top) - hr.top + 10;
+        x = Math.max(4, Math.min(hr.width - pop.offsetWidth - 4, x));
+        pop.style.left = x + 'px'; pop.style.top = y + 'px';
+        var first = pop.querySelector('.tld-gz-pop-b');
+        if (first && first.focus) first.focus();
+    }
+    function gPopClose() {
+        var pop = document.getElementById('tldGzPop');
+        if (pop) pop.remove();
+        var sel = document.getElementById('tldGraphSel');
+        if (sel) sel.style.display = 'none';
+        D.gSel = null;
+    }
+    function gPopAction(k) {
+        var S = D.gSel;
+        gPopClose();
+        if (!S || k === 'cancel') return;
+        if (k === 'one' && S.ci !== null) gmOpen(S.ci, S.a, S.b);
+        else if (k === 'all') gSetView(S.a, S.b);
+    }
+
+    /* ------------------------------------------------------------------
+       ZOOM MODAL: one reading, large, with its own zoom / pan / overview
+       ------------------------------------------------------------------ */
+    var GM = { w: 1000, h: 360, L: 66, R: 16, T: 14, B: 26 };
+    GM.pw = GM.w - GM.L - GM.R; GM.ph = GM.h - GM.T - GM.B;
+    function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+    function gmLane(ci) {
+        var G = D.graph, c = G.cols[ci], pts = gLanePts(G, ci);
+        var name = colLabel(c), last = pts.length ? pts[pts.length - 1][1] : null, rg = null;
+        var cls = W.TlHealthView && W.TlHealthView.classify;
+        if (cls && last !== null && !c.dl) {
+            var cr = cls(D.aid, c.name, last, c.attrId) || {};
+            if (!cr.range && name !== c.name) cr = cls(D.aid, name, last, c.attrId) || cr;
+            rg = cr.range || null;
+        }
+        if (rg && (rg.min === null || rg.min === undefined || rg.max === null || rg.max === undefined)) rg = null;
+        return { ci: ci, dl: c.dl, name: name, raw: c.name, pts: pts, last: last, rg: rg };
+    }
+    function gmVal(Ln, v) { return Ln.dl ? (v === null || v === undefined ? '--' : v >= 0.5 ? 'Pickup' : 'Drop') : fmt(v); }
+    /* open the zoom view for column ci; [a, b] = time range to show (default: the drawer graph's range) */
+    function gmOpen(ci, a, b) {
+        try { gmOpenNow(ci, a, b); }
+        catch (x) { if (W.console) console.error('[TLD zoom view]', x); gmClose(); }
+    }
+    function gmOpenNow(ci, a, b) {
+        var G = D.graph;
+        if (!G || !G.rows || !G.cols[ci]) return;
+        var V = gViewOf(G);
+        if (!(b > a)) { a = V.a; b = V.b; }
+        D.gm = { ci: ci, a: V.a, b: V.b, mode: (D.gm && D.gm.mode) || W.__tldGmMode || 'box' };
+        var ov = document.getElementById('tldGm');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'tldGm'; ov.className = 'tld-gm-ov';
+            ov.addEventListener('click', gmOnClick);
+            ov.addEventListener('mousedown', gmOnDown);
+            ov.addEventListener('mousemove', gmOnMove);
+            ov.addEventListener('wheel', gmOnWheel, { passive: false });
+            ov.addEventListener('dblclick', gmOnDbl);
+            ov.addEventListener('input', gmOnInput);
+            document.body.appendChild(ov);
+        }
+        gmPaint();
+        gmSet(a, b);   /* clamps to the loaded period and a 1 minute minimum */
+    }
+    function gmClose() {
+        var ov = document.getElementById('tldGm');
+        if (ov) ov.remove();
+        D.gm = null; D.gmDrag = null;
+        document.removeEventListener('mousemove', gmOnDrag);
+        document.removeEventListener('mouseup', gmOnUp);
+    }
+    /* full modal paint (open / reading change); zoom changes only redraw the chart via gmRender() */
+    function gmPaint() {
+        var ov = document.getElementById('tldGm'), M = D.gm, G = D.graph;
+        if (!ov || !M || !G || !G.rows) return;
+        var lanes = graphLaneIdx(G), pos = lanes.indexOf(M.ci), full = G.t1 - G.t0;
+        var Ln = D.gmLane = gmLane(M.ci);
+        var aname = (live()[D.aid] || {}).AssetName || D.aid;
+        var presets = [[5, '5 min'], [15, '15 min'], [60, '1 h'], [360, '6 h']].filter(function (p) { return p[0] * 60000 < full; });
+        var ib = function (k, html, tip, extra) { return '<button type="button" class="tld-gz-ib" data-gm="' + k + '" title="' + tip + '" aria-label="' + tip + '"' + (extra || '') + '>' + html + '</button>'; };
+        ov.innerHTML = '<div class="tld-gm" role="dialog" aria-modal="true" aria-label="Zoom view: ' + esc(Ln.name) + '">' +
+            '<div class="tld-gm-head">' +
+            '<div class="tld-gm-ico">' + gIco('zin') + '</div>' +
+            '<div class="tld-gm-tt"><div class="tld-gm-name" title="' + esc(Ln.raw) + '">' + esc(Ln.name) + '</div>' +
+            '<div class="tld-gm-sub">' + esc(aname) + ' &#183; ' + (Ln.dl ? 'Relay' : 'Reading') + ' &#183; now <b>' + esc(gmVal(Ln, Ln.last)) + '</b>' +
+            (Ln.rg ? ' &#183; <span class="tld-gm-safe">safe ' + esc(fmt(Ln.rg.min)) + ' &#8211; ' + esc(fmt(Ln.rg.max)) + '</span>' : '') + '</div></div>' +
+            '<div class="tld-gm-lnav">' + ib('prev', '&#8249;', 'Previous reading (Up arrow)', pos <= 0 ? ' disabled' : '') +
+            '<span>' + (pos + 1) + ' / ' + lanes.length + '</span>' + ib('next', '&#8250;', 'Next reading (Down arrow)', pos >= lanes.length - 1 ? ' disabled' : '') + '</div>' +
+            ib('close', '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>', 'Close (Esc)') +
+            '</div>' +
+            '<div class="tld-gm-bar">' +
+            '<div class="tld-gm-seg" role="group" aria-label="Drag mode">' +
+            '<button type="button" data-gm="mode-box" id="tldGmBox" title="Drag on the chart to zoom into that range">' +
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="3 2.5"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>Box zoom</button>' +
+            '<button type="button" data-gm="mode-pan" id="tldGmPan" title="Drag on the chart to move along time">' +
+            '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M5 12l3-3M5 12l3 3M19 12l-3-3M19 12l-3 3"></path></svg>Pan</button></div>' +
+            '<div class="tld-gz-ctl">' + ib('out', gIco('out'), 'Zoom out (-)', ' id="tldGmOut"') +
+            '<input type="range" class="tld-gz-rng" id="tldGmRng" min="0" max="100" step="1" value="0" aria-label="Zoom level">' +
+            ib('in', gIco('zin'), 'Zoom in (+)', ' id="tldGmIn"') + '<span class="tld-gz-lvl" id="tldGmLvl">1&#215;</span></div>' +
+            presets.map(function (p) { return '<button type="button" class="tld-gm-pre" data-gm="p' + p[0] + '" title="Show ' + p[1] + ' around the centre">' + p[1] + '</button>'; }).join('') +
+            '<span class="tld-gz-chip" id="tldGmRange"></span>' +
+            '<button type="button" class="tld-gz-fit" data-gm="fit" id="tldGmFit" title="Show the full period (0)">' + gIco('fit') + '<span>Fit</span></button>' +
+            '<button type="button" class="tld-gz-fit" data-gm="apply" title="Show every graph in the drawer at this time range">Apply to all graphs</button>' +
+            '</div>' +
+            '<div class="tld-gm-stats" id="tldGmStats"></div>' +
+            '<div class="tld-gm-chart" id="tldGmChart"></div>' +
+            '<div class="tld-gm-hint">Scroll = zoom at the mouse &#183; Drag = box zoom (Pan mode or Shift + drag = move) &#183; Double-click = fit &#183; Keys: + &#8722; 0 &#8592; &#8594; &#8593; &#8595; Esc</div>' +
+            '</div>';
+        gmRenderNow();
+    }
+    function gmChartHtml(Ln, a, b) {
+        var w = GM.w, h = GM.h, L = GM.L, T = GM.T, pw = GM.pw, ph = GM.ph, span = (b - a) || 1, pts = Ln.pts;
+        var X = function (t) { return L + clamp01((t - a) / span) * pw; };
+        var s0 = lastAt(pts, a), s1 = lastAt(pts, b);
+        var vp = s1 < 0 ? [] : pts.slice(Math.max(0, s0), s1 + 1);
+        var lo, hi;
+        if (Ln.dl) { lo = -0.2; hi = 1.2; }
+        else {
+            lo = Infinity; hi = -Infinity;
+            vp.forEach(function (p) { if (p[1] < lo) lo = p[1]; if (p[1] > hi) hi = p[1]; });
+            if (!vp.length) { lo = 0; hi = 1; }
+            if (hi === lo) { hi += 1; lo -= 1; }
+            var pad = (hi - lo) * 0.1; lo -= pad; hi += pad;
+        }
+        var Y = function (v) { return T + ph - (v - lo) / (hi - lo) * ph; };
+        D.gmGeo = { a: a, span: span, Y: Y, pts: pts, dl: Ln.dl };
+        var pan = D.gm && D.gm.mode === 'pan';
+        var out = '<svg id="tldGmSvg" class="' + (pan ? 'pan' : '') + '" viewBox="0 0 ' + w + ' ' + h + '" width="100%" style="display:block" role="img" aria-label="' + esc(Ln.name) + ' over the visible time range">' +
+            '<defs><linearGradient id="tldGmFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0A7C86" stop-opacity=".22"></stop><stop offset="1" stop-color="#0A7C86" stop-opacity="0"></stop></linearGradient>' +
+            '<clipPath id="tldGmClip"><rect x="' + L + '" y="' + T + '" width="' + pw + '" height="' + ph + '"></rect></clipPath></defs>' +
+            '<rect x="' + L + '" y="' + T + '" width="' + pw + '" height="' + ph + '" fill="rgba(127,140,160,.035)" stroke="rgba(127,140,160,.3)"></rect>';
+        /* y grid */
+        if (Ln.dl) {
+            [[1, 'Pickup', RL_UP], [0, 'Drop', RL_DN]].forEach(function (g) {
+                out += '<line x1="' + L + '" x2="' + (L + pw) + '" y1="' + Y(g[0]).toFixed(1) + '" y2="' + Y(g[0]).toFixed(1) + '" stroke="rgba(127,140,160,.22)"></line>' +
+                    '<text x="' + (L - 6) + '" y="' + (Y(g[0]) + 3.5).toFixed(1) + '" text-anchor="end" font-size="10.5" font-weight="700" fill="' + g[2] + '">' + g[1] + '</text>';
+            });
+        } else {
+            for (var i = 0; i <= 5; i++) {
+                var gv = lo + (hi - lo) * i / 5, gy = Y(gv).toFixed(1);
+                out += '<line x1="' + L + '" x2="' + (L + pw) + '" y1="' + gy + '" y2="' + gy + '" stroke="rgba(127,140,160,' + (i === 0 || i === 5 ? '0' : '.2') + ')"></line>' +
+                    '<text x="' + (L - 6) + '" y="' + (+gy + 3.5) + '" text-anchor="end" font-size="10" fill="var(--e7-text-3,#8492A6)" font-family="JetBrains Mono, monospace">' + esc(fmt(gv)) + '</text>';
+            }
+        }
+        /* x grid */
+        for (var k = 0; k <= 8; k++) {
+            var tx = (L + pw * k / 8).toFixed(1);
+            out += '<line x1="' + tx + '" x2="' + tx + '" y1="' + T + '" y2="' + (T + ph) + '" stroke="rgba(127,140,160,.16)"></line>' +
+                '<text x="' + tx + '" y="' + (h - 8) + '" text-anchor="' + (k === 0 ? 'start' : k === 8 ? 'end' : 'middle') + '" font-size="10" fill="var(--e7-text-3,#8492A6)">' + esc(gStamp(a + span * k / 8, span)) + '</text>';
+        }
+        out += '<g clip-path="url(#tldGmClip)">';
+        if (Ln.rg && !Ln.dl) {
+            var yA = Y(Ln.rg.max), yB = Y(Ln.rg.min);
+            out += '<rect x="' + L + '" y="' + yA.toFixed(1) + '" width="' + pw + '" height="' + Math.max(0, yB - yA).toFixed(1) + '" fill="rgba(31,157,85,.10)"></rect>' +
+                '<line x1="' + L + '" x2="' + (L + pw) + '" y1="' + yA.toFixed(1) + '" y2="' + yA.toFixed(1) + '" stroke="rgba(31,157,85,.55)" stroke-dasharray="5 4"></line>' +
+                '<line x1="' + L + '" x2="' + (L + pw) + '" y1="' + yB.toFixed(1) + '" y2="' + yB.toFixed(1) + '" stroke="rgba(31,157,85,.55)" stroke-dasharray="5 4"></line>';
+        }
+        if (vp.length) {
+            if (Ln.dl) {
+                var seg = { up: '', dn: '' };
+                for (var q = 0; q < vp.length; q++) {
+                    var x0 = X(vp[q][0]).toFixed(1), x1 = X(q + 1 < vp.length ? vp[q + 1][0] : b).toFixed(1), sy = Y(vp[q][1] >= 0.5 ? 1 : 0).toFixed(1);
+                    var sk = vp[q][1] >= 0.5 ? 'up' : 'dn';
+                    if (q > 0) seg[sk] += 'M' + x0 + ' ' + Y(vp[q - 1][1] >= 0.5 ? 1 : 0).toFixed(1) + 'L' + x0 + ' ' + sy;
+                    seg[sk] += 'M' + x0 + ' ' + sy + 'L' + x1 + ' ' + sy;
+                }
+                if (seg.up) out += '<path d="' + seg.up + '" fill="none" stroke="' + RL_UP + '" stroke-width="2.4"></path>';
+                if (seg.dn) out += '<path d="' + seg.dn + '" fill="none" stroke="' + RL_DN + '" stroke-width="2.4"></path>';
+            } else {
+                var d = 'M' + X(vp[0][0]).toFixed(1) + ' ' + Y(vp[0][1]).toFixed(1);
+                for (var j = 1; j < vp.length; j++) d += 'L' + X(vp[j][0]).toFixed(1) + ' ' + Y(vp[j - 1][1]).toFixed(1) + 'L' + X(vp[j][0]).toFixed(1) + ' ' + Y(vp[j][1]).toFixed(1);
+                d += 'L' + X(b).toFixed(1) + ' ' + Y(vp[vp.length - 1][1]).toFixed(1);
+                out += '<path d="' + d + 'L' + X(b).toFixed(1) + ' ' + (T + ph) + 'L' + X(vp[0][0]).toFixed(1) + ' ' + (T + ph) + 'Z" fill="url(#tldGmFill)" stroke="none"></path>' +
+                    '<path d="' + d + '" fill="none" stroke="#0A7C86" stroke-width="2" stroke-linejoin="round"></path>';
+            }
+            /* sample dots once zoomed in enough to tell them apart */
+            if (vp.length <= 160) vp.forEach(function (p) {
+                if (p[0] < a) return;
+                var py = Ln.dl ? Y(p[1] >= 0.5 ? 1 : 0) : Y(p[1]);
+                out += '<circle cx="' + X(p[0]).toFixed(1) + '" cy="' + py.toFixed(1) + '" r="2.6" fill="var(--e7-surface,#fff)" stroke="' + (Ln.dl ? (p[1] >= 0.5 ? RL_UP : RL_DN) : '#0A7C86') + '" stroke-width="1.5"></circle>';
+            });
+        } else {
+            out += '<text x="' + (L + pw / 2) + '" y="' + (T + ph / 2) + '" text-anchor="middle" font-size="12" fill="var(--e7-text-3,#8492A6)">No samples in this range</text>';
+        }
+        out += '</g>';
+        /* hover layer + drag band */
+        out += '<g id="tldGmHov" style="display:none;pointer-events:none">' +
+            '<line id="tldGmCur" x1="0" x2="0" y1="' + T + '" y2="' + (T + ph) + '" stroke="#F59E0B" stroke-width="1.2" stroke-dasharray="3 3"></line>' +
+            '<line id="tldGmCurH" x1="' + L + '" x2="' + (L + pw) + '" y1="0" y2="0" stroke="rgba(245,158,11,.45)" stroke-width="1" stroke-dasharray="2 4"></line>' +
+            '<circle id="tldGmDot" r="4.5" fill="#F59E0B" stroke="#fff" stroke-width="1.6"></circle>' +
+            '<g id="tldGmTip"><rect rx="7" fill="rgba(17,27,41,.92)"></rect><text id="tldGmTip1" font-size="11" font-weight="800" fill="#fff" font-family="JetBrains Mono, monospace"></text>' +
+            '<text id="tldGmTip2" font-size="10" fill="rgba(255,255,255,.75)"></text><text id="tldGmTip3" font-size="10" fill="rgba(255,255,255,.75)"></text></g></g>' +
+            '<rect id="tldGmSel" x="0" y="' + T + '" width="0" height="' + ph + '" fill="rgba(47,158,196,.14)" stroke="var(--e7-accent,#2f9ec4)" stroke-dasharray="4 3" style="display:none;pointer-events:none"></rect>';
+        return out + '</svg>';
+    }
+    function gmStatsHtml(Ln, a, b) {
+        var pts = Ln.pts, s0 = lastAt(pts, a), s1 = lastAt(pts, b);
+        if (s1 < 0) return '<div class="tld-gm-st"><span>Samples</span><b>0</b></div>';
+        var vp = pts.slice(Math.max(0, s0), s1 + 1), changes = 0, mn = Infinity, mx = -Infinity, wsum = 0, tsum = 0, inside = 0;
+        for (var i = 0; i < vp.length; i++) {
+            var v = vp[i][1], t0 = Math.max(a, vp[i][0]), t1 = i + 1 < vp.length ? vp[i + 1][0] : b;
+            if (v < mn) mn = v; if (v > mx) mx = v;
+            if (t1 > t0) { wsum += v * (t1 - t0); tsum += t1 - t0; }
+            if (i > 0 && v !== vp[i - 1][1]) changes++;
+            if (vp[i][0] >= a) inside++;
+        }
+        var st = function (k, v, cls) { return '<div class="tld-gm-st' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><b>' + esc(v) + '</b></div>'; };
+        var endV = vp[vp.length - 1][1];
+        if (Ln.dl) {
+            return st('At end of range', gmVal(Ln, endV), endV >= 0.5 ? 'up' : 'dn') + st('Picked up', tsum ? Math.round(wsum / tsum * 100) + ' % of time' : '--') +
+                st('State changes', String(changes)) + st('Range length', gDur(b - a));
+        }
+        var out = function (v) { return Ln.rg && (v < Ln.rg.min || v > Ln.rg.max); };
+        return st('Min', fmt(mn), out(mn) ? 'bad' : '') + st('Max', fmt(mx), out(mx) ? 'bad' : '') + st('Average (time)', tsum ? fmt(wsum / tsum) : '--') +
+            st('At end of range', fmt(endV), out(endV) ? 'bad' : '') + st('Changes', String(changes)) + st('Range length', gDur(b - a));
+    }
+    function gmSync(keepSlider) {
+        var M = D.gm, G = D.graph;
+        if (!M || !G || !G.rows) return;
+        var full = (G.t1 - G.t0) || 1, span = (M.b - M.a) || 1, zoomed = span < full - 1;
+        var z = full / span, zmax = gZoomMax(G), pct = zmax > 1 ? Math.round(Math.log(z) / Math.log(zmax) * 100) : 0;
+        var rng = document.getElementById('tldGmRng');
+        if (rng) { if (!keepSlider) rng.value = pct; rng.style.setProperty('--p', (keepSlider ? +rng.value : pct) + '%'); }
+        var lvl = document.getElementById('tldGmLvl');
+        if (lvl) lvl.innerHTML = (z < 10 ? Math.round(z * 10) / 10 : Math.round(z)) + '&#215;';
+        var chip = document.getElementById('tldGmRange');
+        if (chip) chip.innerHTML = zoomed ? esc(gStamp(M.a, span) + ' – ' + gStamp(M.b, span)) + ' <span class="d">' + esc(gDur(span)) + '</span>'
+            : 'Full period <span class="d">' + esc(gDur(full)) + '</span>';
+        var dis = function (id, on) { var el = document.getElementById(id); if (el) el.disabled = !!on; };
+        dis('tldGmOut', !zoomed); dis('tldGmFit', !zoomed); dis('tldGmIn', span <= GZ_MIN_MS + 1);
+        var bx = document.getElementById('tldGmBox'), pn = document.getElementById('tldGmPan');
+        if (bx) bx.setAttribute('aria-pressed', String(M.mode !== 'pan'));
+        if (pn) pn.setAttribute('aria-pressed', String(M.mode === 'pan'));
+    }
+    function gmRenderNow() {
+        var M = D.gm, Ln = D.gmLane;
+        if (!M || !Ln) return;
+        var ch = document.getElementById('tldGmChart'), st = document.getElementById('tldGmStats');
+        if (ch) ch.innerHTML = gmChartHtml(Ln, M.a, M.b);
+        if (st) st.innerHTML = gmStatsHtml(Ln, M.a, M.b);
+        gmSync();
+    }
+    function gmRender() {
+        if (D.gmRaf) return;
+        D.gmRaf = requestAnimationFrame(function () {
+            D.gmRaf = 0;
+            var M = D.gm, Ln = D.gmLane;
+            if (!M || !Ln) return;
+            var ch = document.getElementById('tldGmChart'), st = document.getElementById('tldGmStats');
+            if (ch) ch.innerHTML = gmChartHtml(Ln, M.a, M.b);
+            if (st) st.innerHTML = gmStatsHtml(Ln, M.a, M.b);
+        });
+    }
+    function gmSet(a, b, keepSlider) {
+        var M = D.gm, G = D.graph;
+        if (!M || !G || !G.rows) return;
+        var full = G.t1 - G.t0, w = Math.max(GZ_MIN_MS, Math.min(full, b - a));
+        if (a < G.t0) a = G.t0;
+        if (a + w > G.t1) a = G.t1 - w;
+        M.a = a; M.b = a + w;
+        gmSync(keepSlider);
+        gmRender();
+    }
+    function gmZoom(factor, at) {
+        var M = D.gm;
+        if (!M) return;
+        var w = M.b - M.a;
+        if (at === undefined || at === null) at = M.a + w / 2;
+        var f = (at - M.a) / (w || 1), nw = w * factor;
+        gmSet(at - f * nw, at - f * nw + nw);
+    }
+    function gmStep(dir) {   /* previous / next reading, keeping the time range */
+        var M = D.gm, G = D.graph;
+        if (!M || !G) return;
+        var lanes = graphLaneIdx(G), pos = lanes.indexOf(M.ci) + dir;
+        if (pos < 0 || pos >= lanes.length) return;
+        M.ci = lanes[pos];
+        gmPaint();
+    }
+    function gmFit() { var G = D.graph; if (G) gmSet(G.t0, G.t1); }
+    function gmOnClick(e) {
+        var t = e.target;
+        if (t === e.currentTarget) { if (Date.now() - (D.gmDragEnd || 0) > 300) gmClose(); return; }   /* backdrop (not the end of a drag) */
+        var bt = t.closest ? t.closest('[data-gm]') : null;
+        if (!bt || bt.disabled) return;
+        var k = bt.getAttribute('data-gm'), M = D.gm;
+        if (!M) return;
+        if (k === 'close') gmClose();
+        else if (k === 'prev') gmStep(-1);
+        else if (k === 'next') gmStep(1);
+        else if (k === 'in') gmZoom(0.5);
+        else if (k === 'out') gmZoom(2);
+        else if (k === 'fit') gmFit();
+        else if (k === 'mode-box' || k === 'mode-pan') { M.mode = W.__tldGmMode = k === 'mode-pan' ? 'pan' : 'box'; gmSync(); var sv = document.getElementById('tldGmSvg'); if (sv) sv.setAttribute('class', M.mode === 'pan' ? 'pan' : ''); }
+        else if (k === 'apply') { var a = M.a, b = M.b; gmClose(); gSetView(a, b); }
+        else if (k.charAt(0) === 'p') { var mins = +k.slice(1), c = (M.a + M.b) / 2; if (mins) gmSet(c - mins * 30000, c + mins * 30000); }
+    }
+    function gmPlotX(e, svg) {   /* mouse -> svg x, and whether it is inside the plot area */
+        var rc = svg.getBoundingClientRect(), x = (e.clientX - rc.left) / rc.width * GM.w, y = (e.clientY - rc.top) / rc.height * GM.h;
+        return { x: x, y: y, rc: rc, inside: x >= GM.L && x <= GM.L + GM.pw && y >= GM.T - 4 && y <= GM.T + GM.ph + 4 };
+    }
+    function gmHoverOff() { var g = document.getElementById('tldGmHov'); if (g) g.style.display = 'none'; }
+    function gmOnMove(e) {
+        if (D.gmDrag) return;
+        var svg = e.target && e.target.closest ? e.target.closest('#tldGmSvg') : null, G = D.gmGeo;
+        if (!svg || !G) { gmHoverOff(); return; }
+        var p = gmPlotX(e, svg);
+        if (!p.inside) { gmHoverOff(); return; }
+        var t = G.a + (p.x - GM.L) / GM.pw * G.span, i = lastAt(G.pts, t);
+        if (i < 0) { gmHoverOff(); return; }
+        var hov = document.getElementById('tldGmHov');
+        hov.style.display = '';
+        var v = G.pts[i][1], cy = G.dl ? G.Y(v >= 0.5 ? 1 : 0) : G.Y(v), a = i;
+        while (a > 0 && G.pts[a - 1][1] === v) a--;
+        var Ln = D.gmLane, xs = p.x.toFixed(1);
+        var cur = document.getElementById('tldGmCur'); cur.setAttribute('x1', xs); cur.setAttribute('x2', xs);
+        var ch = document.getElementById('tldGmCurH'); ch.setAttribute('y1', cy.toFixed(1)); ch.setAttribute('y2', cy.toFixed(1));
+        var dot = document.getElementById('tldGmDot'); dot.setAttribute('cx', xs); dot.setAttribute('cy', cy.toFixed(1));
+        if (G.dl) dot.setAttribute('fill', v >= 0.5 ? RL_UP : RL_DN);
+        var day = G.span > 20 * 3600000 ? new Date(t).getDate() + '/' + (new Date(t).getMonth() + 1) + ' ' : '';
+        var l1 = gmVal(Ln, v) + (Ln.rg && !Ln.dl && (v < Ln.rg.min || v > Ln.rg.max) ? '  (outside safe range)' : '');
+        var l2 = day + hhmmss(t);
+        var l3 = a > 0 ? 'changed from ' + gmVal(Ln, G.pts[a - 1][1]) + ' at ' + hhmmss(G.pts[a][0]) : 'no change before this in the period';
+        var tw = Math.max(l1.length * 7, l2.length * 6, l3.length * 5.6) + 18, th = 50;
+        var bx = p.x + 14 + tw > GM.L + GM.pw ? p.x - 14 - tw : p.x + 14, by = Math.max(GM.T + 2, Math.min(GM.T + GM.ph - th - 2, cy - th - 8));
+        var tip = document.getElementById('tldGmTip'), r = tip.firstChild;
+        r.setAttribute('x', bx.toFixed(1)); r.setAttribute('y', by.toFixed(1)); r.setAttribute('width', tw.toFixed(1)); r.setAttribute('height', th);
+        var t1 = document.getElementById('tldGmTip1'), t2 = document.getElementById('tldGmTip2'), t3 = document.getElementById('tldGmTip3');
+        t1.setAttribute('x', bx + 9); t1.setAttribute('y', by + 16); t1.textContent = l1;
+        t1.setAttribute('fill', G.dl ? (v >= 0.5 ? '#6EE7A0' : '#FCD34D') : '#fff');
+        t2.setAttribute('x', bx + 9); t2.setAttribute('y', by + 30); t2.textContent = l2;
+        t3.setAttribute('x', bx + 9); t3.setAttribute('y', by + 43); t3.textContent = l3;
+    }
+    function gmOnWheel(e) {
+        var svg = e.target && e.target.closest ? e.target.closest('#tldGmSvg') : null, M = D.gm;
+        if (!svg || !M) return;
+        e.preventDefault();
+        var p = gmPlotX(e, svg), at = M.a + clamp01((p.x - GM.L) / GM.pw) * (M.b - M.a);
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && !e.ctrlKey) {   /* trackpad sideways swipe = pan */
+            var w = M.b - M.a, dt = e.deltaX / 600 * w;
+            gmSet(M.a + dt, M.b + dt);
+            return;
+        }
+        gmZoom(e.deltaY < 0 ? 0.8 : 1.25, at);
+    }
+    function gmOnDbl(e) { if (e.target && e.target.closest && e.target.closest('#tldGmSvg')) gmFit(); }
+    function gmOnInput(e) {
+        if (!e.target || e.target.id !== 'tldGmRng') return;
+        var M = D.gm, G = D.graph;
+        if (!M || !G || !G.rows) return;
+        var c = (M.a + M.b) / 2, z = Math.exp((+e.target.value) / 100 * Math.log(gZoomMax(G))), w = (G.t1 - G.t0) / z;
+        gmSet(c - w / 2, c + w / 2, true);
+    }
+    function gmOnDown(e) {
+        if (e.button !== 0 || !e.target || !e.target.closest) return;
+        var M = D.gm, G = D.graph;
+        if (!M || !G || !G.rows) return;
+        var svg = e.target.closest('#tldGmSvg');
+        if (svg) {
+            var q = gmPlotX(e, svg);
+            if (!q.inside) return;
+            if (M.mode === 'pan' || e.shiftKey) {
+                D.gmDrag = { mode: 'pan', x0: e.clientX, a0: M.a, b0: M.b, k: (M.b - M.a) / (q.rc.width * GM.pw / GM.w) };
+                svg.setAttribute('class', 'panning');
+            } else D.gmDrag = { mode: 'sel', sx0: q.x, rc: q.rc };
+            gmHoverOff();
+        } else return;
+        e.preventDefault();
+        document.addEventListener('mousemove', gmOnDrag);
+        document.addEventListener('mouseup', gmOnUp);
+    }
+    function gmOnDrag(e) {
+        var g = D.gmDrag, G = D.graph;
+        if (!g || !G || !G.rows) return;
+        if (g.mode === 'sel') {
+            var sel = document.getElementById('tldGmSel');
+            if (!sel) return;
+            var sx = Math.max(GM.L, Math.min(GM.L + GM.pw, (e.clientX - g.rc.left) / g.rc.width * GM.w));
+            g.sx1 = sx;
+            sel.setAttribute('x', Math.min(g.sx0, sx).toFixed(1));
+            sel.setAttribute('width', Math.abs(sx - g.sx0).toFixed(1));
+            sel.style.display = '';
+            return;
+        }
+        var dt = (e.clientX - g.x0) * g.k;
+        if (g.mode === 'pan') gmSet(g.a0 - dt, g.b0 - dt);
+    }
+    function gmOnUp() {
+        document.removeEventListener('mousemove', gmOnDrag);
+        document.removeEventListener('mouseup', gmOnUp);
+        var g = D.gmDrag, M = D.gm;
+        D.gmDrag = null;
+        D.gmDragEnd = Date.now();
+        var svg = document.getElementById('tldGmSvg');
+        if (svg && M) svg.setAttribute('class', M.mode === 'pan' ? 'pan' : '');
+        if (!g || g.mode !== 'sel' || !M) return;
+        var sel = document.getElementById('tldGmSel');
+        if (sel) sel.style.display = 'none';
+        if (g.sx1 === undefined || Math.abs(g.sx1 - g.sx0) < 6) return;
+        var span = M.b - M.a;
+        var ta = M.a + (Math.min(g.sx0, g.sx1) - GM.L) / GM.pw * span, tb = M.a + (Math.max(g.sx0, g.sx1) - GM.L) / GM.pw * span;
+        gmSet(ta, tb);
+    }
+    function gmOnKey(e) {
+        var M = D.gm;
+        if (!M) return;
+        var onRange = e.target && e.target.id === 'tldGmRng', w = M.b - M.a;
+        if (e.key === 'Escape') { e.preventDefault(); gmClose(); }
+        else if (e.key === '+' || e.key === '=') { e.preventDefault(); gmZoom(0.5); }
+        else if (e.key === '-' || e.key === '_') { e.preventDefault(); gmZoom(2); }
+        else if (e.key === '0') { e.preventDefault(); gmFit(); }
+        else if (onRange) return;
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); gmSet(M.a - w * 0.25, M.b - w * 0.25); }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); gmSet(M.a + w * 0.25, M.b + w * 0.25); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); gmStep(-1); }
+        else if (e.key === 'ArrowDown') { e.preventDefault(); gmStep(1); }
+    }
     function hhmmss(ms) { var d = new Date(ms), p = function (n) { return (n < 10 ? '0' : '') + n; }; return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
     function lastAt(pts, t) {   /* index of the last sample at or before t (binary search) */
         var lo = 0, hi = pts.length - 1, r = -1;
@@ -2662,6 +3429,11 @@
             graphHoverOff();
             return;
         }
+        /* a click outside the selection popup clears it (not the click that ends the drag itself) */
+        if (D.gSel && !t.closest('#tldGzPop') && Date.now() - (D.gPopAt || 0) > 250) gPopClose();
+        var lz = t.closest('[data-tld-lz]'); if (lz) { gPopClose(); gmOpen(+lz.getAttribute('data-tld-lz')); return; }
+        var gs = t.closest('[data-tld-sel]'); if (gs) { gPopAction(gs.getAttribute('data-tld-sel')); return; }
+        var gz = t.closest('[data-tld-gz]'); if (gz) { if (!gz.disabled) gZoomAction(gz.getAttribute('data-tld-gz')); return; }
         var hb = t.closest('[data-tld-h]'); if (hb) {
             D.graphHours = +hb.getAttribute('data-tld-h') || 24;
             var bs = document.querySelectorAll('[data-tld-h]');
@@ -2682,6 +3454,8 @@
         }
     }
     function onKey(e) {
+        if (D.gm && document.getElementById('tldGm')) { gmOnKey(e); return; }   /* zoom modal owns the keyboard while open */
+        if (e.key === 'Escape' && document.getElementById('tldGzPop')) { gPopClose(); return; }
         if (e.key === 'Escape' && D.chatFull) { setChatFull(false); return; }
         if (e.key === 'Escape' && D.aid) { close(); return; }
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.target && e.target.id === 'tldAsk') {
@@ -2711,6 +3485,10 @@
             dr.addEventListener('click', onClick);
             dr.addEventListener('mousemove', onMove);
             dr.addEventListener('mouseleave', graphHoverOff);
+            dr.addEventListener('wheel', onGraphWheel, { passive: false });
+            dr.addEventListener('mousedown', onGraphDown);
+            dr.addEventListener('dblclick', onGraphDbl);
+            dr.addEventListener('input', onGraphInput);
             document.body.appendChild(dr);
         }
         document.removeEventListener('keydown', onKey);
@@ -2735,6 +3513,7 @@
         var x = dr.querySelector('[data-tld-close]'); if (x) x.focus();
     }
     function close() {
+        gmClose();
         D.chatFull = false;
         D.aid = null;
         if (D.timer) { clearInterval(D.timer); D.timer = null; }

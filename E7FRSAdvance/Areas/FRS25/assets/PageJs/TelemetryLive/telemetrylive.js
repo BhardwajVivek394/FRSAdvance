@@ -25984,6 +25984,9 @@ function ipsClassifyTab(isDataLogger, attrKey, attrLabel) {
     var hay = (String(attrKey || '') + ' ' + String(attrLabel || '')).toUpperCase();
     if (hay.indexOf('IIPS') !== -1) { return 'current'; }
     if (hay.indexOf('VIPS') !== -1) { return 'voltage'; }
+    /* sites without the IIPS / VIPS prefix (SAKHUN: "IPS Batterry charging Current 1")
+       name the quantity in words */
+    if (/\bCURRENT\b/.test(hay)) { return 'current'; }
     return 'voltage';
 }
 window.ipsClassifyTab = ipsClassifyTab;
@@ -26111,6 +26114,10 @@ var IPS_BATT_GROUP_KEEP_FIRST_ATTR_NAME = false;
 function ipsBattBaseAttrName(attrLabel) {
     var text = String(attrLabel || '');
     text = text.replace(/(DISCHARGING|DISCHARGER|DISCHARGE|DISCHAR|CHARGING|CHARGER|CHARGE|CHAR)[\-_]\s*\d+/gi, '$1');
+    /* bank number as the LAST token, space-joined (SAKHUN: "IPS Batterry charging
+       Current 1".."6"). Only on a charging / discharging name and only 1-2 digits,
+       so "IIPS BATT CHAR 110 DC" / "... 110" are never touched. */
+    if (/CHAR/i.test(text)) { text = text.replace(/[\s\-_]+\d{1,2}\s*$/, ''); }
     return text.replace(/\s{2,}/g, ' ').trim();
 }
 window.ipsBattBaseAttrName = ipsBattBaseAttrName;
