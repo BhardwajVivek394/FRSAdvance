@@ -7130,6 +7130,46 @@ function fnBindIpsGrid() {
  * Builds / refreshes the IPS card-grid from wsLiveData.
  * Called on first render AND on each incremental update.
  */
+/* IPS card kind for sorting: 0 = Voltage, 1 = Current, 2 = Digital -- the tab
+   most of the asset's readings fall in (same rule as the IPS tabs, ipsClassifyTab).
+   Data-logger relays count as Digital. */
+function ipsCardKindRank(assetId) {
+    var asset = wsLiveData[assetId] || {};
+    var attrs = asset.attrs || {}, relays = asset.dlRelays || {};
+    var c = { voltage: 0, current: 0, digital: 0 };
+    Object.keys(attrs).forEach(function (an) {
+        var aObj = attrs[an] || {};
+        var isDL = String(aObj.DataType || '').trim().toLowerCase() === 'datalogger' || Object.prototype.hasOwnProperty.call(relays, an);
+        var label = an;
+        if (typeof window.getAttrDisplayNamePlain === 'function') {
+            try { label = window.getAttrDisplayNamePlain(an, (aObj.AttrId || aObj.AssetAttributeId), assetId) || an; } catch (e) { label = an; }
+        }
+        var t;
+        if (typeof window.ipsClassifyTab === 'function') {
+            try { t = window.ipsClassifyTab(isDL, an, label, asset.AssetName); } catch (e) { t = null; }
+        }
+        if (!t) t = isDL ? 'digital' : (/IIPS|\bCURRENT\b/i.test(an + ' ' + label) ? 'current' : 'voltage');
+        if (c.hasOwnProperty(t)) c[t]++;
+    });
+    Object.keys(relays).forEach(function (rk) { if (!Object.prototype.hasOwnProperty.call(attrs, rk)) c.digital++; });
+    var best = 'voltage';
+    ['current', 'digital'].forEach(function (t) { if (c[t] > c[best]) best = t; });
+    return best === 'voltage' ? 0 : best === 'current' ? 1 : 2;
+}
+/* IPS Live Grid card order: Voltage -> Current -> Digital, name inside a group,
+   assets with no data last. Depends only on kind / name / has-data, never on a
+   value, so live ticks do not move cards. */
+function ipsGridOrder(ids) {
+    var sorted = (ids || []).slice().sort(function (a, b) {
+        return (ipsCardKindRank(a) - ipsCardKindRank(b)) ||
+            ((wsLiveData[a] || {}).AssetName || '').localeCompare(
+                (wsLiveData[b] || {}).AssetName || '', undefined, { numeric: true, sensitivity: 'base' }
+            );
+    });
+    return blankDataLast(sorted);
+}
+window.ipsGridOrder = ipsGridOrder;
+
 window.renderIpsGridView = function renderIpsGridView() {
     if (typeof ensureIpsTableStyles === 'function') ensureIpsTableStyles();
     // Guard: only render if IPS is actually selected. Prevents wrong-asset-type
@@ -7149,15 +7189,8 @@ window.renderIpsGridView = function renderIpsGridView() {
 
     $('#wsWaiting').remove();
 
-    // Sort asset IDs by name
-    assetIds.sort(function (a, b) {
-        return (wsLiveData[a].AssetName || '').localeCompare(
-            wsLiveData[b].AssetName || '', undefined, { numeric: true, sensitivity: 'base' }
-        );
-    });
-
     var $c = $('#divTelemetryLive');
-    assetIds = blankDataLast(assetIds);
+    assetIds = ipsGridOrder(assetIds);
     // ---- Full rebuild ----
     var totalCount = assetIds.length;
     var h = '<div class="ips-grid-container">';

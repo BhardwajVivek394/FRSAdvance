@@ -658,7 +658,7 @@
         '.hv-g .mk.st-near{background:#E0A100;}' +
         '.hv-gl{display:flex;justify-content:space-between;font:10px "JetBrains Mono",monospace;color:var(--e7-text-3,#8D9CB2);}' +
         '.hv-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;}' +
-        '.hv-tile{border:1px solid var(--e7-border,rgba(127,140,160,.25));border-radius:10px;padding:7px 9px 6px;cursor:pointer;background:var(--e7-surface-2,transparent);}' +
+        '.hv-tile{border:1px solid var(--e7-border,rgba(127,140,160,.25));border-radius:10px;padding:7px 9px 6px;cursor:default;background:var(--e7-surface-2,transparent);}' +
         '.hv-tile:hover{border-color:var(--brand,#22d3ee);}' +
         '.hv-tile.sel{box-shadow:0 0 0 1.5px var(--brand,#22d3ee);}' +
         '.hv-tile .hd{display:flex;align-items:center;gap:6px;}' +
@@ -730,6 +730,18 @@
         '.hv-tile.hv-sumtile{cursor:default;border-style:dashed;border-color:var(--brand,#22d3ee);background:rgba(34,211,238,.06);}' +
         '.hv-tile.hv-sumtile .lb{font-weight:800;color:var(--e7-heading,inherit);}' +
         '.hv-tile.hv-sumtile .vl small,.hv-ipssum-t b small{font-size:11px;font-weight:600;opacity:.75;}' +
+        '.hv-sumbar-wrap{display:flex;flex-direction:column;gap:6px;margin:8px 0 2px;}' +
+        '.hv-sumbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-radius:10px;border:1px solid rgba(34,165,91,.35);border-left:4px solid #22A55B;background:rgba(34,165,91,.08);}' +
+        '.hv-sumbar.discharging{border-color:rgba(217,119,6,.35);border-left-color:#D97706;background:rgba(217,119,6,.08);}' +
+        '.hv-sumbar .tx{display:flex;flex-direction:column;min-width:0;}' +
+        '.hv-sumbar .k{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#22A55B;}' +
+        '.hv-sumbar.discharging .k{color:#D97706;}' +
+        '.hv-sumbar .lb{font-size:12px;font-weight:700;color:var(--e7-heading,inherit);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.hv-sumbar .vv{display:flex;flex-direction:column;align-items:flex-end;flex:0 0 auto;}' +
+        '.hv-sumbar .vv b{font-size:20px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;}' +
+        '.hv-sumbar .vv b small{font-size:11px;font-weight:600;opacity:.75;}' +
+        '.hv-sumbar .sl{font-size:10.5px;color:var(--e7-text-3,#8D9CB2);}' +
+        '.hv-sumbar.st-none .vv b{opacity:.5;}' +
         '.hv-ipssum{border:1px solid var(--e7-border,rgba(127,140,160,.25));border-radius:14px;background:var(--e7-surface-2,rgba(127,140,160,.05));padding:10px 12px;margin-bottom:12px;}' +
         '.hv-ipssum-h{font-size:12px;font-weight:800;color:var(--e7-heading,inherit);margin-bottom:8px;display:flex;align-items:center;gap:7px;}' +
         '.hv-ipssum-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px;}' +
@@ -934,8 +946,7 @@
         var badge = r.st === 'near' ? 'NEAR' : r.st === 'occ' ? 'OCC.' : '';
         /* stale = clock icon at full strength (was: whole tile faded to 60%) */
         var staleIc = r.stale ? '<i class="fa-regular fa-clock hv-stale-ic" title="Stale: server marked this reading old (IsFresh = false)" aria-label="Stale reading"></i>' : '';
-        return '<div class="hv-tile st-' + r.st + (r.stale ? ' stale' : '') + (H.trendKey[A.aid] === r.k ? ' sel' : '') +
-            '" data-hv-row="' + esc(A.aid) + '" data-hv-k="' + esc(r.k) + '" title="' + esc(rowTip(r)) + ' -- click for trend">' +
+        return '<div class="hv-tile st-' + r.st + (r.stale ? ' stale' : '') + '" data-hv-row="' + esc(A.aid) + '" data-hv-k="' + esc(r.k) + '" title="' + esc(rowTip(r)) + '">' +
             '<div class="hd"><span class="lb">' + esc(r.label) + '</span>' + staleIc + (badge ? '<span class="bg">' + badge + '</span>' : '') + '</div>' +
             '<div class="vl' + (r.relay ? ' hv-rv ' + (r.up ? 'up' : 'dn') : '') + '">' + dispV(r) + '</div>' +
             (function (t) { return t ? '<div class="sl">' + esc(t) + '</div>' : ''; })(statusLine(r)) +
@@ -1600,7 +1611,8 @@
             }
             html += '</div>';
         }
-        html += trendHtml(A) + '</article>';
+        /* recent-trend chart under the card removed (not used) */
+        html += '</article>';
         return html;
     }
 
@@ -1613,28 +1625,33 @@
         if (typeof window.buildIpsCardSumModels !== 'function') return '';
         var models = [];
         try { models = window.buildIpsCardSumModels(A.aid) || []; } catch (e) { models = []; }
-        return models.map(function (m) {
+        if (!models.length) return '';
+        /* Σ banner: full width, ABOVE every reading section (not a tile mixed in
+           with the bank tiles), so the battery total is the first thing on the card. */
+        var bucket = /DISCHAR/i.test(String(A.name || '') + ' ' + String(models[0].label || '')) ? 'discharging' : 'charging';
+        return '<div class="hv-sumbar-wrap">' + models.map(function (m) {
             var disp = typeof window.ipsCardSumDisplay === 'function' ? window.ipsCardSumDisplay(m) : fmt(m.sum);
             var noVal = !m.count || disp === '—' || disp === '--';
-            return '<div class="hv-tile hv-sumtile' + (noVal ? ' st-none' : '') + '" title="' + esc('Sum of ' + m.members + ' bank readings -- ' + m.label) + '">' +
-                '<div class="hd"><span class="lb">&Sigma; ' + esc(m.label) + '</span></div>' +
-                '<div class="vl">' + esc(noVal ? '--' : disp) + (m.ampere && !noVal ? ' <small>A</small>' : '') + '</div>' +
-                '<div class="sl">sum of ' + m.members + ' bank' + (m.members > 1 ? 's' : '') + '</div></div>';
-        }).join('');
+            return '<div class="hv-sumbar ' + bucket + (noVal ? ' st-none' : '') + '" title="' + esc('Sum of ' + m.members + ' bank readings -- ' + m.label) + '">' +
+                '<div class="tx"><span class="k">&Sigma; Total ' + (bucket === 'discharging' ? 'discharging' : 'charging') + '</span>' +
+                '<span class="lb">' + esc(m.label) + '</span></div>' +
+                '<div class="vv"><b>' + esc(noVal ? '--' : disp) + (m.ampere && !noVal ? ' <small>A</small>' : '') + '</b>' +
+                '<span class="sl">sum of ' + m.members + ' bank' + (m.members > 1 ? 's' : '') + (m.count && m.count < m.members ? ' (' + m.count + ' live)' : '') + '</span></div></div>';
+        }).join('') + '</div>';
     }
     function ipsCardBodyHtml(A) {
         var by = { voltage: [], current: [], digital: [] };
         A.rows.forEach(function (r) { (by[r.ipsTab] || by.voltage).push(r); });
         var tab = H.ipsTab || 'all';
-        var sums = (tab === 'all' || tab === 'current') ? ipsCardSumTiles(A) : '';
-        var h = '', any = false;
+        var sums = ipsCardSumTiles(A);
+        var h = sums, any = !!sums;
         IPS_SECTIONS.forEach(function (S) {
             if (tab !== 'all' && tab !== S[0]) return;
-            var list = by[S[0]], extra = S[0] === 'current' ? sums : '';
-            if (!list.length && !extra) return;
+            var list = by[S[0]];
+            if (!list.length) return;
             any = true;
             h += '<div class="hv-ipsec" data-ipsec="' + S[0] + '"><div class="hv-ipsec-h"><i class="fa-solid ' + S[2] + '"></i> ' + S[1] +
-                ' <small>' + list.length + '</small></div><div class="hv-rows hv-tiles">' + extra;
+                ' <small>' + list.length + '</small></div><div class="hv-rows hv-tiles">';
             for (var j = 0; j < list.length; j++) h += rowHtml(A, list[j]);
             h += '</div></div>';
         });
@@ -1831,7 +1848,8 @@
                 A.rows.forEach(function (r) { has[r.ipsTab || 'voltage'] = 1; });
                 for (var t in has) if (ipsCnt.hasOwnProperty(t)) ipsCnt[t]++;
             });
-            if (H.view !== 'table' && (ipsTabNow === 'all' || ipsTabNow === 'current')) ipsSumHtml = ipsBattSummaryHtml();
+            /* Battery Σ is shown only inside the BATT CHARGING / DISCHARGING cards
+               (ipsCardSumTiles banner); the top "Battery current" strip is removed. */
         }
         if (isIpsType() && !ipsFlatTable && ipsTabNow && ipsTabNow !== 'all') {
             list.forEach(function (A) {
@@ -1863,10 +1881,47 @@
         /* Group by what the asset carries: assets with readings (RDPMS, with or
            without DataLogger) first, DataLogger-only assets after them, so the
            two card shapes are not interleaved. Name / worst order inside a group. */
-        var grp = function (A) { return A.dlOnly ? 1 : 0; };
-        shown.sort(H.sort === 'worst'
+        /* IPS cards: group by reading kind (Voltage, then Current, then Digital) so
+           voltage / current / digital cards are not interleaved. Kind = the tab most
+           of the asset's readings fall in; relay-only assets are Digital. */
+        var IPS_KIND_ORDER = { voltage: 0, current: 1, digital: 2 };
+        var ipsKind = function (A) {
+            var c = { voltage: 0, current: 0, digital: (A.relays || []).length };
+            A.rows.forEach(function (r) { var t = r.ipsTab || 'voltage'; if (c.hasOwnProperty(t)) c[t]++; });
+            var best = 'voltage';
+            ['current', 'digital'].forEach(function (t) { if (c[t] > c[best]) best = t; });
+            return IPS_KIND_ORDER[best];
+        };
+        var ipsGroup = isIpsType();
+        var grp = function (A) { return (A.dlOnly ? 10 : 0) + (ipsGroup ? ipsKind(A) : 0); };
+        var cmp = H.sort === 'worst'
             ? function (a, b) { return (grp(a) - grp(b)) || (b.sev - a.sev) || a.name.localeCompare(b.name, undefined, { numeric: true }); }
-            : function (a, b) { return (grp(a) - grp(b)) || a.name.localeCompare(b.name, undefined, { numeric: true }); });
+            : function (a, b) { return (grp(a) - grp(b)) || a.name.localeCompare(b.name, undefined, { numeric: true }); };
+        /* Stable order on live updates: the order is worked out once per sort / filter /
+           tab / search and then frozen, so a changing reading (severity) no longer
+           moves cards up and down. A new asset is placed by the comparator at the end. */
+        /* ...but re-sort when an asset's GROUP changes or it gets its first data: on
+           page load the cards are still empty (all counted as Voltage / no data) and
+           freezing that order left the grouping and Worst-first never applied. */
+        var ordKey = H.view + '|' + H.sort + '|' + H.filter + '|' + (H.ipsTab || '') + '|' + q + '|' + assetTypeId() + '|' +
+            shown.map(function (A) { return A.aid + ':' + grp(A) + (A.status === 'nodata' ? 'n' : 'd'); }).sort().join(',');
+        if (H._ordKey !== ordKey || !H._ord) {
+            shown.sort(cmp);
+            H._ord = {};
+            shown.forEach(function (A, i) { H._ord[A.aid] = i; });
+            H._ordKey = ordKey;
+        } else {
+            var rank = H._ord;
+            shown.sort(function (a, b) {
+                var ra = rank.hasOwnProperty(a.aid), rb = rank.hasOwnProperty(b.aid);
+                if (ra && rb) return rank[a.aid] - rank[b.aid];
+                if (ra !== rb) return ra ? -1 : 1;
+                return cmp(a, b);
+            });
+            var next = 0;
+            for (var key in rank) if (rank.hasOwnProperty(key) && rank[key] >= next) next = rank[key] + 1;
+            shown.forEach(function (A) { if (!rank.hasOwnProperty(A.aid)) rank[A.aid] = next++; });
+        }
 
         /* cheap signature: only rebuild DOM when something visible changed */
         var sig = H.view + (H.ipsTab || '') + (H.ipsTableTab || '') + ipsSumHtml + JSON.stringify(H.gopen) + H.sort + H.filter + q + JSON.stringify(H.trendKey) + JSON.stringify(H.circ) + JSON.stringify(H.circOff) + H.circAll +
@@ -2059,9 +2114,8 @@
                 H.open[cA] = true; H.trendKey[cA] = cK;
             }
         } else if (b.hasAttribute('data-hv-row')) {
-            var aid = b.getAttribute('data-hv-row');
-            var k = b.getAttribute('data-hv-k');
-            H.trendKey[aid] = (H.trendKey[aid] === k) ? null : k;
+            /* card reading tiles no longer open a trend chart */
+            return;
         }
         H.sig = '';
         render(true);

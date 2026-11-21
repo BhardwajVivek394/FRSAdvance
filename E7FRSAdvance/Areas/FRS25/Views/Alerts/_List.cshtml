@@ -59,7 +59,19 @@ else
                     var stCss = isCleared ? "cleared" : "pending";
                     var stIco = isCleared ? "check-circle" : "clock";
 
-                    var endTime = a.ResetTimeStamp.HasValue ? a.ResetTimeStamp.Value : DateTime.Now;
+                    // 616: Reset time / duration follow the latest Rectification Date & Time given by
+                    // ESM / JE / SSE; a remark date before the incidence falls back to the system reset time.
+                    var rowRemarks = ViewBag.FRSAlertRemarks as List<Domain.FRSAlertRemark> ?? new List<Domain.FRSAlertRemark>();
+                    var rectRemark = rowRemarks.Where(x => x.FRSAlertId == a.Id && x.RectificationDateTime != null)
+                                               .OrderByDescending(x => x.Id).FirstOrDefault();
+                    bool hasSysReset = a.ResetTimeStamp.HasValue && a.ResetTimeStamp.Value != DateTime.MinValue;
+                    DateTime? effReset = hasSysReset ? a.ResetTimeStamp : (DateTime?)null;
+                    if (rectRemark != null && !(rectRemark.RectificationDateTime < a.SetTimeStamp && hasSysReset))
+                    {
+                        effReset = rectRemark.RectificationDateTime;
+                    }
+
+                    var endTime = effReset.HasValue ? effReset.Value : DateTime.Now;
                     var diff = endTime - a.SetTimeStamp;
                     if (diff.TotalSeconds < 0) { diff = TimeSpan.Zero; }
                     var totalHrs = (int)diff.TotalHours;
@@ -146,9 +158,9 @@ else
                                 <div>
                                     <span class="alrt-time-lbl">Reset</span>
                                     <div class="alrt-time-cell" id="alrtReset_@a.Id">
-                                        @if (a.ResetTimeStamp.HasValue)
+                                        @if (effReset.HasValue)
                                         {
-                                            <span class="alrt-time-main">@a.ResetTimeStamp.Value.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                                            <span class="alrt-time-main">@effReset.Value.ToString("dd/MM/yyyy HH:mm:ss")</span>
                                         }
                                         else
                                         {
@@ -236,11 +248,9 @@ else
                                             isShowbtn = false;
                                         }
 
-                                        // 2. JE or SSE/CSI gave feedback first → ESM / JE / Vendor cannot give T/PT/M/F (or + Remark)
-                                        var firstFeedback = fieldFeedbacks.FirstOrDefault();
-                                        if (firstFeedback != null
-                                            && (firstFeedback.MaintainerId == clsJE || firstFeedback.MaintainerId == clsSSE)
-                                            && (userClassId == clsESM || userClassId == clsJE || userClassId == clsVendor))
+                                        // 2. JE or SSE/CSI gave feedback → ESM / JE / SSE / Vendor cannot give T/PT/M/F (or + Remark)
+                                        if (fieldFeedbacks.Any(x => x.MaintainerId == clsJE || x.MaintainerId == clsSSE)
+                                            && (userClassId == clsESM || userClassId == clsJE || userClassId == clsSSE || userClassId == clsVendor))
                                         {
                                             isShowbtn = false;
                                         }
@@ -1238,7 +1248,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
               /* rectification */
               '<div style="margin-bottom:18px;">' +
                 '<div class="fb-lbl" style="margin-bottom:6px;">Rectification Date &amp; Time</div>' +
-                '<input type="datetime-local" id="fbRectDate" class="fb-input" />' +
+                '<input type="datetime-local" step="1" id="fbRectDate" class="fb-input" />' +
               '</div>' +
               /* remark */
               '<div style="margin-bottom:6px;">' +
@@ -1892,10 +1902,10 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
         return (isNaN(d.getTime()) || d.getFullYear() < 2000) ? null : d;
     }
 
-    /* Date → "yyyy-MM-ddTHH:mm" for the datetime-local input */
+    /* Date → "yyyy-MM-ddTHH:mm:ss" for the datetime-local input (step="1" keeps the seconds) */
     function fbToLocalInput(d) {
         var pad = function (n) { return n < 10 ? '0' + n : String(n); };
-        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+        return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
     }
 
     /* ── Inject panel HTML once ── */
@@ -1956,7 +1966,7 @@ function fnUpdateMaintenanceInActiveMode(assetId) {
                   '</div>' +
                   '<div class="fb-field">' +
                     '<div class="fb-lbl fb-lbl-field">Rectification Date &amp; Time</div>' +
-                    '<input type="datetime-local" id="fbRectDate" class="fb-input" />' +
+                    '<input type="datetime-local" step="1" id="fbRectDate" class="fb-input" />' +
                   '</div>' +
                   '<div class="fb-field">' +
                     '<div class="fb-lbl fb-lbl-field">Remark <span class="fb-req">*</span></div>' +

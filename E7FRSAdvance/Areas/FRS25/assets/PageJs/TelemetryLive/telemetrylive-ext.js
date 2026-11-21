@@ -3433,10 +3433,10 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
     }
     var CARD_COL = 'col-12 col-xxl-4 col-xl-6 col-lg-6 col-md-12 col-sm-12 rdpms-signal-card sigv2-col';
     // 617.4: header text laid out horizontally (kind chip + name on one line, time under it)
-    function cardHeaderLeft(kind, name, id) {
+    function cardHeaderLeft(kind, name, id, extra) {
         return '<div class="card-header-left"><h6 class="sigv2-title">' +
             '<span class="sigv2-kind">' + esc(kind) + '</span>' +
-            '<span class="sigv2-name" title="' + esc(name) + '">' + esc(name) + '</span></h6>' +
+            '<span class="sigv2-name" title="' + esc(name) + '">' + esc(name) + '</span>' + (extra || '') + '</h6>' +
             '<span class="sigv2-ts" id="rdpmsTs_' + id + '">Updated: </span></div>';
     }
     function ensureSigCardV2Styles() {
@@ -3527,12 +3527,17 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         var hasRoutes = routes.length > 0;
         var hasCalling = !!(attrs['Co_Hg mA'] || attrs['Co_Hg V']);
         var arms = ['rdpms-arm-1', 'rdpms-arm-2', 'rdpms-arm-3', 'rdpms-arm-4'];
-        var h = '<div class="' + CARD_COL + '" id="rdpmsCard_' + id + '">';
+        var h = '<div class="' + CARD_COL + ' sigv3-col" id="rdpmsCard_' + id + '">';
         ensureSigCardV2Styles();
-        h += '<div class="card card-border sigv2"><div class="card-header-signal">' +
-            cardHeaderLeft('Signal', asset.AssetName || 'Signal', id) +
+        ensureSigCardV3Styles();
+        /* v3 layout: signal head (unchanged) on the left, lamp / control relay / lamp proving
+           table + reading tiles on the right, relay legend in the footer. The legacy value
+           table and relay strip stay in the DOM (hidden) because the painters write to them. */
+        h += '<div class="card card-border sigv2 sigv3"><div class="card-header-signal">' +
+            cardHeaderLeft('Signal', asset.AssetName || 'Signal', id,
+                '<span class="sigv3-aspect" id="rdpmsAsp_' + id + '" style="display:none"></span>') +
             cardHeaderRight(asset, assetId) + '</div>';
-        h += '<div class="card-body-signal"><div class="rdpms-sizeDiv"><div class="rdpms-signal-container">';
+        h += '<div class="card-body-signal sigv3-body"><div class="rdpms-sizeDiv"><div class="rdpms-signal-container">';
         h += '<div class="rdpms-routeSignal' + (hasRoutes ? ' has-routes' : '') + '">';
         if (hasRoutes) {
             h += '<div class="rdpms-centerSignal"><div class="rdpms-white-center light-off" id="rdpmsRootMiddle_' + id + '"></div></div>';
@@ -3550,6 +3555,8 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         h += '</div>';
         if (hasCalling) h += '<div class="rdpms-routeSignal2"><div class="rdpms-yellow light-off" id="rdpmsCalling_' + id + '"></div><span>C</span></div>';
         h += '</div></div>';
+        h += '<div class="sigv3-side"><div class="sigv3-lamps" id="rdpmsLamps_' + id + '"></div>' +
+            '<div class="sigv3-tiles" id="rdpmsTiles_' + id + '"></div></div>';
         h += '<div class="rdpms-route-table"><table>';
         GROUP_LAMPS.forEach(function (L) {
             h += '<tr id="rdpmsTr' + L + '_' + id + '" style="display:none"><td id="rdpmsTd' + L + 'ma_' + id + '" data-attr="' + L + ' mA"></td>' +
@@ -3562,7 +3569,7 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         h += '<tbody id="rdpmsHprBody_' + id + '" style="display:none"></tbody>';
         h += '</table></div>';
         h += fn('getDataloggerSectionHTML') ? W.getDataloggerSectionHTML(assetId) : '';
-        h += '</div></div></div>';
+        h += '</div><div class="sigv3-foot" id="rdpmsFoot_' + id + '"></div></div></div>';
         return h;
     }
     function getShuntSignalCardHtml(assetId) {
@@ -3570,13 +3577,20 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         var asset = liveData()[assetId];
         if (!asset) return '';
         var id = esc(assetId);
-        var h = '<div class="' + CARD_COL + '" id="rdpmsCard_' + id + '">';
+        var h = '<div class="' + CARD_COL + ' sigv3-col" id="rdpmsCard_' + id + '">';
         ensureSigCardV2Styles();
-        h += '<div class="card card-border sigv2 sigv2-shunt"><div class="card-header-signal">' +
-            cardHeaderLeft('Shunt', asset.AssetName || 'Shunt', id) +
+        ensureSigCardV3Styles();
+        /* v3 layout (same as the main signal card): shunt head on the left, lamp / relay
+           table + reading tiles on the right, legend footer. Legacy value table and relay
+           strip stay in the DOM (hidden) for the painters. */
+        h += '<div class="card card-border sigv2 sigv2-shunt sigv3 sigv3-shunt"><div class="card-header-signal">' +
+            cardHeaderLeft('Shunt', asset.AssetName || 'Shunt', id,
+                '<span class="sigv3-aspect" id="rdpmsAsp_' + id + '" style="display:none"></span>') +
             cardHeaderRight(asset, assetId) + '</div>';
-        h += '<div class="card-body-signal"><div class="rdpms-sizeShuntDiv"><div class="rdpms-shunt"><img class="trianglePng" src="/assets/images/shunt.png" />';
-        h += '<div class="rdpms-white light-off" id="rdpmsShuntTop_' + id + '"></div><div class="rdpms-white light-off" id="rdpmsShuntRight_' + id + '"></div><div class="rdpms-white light-off" id="rdpmsShuntLeft_' + id + '"></div></div>';
+        h += '<div class="card-body-signal sigv3-body"><div class="rdpms-sizeShuntDiv"><div class="rdpms-shunt"><img class="trianglePng" src="/assets/images/shunt.png" />';
+        h += '<div class="rdpms-white light-off" id="rdpmsShuntTop_' + id + '"></div><div class="rdpms-white light-off" id="rdpmsShuntRight_' + id + '"></div><div class="rdpms-white light-off" id="rdpmsShuntLeft_' + id + '"></div></div></div>';
+        h += '<div class="sigv3-side"><div class="sigv3-lamps" id="rdpmsLamps_' + id + '"></div>' +
+            '<div class="sigv3-tiles" id="rdpmsTiles_' + id + '"></div></div>';
         h += '<div class="rdpms-route-table"><table>';
         h += '<tr id="rdpmsTrOn_' + id + '" style="display:none"><td id="rdpmsTdOnma_' + id + '" data-attr="On Aspect mA"></td><td id="rdpmsTdOnv_' + id + '" data-attr="On Aspect V"></td></tr>';
         h += '<tr id="rdpmsTrOff_' + id + '" style="display:none"><td id="rdpmsTdOffma_' + id + '" data-attr="Off Aspect mA"></td><td id="rdpmsTdOffv_' + id + '" data-attr="Off Aspect V"></td></tr>';
@@ -3584,7 +3598,7 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         h += '<tbody id="rdpmsShHprBody_' + id + '" style="display:none"></tbody>';
         h += '</table></div>';
         h += fn('getDataloggerSectionHTML') ? W.getDataloggerSectionHTML(assetId) : '';
-        h += '</div></div></div></div>';
+        h += '</div><div class="sigv3-foot" id="rdpmsFoot_' + id + '"></div></div></div>';
         return h;
     }
     W.getMainSignalCardHtml = getMainSignalCardHtml;
@@ -3843,7 +3857,344 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         flashChanged(c, attrs);
         if (fn('renderDataloggerBadgesForAsset')) W.renderDataloggerBadgesForAsset(assetId);
     }
-    W.updateMainSignalLights = updateMainSignalLights616;
+    /* ---- v3 signal card: lamp / relay table, reading tiles, legend ---------
+       Reads the lamp state the 616 painter just set on the signal head (light-on
+       classes), so lit / aspect never disagree with the drawn lamps. Relays are
+       matched on their exact name (RR / DR / HR / HHR are separate relays from the
+       *ECR proving relays -- never substring-match HR into HHR / HECR). */
+    function v3Norm(s) { return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); }
+    function v3On(id) { var el = document.getElementById(id); return !!(el && el.classList.contains('light-on')); }
+    function v3Relay(asset, name) {
+        if (!name) return null;
+        var rel = asset.dlRelays || {}, want = v3Norm(name), keys = Object.keys(rel);
+        for (var i = 0; i < keys.length; i++) {
+            var r = rel[keys[i]];
+            if (r && (v3Norm(r.displayName || keys[i]) === want || v3Norm(keys[i]) === want)) return { key: keys[i], r: r };
+        }
+        return null;
+    }
+    function v3RelayCell(asset, name, used) {
+        if (!name) return '<span class="sigv3-none">&mdash;</span>';
+        var m = v3Relay(asset, name);
+        if (m) used[m.key] = true;
+        var st = !m ? 'none' : (m.r.isNull ? 'null' : (m.r.isPickup ? 'pickup' : 'drop'));
+        var txt = st === 'pickup' ? 'Pickup' : st === 'drop' ? 'Drop' : 'No data';
+        return '<span class="sigv3-rname">' + esc(m ? (m.r.displayName || name) : name) + '</span>' +
+            (m ? '<span class="sigv3-pill ' + st + '">' + txt + '</span>' : '<span class="sigv3-none" title="Relay not configured">&mdash;</span>');
+    }
+    function v3Icon(kind) {
+        if (kind === 'route') return '<span class="sigv3-ico feather"></span>';
+        if (kind === 'HHG') return '<span class="sigv3-ico dy"><i></i><i></i></span>';
+        if (kind === 'CO') return '<span class="sigv3-ico co">C</span>';
+        if (kind === 'SH') return '<span class="sigv3-ico sh"></span>';
+        return '<span class="sigv3-ico dot ' + kind + '"></span>';
+    }
+    function v3Tile(title, chip, val, unit, cls) {
+        return '<div class="sigv3-tile' + (cls ? ' ' + cls : '') + '"><div class="sigv3-tile-h"><span>' + esc(title) + '</span>' +
+            (chip ? '<span class="sigv3-chip">' + chip + '</span>' : '') + '</div>' +
+            '<div class="sigv3-tile-v">' + val + (unit ? '<small>' + unit + '</small>' : '') + '</div></div>';
+    }
+    function paintSigV3(assetId) {
+        var asset = liveData()[assetId];
+        var id = String(assetId);
+        var lampsEl = document.getElementById('rdpmsLamps_' + id);
+        if (!asset || !lampsEl) return;
+        var attrs = asset.attrs || {};
+        var routes = ROUTE_PREFIXES.filter(function (r) { return attrs[r + ' mA'] || attrs[r + ' V']; });
+        var on = {
+            RG: v3On('rdpmsRG_' + id), DG: v3On('rdpmsDG_' + id), HG: v3On('rdpmsHG_' + id),
+            HHG: v3On('rdpmsHHG_' + id), CO: v3On('rdpmsCalling_' + id)
+        };
+        var has = {};
+        GROUP_LAMPS.forEach(function (L) { has[L] = !!document.getElementById('rdpms' + L + '_' + id); });
+        has.CO = !!document.getElementById('rdpmsCalling_' + id);
+
+        /* rows, top to bottom as on the signal head */
+        var rows = [];
+        routes.slice().reverse().forEach(function (rn) {
+            rows.push({ kind: 'route', title: 'Route ' + rn, sub: 'Route feather', ctl: rn.charAt(0) + 'UHR', pr: 'UECR',
+                lit: v3On('rdpmsRoute_' + id + '_' + rn + '_1') });
+        });
+        if (has.HHG) rows.push({ kind: 'HHG', title: 'Double yellow', sub: 'Attention', ctl: 'HHR', pr: 'HHECR', lit: on.HHG });
+        if (has.DG) rows.push({ kind: 'DG', title: 'Green', sub: 'Proceed', ctl: 'DR', pr: 'DECR', lit: on.DG });
+        if (has.HG) rows.push({ kind: 'HG', title: 'Yellow', sub: 'Caution', ctl: 'HR', pr: 'HECR', lit: on.HG && !on.HHG });
+        if (has.RG) rows.push({ kind: 'RG', title: 'Red', sub: 'Stop', ctl: null, pr: 'RECR', lit: on.RG });
+        if (has.CO) rows.push({ kind: 'CO', title: 'Calling-on', sub: 'Pass signal slowly', ctl: 'Co-HR', pr: 'Co-HECR', lit: on.CO });
+
+
+        /* reading tiles: the lit lamps' current / voltage (labels = the site's own aliases) */
+        var tiles = '', thr = thresholdFor(assetId, asset, function () { W.updateMainSignalLights(assetId); });
+        function lampTiles(L, what) {
+            var ma = attrByAliases(attrs, maAliases(L)), v = attrByAliases(attrs, vAliases(L));
+            if (ma) tiles += v3Tile(what + ' current', lbl(assetId, L + ' mA'), fv(valByAliases(attrs, maAliases(L))), 'mA');
+            if (v) tiles += v3Tile(what + ' voltage', lbl(assetId, L + ' V'), fv(valByAliases(attrs, vAliases(L))), 'V');
+        }
+        if (on.HHG) lampTiles('HHG', 'Double yellow');
+        if (on.RG) lampTiles('RG', 'Signal');
+        else if (on.DG) lampTiles('DG', 'Signal');
+        else if (on.HG) lampTiles('HG', on.HHG ? 'Yellow' : 'Signal');
+        routes.forEach(function (rn) {
+            if (!v3On('rdpmsRoute_' + id + '_' + rn + '_1')) return;
+            tiles += v3Tile('Route current', lbl(assetId, rn + ' mA'), fv(attrValue(attrs, rn + ' mA')), 'mA');
+            tiles += v3Tile('Route voltage', lbl(assetId, rn + ' V'), fv(attrValue(attrs, rn + ' V')), 'V');
+        });
+        if (on.CO) {
+            tiles += v3Tile('Calling-on current', lbl(assetId, 'Co_Hg mA'), fv(attrValue(attrs, 'Co_Hg mA')), 'mA');
+            tiles += v3Tile('Calling-on voltage', lbl(assetId, 'Co_Hg V'), fv(attrValue(attrs, 'Co_Hg V')), 'V');
+        }
+        var pilotMa = attrValue(attrs, 'PILOT mA') || attrValue(attrs, 'PILOTRoot mA');
+        if (pilotMa > thr) {
+            tiles += v3Tile('Pilot current', lbl(assetId, 'PILOT mA', ['PILOTRoot mA']), fv(pilotMa), 'mA');
+            tiles += v3Tile('Pilot voltage', lbl(assetId, 'PILOT V', ['PILOTRoot V']), fv(attrValue(attrs, 'PILOT V') || attrValue(attrs, 'PILOTRoot V')), 'V');
+        }
+        if (on.DG && attrs['DPR']) tiles += v3Tile('Proving', esc(fn('rdpmsBind') ? W.rdpmsBind(assetId, 'DPR') : 'DPR'), fv(attrValue(attrs, 'DPR')), '', 'sm');
+        collectHprAttrs(assetId, attrs).forEach(function (r) { tiles += v3Tile('Proving voltage', esc(r.label), fv(r.value), 'V', 'sm'); });
+        var asp = on.RG ? ['bad', 'Red aspect: Stop'] : on.HHG ? ['warn', 'Double yellow: Attention'] : on.HG ? ['warn', 'Yellow aspect: Caution'] :
+            on.DG ? ['ok', 'Green aspect: Proceed'] : null;
+        v3Commit(id, asset, rows, tiles, asp, routes.length, 'signal');
+        v3FitCard(id);
+    }
+    /* shunt card: aspect read from the lamps the 616 shunt painter lit
+       (ON = left + right, OFF = top + right) */
+    function paintShuntV3(assetId) {
+        var asset = liveData()[assetId];
+        var id = String(assetId);
+        if (!asset || !document.getElementById('rdpmsLamps_' + id)) return;
+        var attrs = asset.attrs || {};
+        var isOn = v3On('rdpmsShuntLeft_' + id), isOff = !isOn && v3On('rdpmsShuntTop_' + id);
+        var hasA = function (n) { return !!(attrs[n + ' mA'] || attrs[n + ' V']); };
+        var rows = [];
+        if (hasA('Off Aspect')) rows.push({ kind: 'SH', title: 'Off aspect', sub: 'Shunt off: proceed', ctl: 'HR', pr: 'OFFECR', lit: isOff });
+        if (hasA('On Aspect')) rows.push({ kind: 'SH', title: 'On aspect', sub: 'Shunt on: stop', ctl: null, pr: 'ONECR', lit: isOn });
+        var hasPilot = hasA('PILOT') || hasA('PILOTRoot');
+        var thr = thresholdFor(assetId, asset, function () { W.updateShuntSignalLights(assetId); });
+        var pilotMa = attrValue(attrs, 'PILOT mA') || attrValue(attrs, 'PILOTRoot mA');
+        if (hasPilot) rows.push({ kind: 'SH', title: 'Pilot', sub: 'Pilot lamp', ctl: null, pr: null, lit: pilotMa > thr });
+
+        var tiles = '';
+        function aspTiles(n, what) {
+            tiles += v3Tile(what + ' current', lbl(assetId, n + ' mA'), fv(attrValue(attrs, n + ' mA')), 'mA');
+            tiles += v3Tile(what + ' voltage', lbl(assetId, n + ' V'), fv(attrValue(attrs, n + ' V')), 'V');
+        }
+        if (isOn) aspTiles('On Aspect', 'Shunt');
+        else if (isOff) aspTiles('Off Aspect', 'Shunt');
+        if (pilotMa > thr) {
+            tiles += v3Tile('Pilot current', lbl(assetId, 'PILOT mA', ['PILOTRoot mA']), fv(pilotMa), 'mA');
+            tiles += v3Tile('Pilot voltage', lbl(assetId, 'PILOT V', ['PILOTRoot V']), fv(attrValue(attrs, 'PILOT V') || attrValue(attrs, 'PILOTRoot V')), 'V');
+        }
+        collectHprAttrs(assetId, attrs).forEach(function (r) { tiles += v3Tile('Proving voltage', esc(r.label), fv(r.value), 'V', 'sm'); });
+        var asp = isOn ? ['bad', 'Shunt on: Stop'] : isOff ? ['ok', 'Shunt off: Proceed'] : null;
+        v3Commit(id, asset, rows, tiles, asp, 0, 'shunt');
+        v3FitCard(id);
+    }
+    W.paintShuntV3 = paintShuntV3;
+
+    /* ---- v3 stage fit: the signal head (incl. route arms + labels, which are rotated
+       and stick out sideways) is scaled down and centred to sit fully inside its stage
+       box. Measured from the real rendered extents, refitted on every stage resize. */
+    var V3_PAD = 8;
+    function v3HeadOf(stage) { return stage.querySelector('.rdpms-signal-container, .rdpms-shunt'); }
+    function v3Fit(stage) {
+        var el = stage && v3HeadOf(stage);
+        if (!el || !stage.isConnected) return;
+        var sr = stage.getBoundingClientRect();
+        if (!sr.width || !sr.height) return;
+        el.style.transformOrigin = '0 0';
+        el.style.transform = 'none';
+        var er = el.getBoundingClientRect();
+        var L = er.left, T = er.top, R = er.right, B = er.bottom;
+        var all = el.querySelectorAll('*');
+        for (var i = 0; i < all.length; i++) {
+            var r = all[i].getBoundingClientRect();
+            if (!r.width && !r.height) continue;
+            if (r.left < L) L = r.left; if (r.top < T) T = r.top;
+            if (r.right > R) R = r.right; if (r.bottom > B) B = r.bottom;
+        }
+        var uw = R - L, uh = B - T;
+        if (uw <= 0 || uh <= 0) return;
+        var k = Math.min(1, (sr.width - 2 * V3_PAD) / uw, (sr.height - 2 * V3_PAD) / uh);
+        if (!(k > 0)) k = 1;
+        /* scale about the element's top-left, then move the scaled union box to the stage centre */
+        var tx = (sr.left + (sr.width - k * uw) / 2) - (er.left + k * (L - er.left));
+        var ty = (sr.top + (sr.height - k * uh) / 2) - (er.top + k * (T - er.top));
+        el.style.transform = 'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + k.toFixed(3) + ')';
+        stage.setAttribute('data-v3fit', Math.round(sr.width) + 'x' + Math.round(sr.height));
+    }
+    var v3Ro = (typeof ResizeObserver === 'function') ? new ResizeObserver(function (ents) {
+        for (var i = 0; i < ents.length; i++) v3Fit(ents[i].target);
+    }) : null;
+    function v3FitCard(id) {
+        var card = document.getElementById('rdpmsCard_' + id);
+        var stage = card && card.querySelector('.sigv3-body > .rdpms-sizeDiv, .sigv3-body > .rdpms-sizeShuntDiv');
+        if (!stage) return;
+        if (!stage._v3obs) {
+            stage._v3obs = true;
+            /* the shunt body is an <img>: refit once it has its real size */
+            $(stage).find('img').on('load.sigv3', function () { v3Fit(stage); });
+            if (v3Ro) v3Ro.observe(stage);   /* fires once on observe, then on every resize */
+            else v3Fit(stage);
+        } else if (stage.getAttribute('data-v3fit') === null) {
+            v3Fit(stage);
+        }
+    }
+    W.v3FitCard = v3FitCard;
+    if (!v3Ro) $(W).on('resize.sigv3', function () { $('.sigv3-body > .rdpms-sizeDiv, .sigv3-body > .rdpms-sizeShuntDiv').each(function () { v3Fit(this); }); });
+    /* shared by main + shunt cards: lamp table, other relays, tiles, aspect badge, footer */
+    function v3Commit(id, asset, rows, tiles, asp, nRoute, what) {
+        var lampsEl = document.getElementById('rdpmsLamps_' + id);
+        if (!lampsEl) return;
+        var used = {};
+        var t = '<table class="sigv3-table"><thead><tr><th>Lamp</th><th>Control relay</th><th>Lamp proving</th></tr></thead><tbody>';
+        rows.forEach(function (r, i) {
+            t += '<tr class="sigv3-row k-' + r.kind + (r.lit ? ' lit' : '') + '">' +
+                '<td class="sigv3-lamp">' + v3Icon(r.kind) + '<div><div class="sigv3-lt">' + esc(r.title) +
+                (r.lit ? ' <span class="sigv3-lit">Lit</span>' : '') + '</div><div class="sigv3-ls">' + esc(r.sub) + '</div></div></td>' +
+                '<td class="sigv3-rel">' + v3RelayCell(asset, r.ctl, used) + '</td>';
+            /* one UECR proves every route feather: one bracketed cell spanning the route rows */
+            if (r.kind !== 'route') t += '<td class="sigv3-rel">' + v3RelayCell(asset, r.pr, used) + '</td>';
+            else if (i === 0) t += '<td class="sigv3-rel' + (nRoute > 1 ? ' sigv3-brk' : '') + '" rowspan="' + nRoute + '">' + v3RelayCell(asset, r.pr, used) + '</td>';
+            t += '</tr>';
+        });
+        if (!rows.length) t += '<tr><td colspan="3" class="sigv3-empty">No lamp readings configured for this ' + what + '.</td></tr>';
+        t += '</tbody></table>';
+
+        /* relays not tied to a lamp row (TPR, OFFECR, ...) stay visible as chips */
+        var rel = asset.dlRelays || {}, keys = Object.keys(rel), others = '', total = 0, up = 0;
+        keys.forEach(function (k) {
+            var r = rel[k]; if (!r) return;
+            total++; if (r.isPickup) up++;
+            if (used[k]) return;
+            var st = r.isNull ? 'null' : (r.isPickup ? 'pickup' : 'drop');
+            others += '<span class="sigv3-other"><span class="sigv3-rname">' + esc(r.displayName || k) + '</span><span class="sigv3-pill ' + st + '">' +
+                (st === 'pickup' ? 'Pickup' : st === 'drop' ? 'Drop' : 'No data') + '</span></span>';
+        });
+        if (others) t += '<div class="sigv3-others"><span class="sigv3-oh">Other relays</span>' + others + '</div>';
+        if (lampsEl.innerHTML !== t) lampsEl.innerHTML = t;
+        var tilesEl = document.getElementById('rdpmsTiles_' + id);
+        if (tilesEl && tilesEl.innerHTML !== tiles) tilesEl.innerHTML = tiles;
+
+        /* header aspect badge */
+        var tsEl = document.getElementById('rdpmsTs_' + id), tsTxt = tsEl ? tsEl.textContent : '';
+        if (!asp && /Link Issue/i.test(tsTxt)) asp = ['bad', 'Link issue'];
+        else if (!asp && /Waiting/i.test(tsTxt)) asp = ['muted', 'Waiting for data'];
+        else if (!asp) asp = ['muted', 'No aspect lit'];
+        var aEl = document.getElementById('rdpmsAsp_' + id);
+        if (aEl) {
+            var ah = '<i></i>' + esc(asp[1]);
+            if (aEl.innerHTML !== ah) aEl.innerHTML = ah;
+            aEl.className = 'sigv3-aspect ' + asp[0];
+            aEl.style.display = '';
+        }
+
+        /* footer legend + relay count + Details (DataLogger events, as the old strip) */
+        var f = '<span class="sigv3-pill pickup">Pickup</span><span class="sigv3-fl">energised</span>' +
+            '<span class="sigv3-pill drop">Drop</span><span class="sigv3-fl">de-energised</span>' +
+            (total ? '<span class="sigv3-fc">' + up + ' of ' + total + ' relays picked up</span>' : '<span class="sigv3-fc">No relay data</span>') +
+            '<button type="button" class="sigv3-details" onclick="fnShowDataLoggerEvent(\'' + esc(id) + '\')">Details <span aria-hidden="true">&#8250;</span></button>';
+        var fEl = document.getElementById('rdpmsFoot_' + id);
+        if (fEl && fEl.innerHTML !== f) fEl.innerHTML = f;
+    }
+    W.paintSigV3 = paintSigV3;
+    W.updateMainSignalLights = function (assetId) {
+        updateMainSignalLights616(assetId);
+        try { paintSigV3(assetId); } catch (e) { console.warn('[sigv3] paint failed', assetId, e); }
+    };
+    function ensureSigCardV3Styles() {
+        if (document.getElementById('sig-card-v3-styles')) return;
+        var M = '#divTelemetryLive #rdpmsMainContainer', S = '#divTelemetryLive #rdpmsShuntContainer';
+        var C = '§';   /* placeholder: expanded below for the main and the shunt container */
+        var css =
+            /* wider cards: the head + relay table need room (one per row below ~720px) */
+            M + ',' + S + '{grid-template-columns:repeat(auto-fill,minmax(min(100%,460px),1fr))!important;}' +
+            /* shunt stage: the size div holds only the shunt head now -- staged like the main head */
+            C + ' > .sigv3-body > .rdpms-sizeShuntDiv{grid-column:1;grid-row:1;flex-direction:row!important;align-items:center!important;justify-content:center!important;' +
+            'min-height:160px!important;padding:8px 0!important;border-radius:12px;overflow:hidden;background:var(--e7-surface-2, radial-gradient(ellipse at 50% 45%,rgba(34,211,238,.07),rgba(0,0,0,0) 65%),rgba(0,0,0,.14))!important;' +
+            'border:1px solid var(--e7-border, rgba(255,255,255,.05))!important;}' +
+            'body[data-aurora="light"] ' + C + ' > .sigv3-body > .rdpms-sizeShuntDiv{background:var(--e7-surface-3, rgba(15,23,42,.04))!important;}' +
+            C + ' > .sigv3-body > .rdpms-sizeShuntDiv > .rdpms-shunt{margin:0 auto!important;}' +
+            C + ' .sigv3-ico.sh{width:12px;height:12px;border-radius:50%;flex-basis:12px;background:#f8fafc;border:2px solid #94a3b8;}' +
+            C + '{--v3-ink:var(--e7-heading,#0f172a);--v3-mut:var(--e7-text-3,#64748b);--v3-line:var(--e7-border,rgba(148,163,184,.25));' +
+            '--v3-tile:var(--e7-surface-2,rgba(148,163,184,.08));--v3-acc:var(--e7-accent,#2563eb);--v3-red:#dc2626;--v3-redbg:rgba(220,38,38,.08);' +
+            '--v3-green:#047857;--v3-dropbg:rgba(148,163,184,.18);--v3-drop:var(--e7-text-2,#475569);}' +
+            C + ' > .sigv3-body{display:grid!important;grid-template-columns:clamp(110px,24%,140px) minmax(0,1fr);grid-template-rows:auto;gap:10px!important;align-items:stretch;padding:10px!important;}' +
+            C + ' > .sigv3-body > .rdpms-sizeDiv{grid-column:1;grid-row:1;min-height:200px;position:relative;overflow:hidden;}' +
+            /* the head is fitted by v3Fit (transform); the old top padding only pushed it off-centre */
+            C + ' > .sigv3-body .rdpms-signal-container{padding-top:0!important;margin:0!important;}' +
+            /* out of flow: the stage height follows the relay table, not the unscaled head */
+            C + ' > .sigv3-body > .rdpms-sizeDiv > .rdpms-signal-container,' + C + ' > .sigv3-body > .rdpms-sizeShuntDiv > .rdpms-shunt{position:absolute!important;left:0;top:0;}' +
+            C + ' > .sigv3-body > .rdpms-sizeShuntDiv{position:relative;}' +
+            C + ' > .sigv3-body > .sigv3-side{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:8px;min-width:0;}' +
+            /* legacy value table + relay strip: kept for the painters, not shown */
+            C + ' > .sigv3-body > .rdpms-route-table,' + C + ' .rdpms-datalogger-section{display:none!important;}' +
+            /* header aspect badge */
+            C + ' .sigv3-aspect{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;margin-left:4px;font-family:Manrope,system-ui,sans-serif;}' +
+            C + ' .sigv3-aspect i{width:7px;height:7px;border-radius:50%;background:currentColor;}' +
+            C + ' .sigv3-aspect.bad{color:var(--v3-red);background:var(--v3-redbg);}' +
+            C + ' .sigv3-aspect.warn{color:#b45309;background:rgba(217,119,6,.12);}' +
+            C + ' .sigv3-aspect.ok{color:var(--v3-green);background:rgba(5,150,105,.12);}' +
+            C + ' .sigv3-aspect.muted{color:var(--v3-mut);background:var(--v3-dropbg);}' +
+            /* lamp / relay table */
+            C + ' .sigv3-table{width:100%;border-collapse:separate;border-spacing:0 2px;font-family:Manrope,system-ui,sans-serif;}' +
+            C + ' .sigv3-table th{font-size:10.5px;font-weight:600;color:var(--v3-mut);text-align:left;padding:0 6px 3px;white-space:nowrap;}' +
+            C + ' .sigv3-table td{padding:4px 6px;vertical-align:middle;}' +
+            C + ' .sigv3-row.lit td{background:var(--v3-redbg);}' +
+            C + ' .sigv3-row.lit td:first-child{border-radius:10px 0 0 10px;}' + C + ' .sigv3-row.lit td:last-child{border-radius:0 10px 10px 0;}' +
+            C + ' .sigv3-row.lit:not(.k-RG) td{background:var(--v3-tile);}' +
+            C + ' .sigv3-lamp{display:flex;align-items:center;gap:7px;min-width:0;}' +
+            C + ' .sigv3-lt{font-size:12px;font-weight:700;color:var(--v3-ink);white-space:nowrap;}' +
+            C + ' .sigv3-ls{font-size:10px;color:var(--v3-mut);white-space:nowrap;}' +
+            C + ' .sigv3-row.lit.k-RG .sigv3-ls{color:var(--v3-red);}' +
+            C + ' .sigv3-lit{display:inline-block;font-size:10px;font-weight:700;color:#fff;background:var(--v3-red);border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px;}' +
+            C + ' .sigv3-row.lit:not(.k-RG) .sigv3-lit{background:var(--v3-green);}' +
+            C + ' .sigv3-ico{flex:0 0 14px;display:inline-flex;align-items:center;justify-content:center;}' +
+            C + ' .sigv3-ico.dot{width:11px;height:11px;border-radius:50%;flex-basis:11px;}' +
+            C + ' .sigv3-ico.dot.RG{background:#dc2626;}' + C + ' .sigv3-ico.dot.DG{background:#16a34a;}' + C + ' .sigv3-ico.dot.HG{background:#d97706;}' +
+            C + ' .sigv3-ico.dy{flex-direction:column;gap:2px;}' + C + ' .sigv3-ico.dy i{width:8px;height:8px;border-radius:50%;background:#d97706;}' +
+            C + ' .sigv3-ico.feather{width:14px;height:5px;border-radius:3px;background:#334155;}' +
+            C + ' .sigv3-ico.co{width:15px;height:15px;border-radius:4px;background:#1e293b;color:#fff;font-size:9px;font-weight:800;}' +
+            C + ' .sigv3-rel{white-space:nowrap;}' +
+            C + ' .sigv3-rname{font-size:11px;font-weight:700;color:var(--v3-ink);margin-right:4px;}' +
+            C + ' .sigv3-none{color:var(--v3-mut);font-size:12px;}' +
+            C + ' .sigv3-brk{border-left:2px solid var(--v3-line);border-radius:6px 0 0 6px;}' +
+            /* relay pills: green Pickup up-arrow / grey Drop down-arrow; arrows via ::after (CSS, not JS) */
+            C + ' .sigv3-pill{display:inline-flex;align-items:center;font-size:10px;font-weight:700;padding:1px 7px;border-radius:999px;white-space:nowrap;}' +
+            C + ' .sigv3-pill.pickup{background:var(--v3-green);color:#fff;}' + C + ' .sigv3-pill.pickup::after{content:" \\2191";white-space:pre;}' +
+            C + ' .sigv3-pill.drop{background:#f59e0b;color:#fff;}' + C + ' .sigv3-pill.drop::after{content:" \\2193";white-space:pre;}' +
+            C + ' .sigv3-pill.null{background:transparent;color:var(--v3-mut);border:1px dashed var(--v3-line);}' +
+            C + ' .sigv3-empty{color:var(--v3-mut);font-size:12px;text-align:center;}' +
+            C + ' .sigv3-others{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:6px 8px 0;}' +
+            C + ' .sigv3-oh{font-size:11px;color:var(--v3-mut);}' + C + ' .sigv3-other{display:inline-flex;align-items:center;}' +
+            /* reading tiles */
+            C + ' .sigv3-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-top:auto;}' +
+            C + ' .sigv3-tiles:empty{display:none;}' +
+            C + ' .sigv3-tile{border:1px solid var(--v3-line);background:var(--v3-tile);border-radius:10px;padding:6px 9px;min-width:0;}' +
+            C + ' .sigv3-tile-h{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--v3-mut);flex-wrap:wrap;}' +
+            C + ' .sigv3-chip{font-size:10px;font-weight:700;color:var(--v3-ink);background:var(--v3-dropbg);border-radius:5px;padding:1px 6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+            C + ' .sigv3-tile-v{font-size:18px;font-weight:800;color:var(--v3-acc);line-height:1.15;margin-top:2px;font-family:"Bricolage Grotesque",Manrope,system-ui,sans-serif;font-variant-numeric:tabular-nums;}' +
+            C + ' .sigv3-tile-v small{font-size:11px;font-weight:700;margin-left:3px;}' +
+            C + ' .sigv3-tile.sm .sigv3-tile-v{font-size:14px;}' +
+            /* footer */
+            C + ' .sigv3-foot{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:7px 10px;border-top:1px solid var(--v3-line);font-family:Manrope,system-ui,sans-serif;}' +
+            C + ' .sigv3-foot:empty{display:none;}' +
+            C + ' .sigv3-fl{font-size:10.5px;color:var(--v3-mut);margin-right:4px;}' + C + ' .sigv3-fc{font-size:10.5px;color:var(--v3-mut);}' +
+            C + ' .sigv3-details{margin-left:auto;font-size:11px;font-weight:700;color:var(--v3-ink);background:transparent;border:1px solid var(--v3-line);border-radius:8px;padding:3px 10px;cursor:pointer;}' +
+            C + ' .sigv3-details:hover{border-color:var(--v3-acc);color:var(--v3-acc);}' +
+            C + ' .sigv3-details:focus-visible{outline:2px solid var(--v3-acc);outline-offset:1px;}' +
+            /* dark theme: lighter ink for icons on dark surfaces */
+            'body:not([data-aurora="light"]) ' + C + ' .sigv3-ico.feather{background:#94a3b8;}' +
+            'body:not([data-aurora="light"]) ' + C + ' .sigv3-ico.co{background:#e2e8f0;color:#0f172a;}' +
+            'body:not([data-aurora="light"]) ' + C + '{--v3-green:#059669;--v3-redbg:rgba(239,68,68,.12);}' +
+            /* narrow: stack head above the table */
+            '@media (max-width:520px){' + C + ' > .sigv3-body{grid-template-columns:1fr;}' +
+            C + ' > .sigv3-body > .sigv3-side{grid-column:1;grid-row:2;}' + C + ' > .sigv3-body > .rdpms-sizeDiv{min-height:200px;}' +
+            C + ' .sigv3-table{display:block;overflow-x:auto;}}';
+        css = css.split(C).join(M + ' .sigv3') + css.split(C).join(S + ' .sigv3');
+        var st = document.createElement('style');
+        st.id = 'sig-card-v3-styles';
+        st.appendChild(document.createTextNode(css));
+        (document.head || document.documentElement).appendChild(st);
+    }
+    W.ensureSigCardV3Styles = ensureSigCardV3Styles;
 
     /* ---- G4 shunt painter (v616 8897-9001) ------------------------------- */
     function updateShuntSignalLights616(assetId) {
@@ -3889,7 +4240,10 @@ function debugSignalCard(assetId) { return window.SIG616 && window.SIG616.debugC
         }
         if (fn('renderDataloggerBadgesForAsset')) W.renderDataloggerBadgesForAsset(assetId);
     }
-    W.updateShuntSignalLights = updateShuntSignalLights616;
+    W.updateShuntSignalLights = function (assetId) {
+        updateShuntSignalLights616(assetId);
+        try { paintShuntV3(assetId); } catch (e) { console.warn('[sigv3] shunt paint failed', assetId, e); }
+    };
 
     /* ---- B2 per-attribute cell writer (v616 31290-31375) ---------------- */
     var CELLS = {
@@ -5741,14 +6095,14 @@ try {
         if (!keys.length && !relayKeys.length) {
             h += '<div class="ips-attr-row"><span class="ips-attr-name" style="color:var(--e7-text-4,rgba(255,255,255,0.34));font-style:italic;">Waiting for data…</span></div>';
         } else {
-            // plain attributes first (anything that is not a bank of a Σ group)
+            // battery Σ total first (one collapsible summary per group), above every attribute
+            for (var i = 0; i < models.length; i++) {
+                h += sumBlockHtml(assetId, models[i], ms.byKey[models[i].key] || []);
+            }
+            // then the plain attributes (anything that is not a bank of a Σ group)
             for (var k = 0; k < keys.length; k++) {
                 if (ms.member[keys[k]]) continue;
                 h += attrRowHtml(assetId, keys[k], attrs[keys[k]] || {}, '');
-            }
-            // one collapsible summary per battery group
-            for (var i = 0; i < models.length; i++) {
-                h += sumBlockHtml(assetId, models[i], ms.byKey[models[i].key] || []);
             }
             // data-logger relays = the Digital readings (as in e7mriv2web's IPS table)
             for (var rr = 0; rr < relayKeys.length; rr++) h += relayRowHtml(asset, relayKeys[rr]);
@@ -5876,8 +6230,27 @@ try {
             $card.addClass('ips-card-flash');
             setTimeout(function (c) { return function () { c.removeClass('ips-card-flash'); }; }($card), 1000);
         }
+        reorderIpsGrid($grid);
         syncBulkBtn();
     };
+
+    /* Keep the IPS Live Grid in Voltage -> Current -> Digital order. Cards that
+       arrive after the first render are appended, and on page load an empty card
+       has no kind yet, so re-check the order after each update and MOVE the existing
+       card nodes (no rebuild: values, expanded Σ blocks and bars stay as they are).
+       The order depends only on kind / name / has-data, so value ticks never move cards. */
+    function reorderIpsGrid($grid) {
+        if (!fn('ipsGridOrder') || !$grid || !$grid.length) return;
+        var grid = $grid[0];
+        var cards = Array.prototype.slice.call(grid.children).filter(function (el) { return el.classList && el.classList.contains('ips-asset-card'); });
+        if (cards.length < 2) return;
+        var byId = {};
+        var cur = cards.map(function (el) { var id = el.getAttribute('data-ips-id'); byId[id] = el; return id; });
+        var want;
+        try { want = W.ipsGridOrder(cur); } catch (e) { return; }
+        if (!want || want.length !== cur.length || want.join('\u0001') === cur.join('\u0001')) return;
+        for (var i = 0; i < want.length; i++) { if (byId[want[i]]) grid.appendChild(byId[want[i]]); }
+    }
 
     IPS616.version = '616-port-2 (card v2)';
     console.log('[IPS616] IPS v616 features installed');
@@ -8973,9 +9346,6 @@ try {
             '#mgWrap .tlmg-an,#mgWrap .tlmg-aname,#mgWrap .tlgv-lane-name,#mgWrap .tlgv-lane-sub,#mgWrap .tlmg-lane-asset,#mgWrap .tlgv-card-title b{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.25;}',
             '#mgWrap .tlmg-chip{align-items:flex-start;padding-top:4px;padding-bottom:4px;}#mgWrap .tlmg-chip input,#mgWrap .tlmg-chip .tlmg-dot{margin-top:2px;}',
             '#mgWrap .tlmg-fcnt{font-size:10px;font-weight:700;opacity:.7;margin-left:2px;}',
-            '.tlmg-lg{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:99px;border:1px solid var(--e7-border,rgba(255,255,255,.10));font-size:11px;font-weight:700;color:var(--e7-heading,#fff);cursor:pointer;background:var(--ac-bg,rgba(255,255,255,.04));user-select:none;}',
-            '.tlmg-lg.off{opacity:.45;text-decoration:line-through;}',
-            '.tlmg-lg small{font-weight:600;color:var(--e7-text-3,rgba(255,255,255,.5));font-family:"JetBrains Mono",monospace;}',
             '.tlmg-toolbar{padding:4px 12px;text-align:right;border-bottom:1px solid var(--e7-border,rgba(255,255,255,.10));}',
             '.tlmg-chart{width:100%;height:clamp(380px,56vh,680px);display:none;}',
             '.tlmg-load{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:200px;color:var(--e7-text-3,rgba(255,255,255,.5));font-size:12.5px;font-weight:600;}',
@@ -9001,7 +9371,7 @@ try {
             'body[data-aurora="light"] .tlmg-head{background:var(--e7-surface-2, linear-gradient(135deg,rgba(34,211,238,.14),rgba(167,139,250,.08)));}',
             'body[data-aurora="light"] .tlmg-wrap .tlgv-bar,body[data-aurora="light"] .tlmg-selbar,body[data-aurora="light"] .tlmg-wrap .tlgv-cursor{background:var(--e7-surface-2, rgba(11,21,48,.035));}',
             'body[data-aurora="light"] .tlmg-wrap .tlgv-seg button.on,body[data-aurora="light"] .tlmg-btn.on,body[data-aurora="light"] .tlmg-btn.tlmg-primary{color:#fff;}',
-            'body[data-aurora="light"] .tlmg-chip,body[data-aurora="light"] .tlmg-mini,body[data-aurora="light"] .tlmg-btn,body[data-aurora="light"] .tlmg-lg{background:var(--e7-surface-2, rgba(11,21,48,.04));}',
+            'body[data-aurora="light"] .tlmg-chip,body[data-aurora="light"] .tlmg-mini,body[data-aurora="light"] .tlmg-btn{background:var(--e7-surface-2, rgba(11,21,48,.04));}',
             /* the light rule above also blanked the primary (Apply / Show) button: white text on white */
             'body[data-aurora="light"] .tlmg-btn.on,body[data-aurora="light"] .tlmg-btn.tlmg-primary{background:linear-gradient(120deg,var(--e7-ask-from,#0891b2),var(--e7-ask-to,#0e7490));color:#fff;border-color:transparent;}',
             '.tlmg-bk{grid-column:1/-1;margin:0 0 4px 14px;padding-left:8px;border-left:2px solid var(--e7-border,rgba(255,255,255,.14));}',
@@ -9184,7 +9554,6 @@ try {
             '<button type="button" class="tlmg-mini" data-mg-all="0"><i class="far fa-square"></i> Clear</button>' +
             '<span class="tlmg-count" id="mgCount"></span></div>';
         h += '<div class="tlmg-panel" id="mgPanel"></div>';
-        h += '<div class="tlmg-legend" id="mgLegend" style="display:none;"></div>';
         h += '<div id="mgLoad" class="tlmg-load"><div class="tlmg-spin"></div><span id="mgLoadTxt">Loading telemetry data…</span><div class="tlmg-prog"><i id="mgProg"></i></div></div>';
         h += '<div id="mgChart" class="tlmg-chart"></div>';
         h += '<div id="mgAlt" class="tlgv-host" data-tlgv-host="multi" style="display:none;"></div>';
@@ -9449,7 +9818,7 @@ try {
     function showLoading(txt) {
         $('#mgLoad').show().find('#mgLoadTxt').text(txt || 'Loading telemetry data…');
         $('#mgProg').css('width', '0%');
-        $('#mgChart,#mgAlt,#mgEmpty,#mgLegend').hide();
+        $('#mgChart,#mgAlt,#mgEmpty').hide();
     }
     // Fetch every asset with a concurrency limit; one retry per asset; a newer
     // load (higher reqId) makes every late response of this one a no-op.
@@ -9806,14 +10175,10 @@ try {
                 color: seriesColor(V.idx, attrIdx), pts: pts, actual: pts.slice(0, Math.max(1, pts.length - 1)), isBin: false, isGroup: true,
                 members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }), live: { src: 'sum', div: gDiv, members: mem.map(function (s) { return { aid: s.assetId, attrId: s.attrId }; }) }
             };
-            /* keep each bank's own series as a breakdown under the Σ row (was deleted, so the
-               BATT CHARGING / DISCHARGING group could not be expanded). Off the graph until ticked. */
-            mgG.memberOn = mgG.memberOn || {};
-            g.members.forEach(function (k) {
-                var ms = mgG.series[k]; if (!ms) return;
-                ms.memberOf = key; ms.groupAid = vAid;
-                mgG.checked[k] = mgG.memberOn[k] === true;
-            });
+            /* the graph shows only the Σ line: the per-bank series are dropped (no bank
+               lines, no "show breakdown" rows, no bank entries in legend / tooltip).
+               The Σ keeps its own points and live members, so nothing else needs them. */
+            g.members.forEach(function (k) { delete mgG.series[k]; delete mgG.checked[k]; });
             mgG.order.push(key);
             if (mgG.checked[key] === undefined) mgG.checked[key] = true;
         });
@@ -9872,10 +10237,27 @@ try {
             /* several assets (IPS, PM, Track multi-select): one track-style grid of every
                reading, each labelled "Alias (Asset)", instead of one block per asset */
             var body = '';
-            mgG.assetIds.forEach(function (aid) {
-                var list = seriesOfAsset(aid);
-                list.forEach(function (s) { if (!s.memberOf) body += chipWithBreakdown(s, list); });
-            });
+            if (mgG.kind === 'ips') {
+                /* IPS: one sequence across all assets -- Voltage, then Current, then
+                   Digital (the IPS tab order), asset name then reading name inside each,
+                   the same order as the hover tooltip. Was: asset load order, with the
+                   BATT Σ rows tacked on at the end. */
+                var all = [];
+                mgG.assetIds.forEach(function (aid) { seriesOfAsset(aid).forEach(function (s) { if (!s.memberOf) all.push(s); }); });
+                var kr = function (s) {
+                    if (s.kind === 'bin') return 2;
+                    var u = String(s.unit || '').trim();
+                    return (/^m?A$/i.test(u) || (!u && s.kind === 'ma')) ? 1 : 0;
+                };
+                var nat = function (a, b) { return String(a || '').localeCompare(String(b || ''), undefined, { numeric: true, sensitivity: 'base' }); };
+                all.sort(function (a, b) { return (kr(a) - kr(b)) || nat(ownerName(a), ownerName(b)) || nat(a.name, b.name); });
+                all.forEach(function (s) { body += chipHtml(s); });
+            } else {
+                mgG.assetIds.forEach(function (aid) {
+                    var list = seriesOfAsset(aid);
+                    list.forEach(function (s) { if (!s.memberOf) body += chipWithBreakdown(s, list); });
+                });
+            }
             $('#mgPanel').html(body ? '<div class="tlmg-agrp tlmg-flat"><div class="tlmg-abody">' + body + '</div></div>' : '<div class="tlgv-empty">No attributes</div>');
             updateCount(); refreshLive(true);
             return;
@@ -10066,7 +10448,7 @@ try {
         syncBar();
         $('#mgLoad').hide();
         if (!model.series.length) {
-            disposeAlt(); if (mgG.chart) { mgG.chart.dispose(); mgG.chart = null; } $('#mgChart,#mgAlt,#mgLegend').hide();
+            disposeAlt(); if (mgG.chart) { mgG.chart.dispose(); mgG.chart = null; } $('#mgChart,#mgAlt').hide();
             /* say WHY it is empty: the Show filter has no readings of that kind, vs no data at all */
             var fl = { ma: 'current', v: 'voltage', bin: mgG.kind === 'ips' ? 'digital' : 'relay', drv: 'derived' }[mgG.filter];
             var anyOfKind = mgG.order.some(function (k) { return passesFilter(mgG.series[k]); });
@@ -10081,7 +10463,7 @@ try {
             renderOverlay(model);
         } else {
             if (mgG.chart) { try { mgG.chart.dispose(); } catch (e) { /* ignore */ } mgG.chart = null; }
-            $('#mgChart,#mgLegend').hide(); $('#mgAlt').show();
+            $('#mgChart').hide(); $('#mgAlt').show();
             if (mgG.mode === 'stacked') renderStacked(model); else renderIndividual(model);
         }
         ensureLiveTimer();
@@ -10120,13 +10502,6 @@ try {
     function renderOverlay(model) {
         var el = document.getElementById('mgChart'); if (!el || !window.echarts) return;
         var T = theme(), list = visible(model), span = model.xMax - model.xMin, narrow = ($('#mgWrap').width() || 900) < 640;
-        // legend strip (per asset, click = collapse/show that asset)
-        var $lg = $('#mgLegend').empty().show();
-        mgG.assetIds.forEach(function (aid) {
-            var A = mgG.assets[aid], n = seriesOfAsset(aid).filter(function (s) { return mgG.checked[s.key] !== false && passesFilter(s); }).length;
-            if (!n && !mgG.collapsed[aid]) return;
-            $lg.append('<span class="tlmg-lg' + (mgG.collapsed[aid] ? ' off' : '') + '" data-mg-collapse="' + esc(aid) + '" style="--ac-bg:' + hexA(A.color, .12) + '" title="Click to ' + (mgG.collapsed[aid] ? 'show' : 'hide') + ' this asset"><span class="tlmg-sw" style="--ac:' + A.color + '"></span>' + esc(A.name) + ' <small>' + n + '</small></span>');
-        });
         $('#mgChart').show();
         if (mgG.chart) { try { mgG.chart.dispose(); } catch (e) { /* ignore */ } }
         el.style.height = '';   // one combined chart: back to the CSS height
@@ -10162,6 +10537,40 @@ try {
             series.push(o);
             metas.push({ key: s.key, yi: yi, s: s, bin: isBin });
         });
+        /* IPS tooltip: readings sorted into Voltage / Current / Digital sections (the
+           IPS tab order), each sorted by asset name then reading -- instead of one block
+           per asset in load order. One row = asset, reading, value. */
+        function ipsTipSections(t) {
+            var SEC = [['v', 'Voltage', '#E0A100'], ['ma', 'Current', '#22d3ee'], ['o', 'Other', '#8D9CB2'], ['bin', 'Digital', '#22A55B']];
+            var by = { v: [], ma: [], o: [], bin: [] };
+            list.forEach(function (s) {
+                var yi = axisOf(s);
+                (s.kind === 'bin' ? by.bin : yi === 0 ? by.ma : yi === 1 ? by.v : by.o).push(s);
+            });
+            var nat = function (a, b) { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); };
+            var out = '';
+            SEC.forEach(function (S) {
+                var L = by[S[0]];
+                if (!L.length) return;
+                L.sort(function (a, b) { return nat(a.asset.name, b.asset.name) || nat(a.short, b.short); });
+                var cols = Math.min(3, Math.max(1, Math.ceil(L.length / 8))), rws = Math.ceil(L.length / cols);
+                out += '<div style="min-width:240px;"><div style="font-weight:800;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:' + S[2] + ';margin-bottom:3px;border-bottom:1px solid ' + hexA(S[2], .35) + ';padding-bottom:2px;">' +
+                    S[1] + ' <span style="opacity:.6;font-weight:700;">' + L.length + '</span></div>' +
+                    '<div style="display:grid;grid-auto-flow:column;grid-template-rows:repeat(' + rws + ',auto);grid-auto-columns:minmax(230px,auto);column-gap:18px;row-gap:2px;">';
+                L.forEach(function (s) {
+                    var v = valueAt(s.pts, t), on = mgG.focusShown === s.key;
+                    var val = s.kind === 'bin' ? valHtml(v, 'bin')
+                        : '<b style="font-family:JetBrains Mono,monospace;">' + fmtVal(v, s.kind, s.unit) + (v === null ? '' : ' ' + esc(s.unit)) + '</b>';
+                    out += '<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;' + (on ? 'background:' + hexA(s.color, .16) + ';border-radius:4px;margin:0 -4px;padding:0 4px;font-weight:700;' : (mgG.focusShown ? 'opacity:.6;' : '')) + '">' +
+                        '<span style="width:8px;height:8px;border-radius:50%;background:' + s.color + ';flex-shrink:0;"></span>' +
+                        '<span style="flex:1;min-width:0;"><b style="font-weight:700;">' + esc(s.asset.name) + '</b>' +
+                        (s.short && s.short !== s.asset.name ? ' <span style="opacity:.65;">' + esc(s.short) + '</span>' : '') + '</span>' +
+                        '<span style="margin-left:10px;">' + val + '</span></div>';
+                });
+                out += '</div></div>';
+            });
+            return out;
+        }
         var tip = {
             trigger: 'axis', confine: true, appendToBody: false, axisPointer: { type: 'line', snap: false, lineStyle: { color: 'rgba(34,211,238,0.7)', type: 'dashed' } },
             backgroundColor: T.tipBg, borderColor: 'rgba(34,211,238,.28)', borderWidth: 1, padding: [8, 12], textStyle: { color: T.tipTxt, fontSize: 11.5 },
@@ -10170,6 +10579,7 @@ try {
                 if (!params || !params.length) return '';
                 var t = params[0].axisValue != null ? Number(params[0].axisValue) : Number(params[0].value[0]);
                 var h = '<div style="font-family:JetBrains Mono,monospace;color:var(--e7-accent, #22d3ee);font-weight:700;margin-bottom:6px;">' + fmtFull(t) + '</div><div style="display:flex;flex-wrap:wrap;gap:6px 18px;">';
+                if (mgG.kind === 'ips') return h + ipsTipSections(t) + '</div>';
                 groupsOf(list).forEach(function (g) {
                     // Long asset lists flow into columns (max ~10 rows each, up to 4) so
                     // the tooltip grows sideways instead of running off the chart.
@@ -10219,6 +10629,10 @@ try {
             if (rowW && rowW + w > lgW) { rows++; rowW = 0; }
             rowW += w;
         });
+        /* IPS: no per-series legend inside the chart -- the asset strip above it and the
+           reading chips already name every line, so the in-chart legend only repeated them */
+        var showLg = mgG.kind !== 'ips';
+        if (!showLg) rows = 0;
         var lgH = rows * 18, hintTop = 8 + lgH + 4, gridTop = hintTop + 22;
         mgG.hintTop = hintTop;
         /* taller chart when the legend takes several rows, so the plot keeps its height */
@@ -10226,7 +10640,7 @@ try {
         chart.resize();
         chart.setOption({
             backgroundColor: 'transparent', animation: false,
-            legend: { type: 'plain', top: 8, left: 12, right: 12, selectedMode: false, icon: 'roundRect', itemWidth: 12, itemHeight: 6, itemGap: 10, textStyle: { color: T.txt2, fontSize: 10.5 }, data: list.map(function (s) { return { name: s.name, itemStyle: { color: s.color } }; }) },
+            legend: { show: showLg, type: 'plain', top: 8, left: 12, right: 12, selectedMode: false, icon: 'roundRect', itemWidth: 12, itemHeight: 6, itemGap: 10, textStyle: { color: T.txt2, fontSize: 10.5 }, data: list.map(function (s) { return { name: s.name, itemStyle: { color: s.color } }; }) },
             grid: { left: gl, right: gr, top: gridTop, bottom: 64, containLabel: false },
             tooltip: tip,
             xAxis: { type: 'time', min: model.xMin, max: model.xMax, boundaryGap: false, splitNumber: narrow ? 4 : 8, axisLine: { lineStyle: { color: T.axis } }, axisLabel: { color: T.txt, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', hideOverlap: true, formatter: function (v) { return fmtAxis(v, span); } }, splitLine: { show: true, lineStyle: { color: T.split } } },
@@ -10542,7 +10956,7 @@ try {
         var c = T.ctx.multi || (T.ctx.multi = { id: 'multi', charts: [], hidden: {}, search: '', model: null, cursor: null, group: 'tlgv-multi' });
         c.cfg = {
             host: function () { return $('#mgAlt'); }, overlay: function () { return $('#mgChart'); }, overlayChart: function () { return mgG.chart; },
-            showOverlay: function (on) { if (on) { $('#mgChart,#mgLegend').show(); } else { $('#mgChart,#mgLegend').hide(); } },
+            showOverlay: function (on) { if (on) { $('#mgChart').show(); } else { $('#mgChart').hide(); } },
             getMode: function () { return mgG.mode; }, setMode: function (m) { mgG.mode = m; prefs.mode.multi = m; },
             model: function () { var m = buildModel(); return { xMin: m.xMin, xMax: m.xMax, series: m.series.slice() }; }
         };
