@@ -621,10 +621,72 @@
             localStorage.setItem('frs25_theme', theme);
         }
 
-        function advFullscreen() {
-            if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-            else document.exitFullscreen();
+        // Full screen that survives page changes: the choice is kept per tab and, since a
+        // page load always drops full screen, the next page re-enters it on the first
+        // click/key press (browsers require a user gesture). Only an explicit exit
+        // (button or Esc) forgets it.
+        var ADV_FS_KEY = 'e7Fs', advFsLeaving = false, advFsLeaveTimer = null, advFsRestoring = false;
+        function advFsActive() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+        function advFsWant(v) {
+            try {
+                if (v === undefined) return sessionStorage.getItem(ADV_FS_KEY) === '1';
+                if (v) sessionStorage.setItem(ADV_FS_KEY, '1'); else sessionStorage.removeItem(ADV_FS_KEY);
+            } catch (e) { }
+            return false;
         }
+        function advFsRequest() {
+            var el = document.documentElement, req = el.requestFullscreen || el.webkitRequestFullscreen;
+            if (!req) return;
+            try { var r = req.call(el); if (r && r['catch']) r['catch'](function () { }); } catch (e) { }
+        }
+        function advFullscreen() {
+            advFsStopRestore();
+            if (!advFsActive()) { advFsRequest(); return; }
+            advFsWant(false);
+            var exit = document.exitFullscreen || document.webkitExitFullscreen;
+            if (exit) { try { var p = exit.call(document); if (p && p['catch']) p['catch'](function () { }); } catch (e) { } }
+        }
+        function advFsRestoreHandler(ev) {
+            if (advFsActive()) { advFsStopRestore(); return; }
+            if (ev.type === 'keydown') {
+                var k = ev.key;
+                if (k === 'Escape' || k === 'Esc') { advFsWant(false); advFsStopRestore(); return; }
+                if (k === 'F11' || k === 'Shift' || k === 'Control' || k === 'Alt' || k === 'Meta') return;
+            }
+            // The header button calls advFullscreen() itself; don't toggle twice.
+            if (ev.target && ev.target.closest && ev.target.closest('[onclick*="advFullscreen"]')) { advFsStopRestore(); return; }
+            advFsRequest();
+        }
+        function advFsStopRestore() {
+            if (!advFsRestoring) return;
+            advFsRestoring = false;
+            document.removeEventListener('click', advFsRestoreHandler, true);
+            document.removeEventListener('keydown', advFsRestoreHandler, true);
+        }
+        (function () {
+            function markLeaving() {
+                advFsLeaving = true;
+                if (advFsLeaveTimer) clearTimeout(advFsLeaveTimer);
+                advFsLeaveTimer = setTimeout(function () { advFsLeaving = false; }, 3000);
+            }
+            window.addEventListener('beforeunload', markLeaving);
+            window.addEventListener('pagehide', markLeaving);
+            window.addEventListener('pageshow', function () { advFsLeaving = false; });
+            function onChange() {
+                if (advFsActive()) { advFsWant(true); advFsStopRestore(); }
+                else if (!advFsLeaving) advFsWant(false);
+            }
+            document.addEventListener('fullscreenchange', onChange);
+            document.addEventListener('webkitfullscreenchange', onChange);
+            if (advFsWant() && !advFsActive()) {
+                advFsRestoring = true;
+                document.addEventListener('click', advFsRestoreHandler, true);
+                document.addEventListener('keydown', advFsRestoreHandler, true);
+                // Try straight away with no prompt (allowed only when the browser permits
+                // full screen without a gesture); otherwise the first click/key press re-enters.
+                advFsRequest();
+            }
+        })();
 
         function advSwitchBasic() { window.location.href = '@Url.Action("Index", "Home", new { Area = "FRS25" })'; }
 

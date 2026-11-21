@@ -3831,8 +3831,85 @@
                 if (ic) ic.className = on ? 'fa fa-compress' : 'fa fa-arrows-alt';
             }
 
+            // ── Keep full screen across page changes ──
+            // The choice is remembered per tab (sessionStorage). A page load always drops
+            // API full screen, so the next page re-enters it on the user's first click or
+            // key press (browsers require a user gesture). Only an explicit exit (button
+            // or Esc) forgets the choice; the exit caused by navigating away does not.
+            var FS_KEY = 'e7Fs';
+            function wantFs(v) {
+                try {
+                    if (v === undefined) return sessionStorage.getItem(FS_KEY) === '1';
+                    if (v) sessionStorage.setItem(FS_KEY, '1'); else sessionStorage.removeItem(FS_KEY);
+                } catch (e) { }
+                return false;
+            }
+            var leaving = false, leaveTimer = null;
+            function markLeaving() {
+                leaving = true;
+                // If navigation was cancelled (e.g. a "leave page?" prompt), forget the flag.
+                if (leaveTimer) clearTimeout(leaveTimer);
+                leaveTimer = setTimeout(function () { leaving = false; }, 3000);
+            }
+            window.addEventListener('beforeunload', markLeaving);
+            window.addEventListener('pagehide', markLeaving);
+            window.addEventListener('pageshow', function () { leaving = false; });
+
+            function onFsChange() {
+                if (apiFs()) { wantFs(true); stopRestore(); }
+                else if (!leaving) wantFs(false);
+                setBtnState();
+            }
+
+            var restoring = false;
+            function restoreHandler(ev) {
+                if (apiFs()) { stopRestore(); return; }
+                if (ev.type === 'keydown') {
+                    var k = ev.key;
+                    if (k === 'Escape' || k === 'Esc') { wantFs(false); stopRestore(); hideTip(); return; }
+                    if (k === 'F11' || k === 'Shift' || k === 'Control' || k === 'Alt' || k === 'Meta') return;
+                }
+                // The header button runs its own enter/exit logic; let it handle this click.
+                if (ev.target && ev.target.closest && ev.target.closest('#e7Fullscreen')) { stopRestore(); return; }
+                var el = document.documentElement;
+                var req = el.requestFullscreen || el.webkitRequestFullscreen;
+                if (!req) { stopRestore(); return; }
+                try {
+                    var r = req.call(el);
+                    if (r && r['catch']) r['catch'](function () { /* keep listening; next gesture retries */ });
+                } catch (e) { }
+            }
+            function startRestore() {
+                if (restoring) return;
+                restoring = true;
+                // Capture phase on 'click' (not pointerdown): the click is already targeted,
+                // so the layout shift from entering full screen can't redirect it.
+                document.addEventListener('click', restoreHandler, true);
+                document.addEventListener('keydown', restoreHandler, true);
+                // Try straight away with no prompt. Browsers only allow this without a user
+                // gesture when permitted (e.g. Chrome policy AutomaticFullscreenAllowedForUrls);
+                // otherwise it is rejected silently and the first click/key press re-enters.
+                var el = document.documentElement;
+                var req = el.requestFullscreen || el.webkitRequestFullscreen;
+                if (req) {
+                    try { var r = req.call(el); if (r && r['catch']) r['catch'](function () { }); } catch (e) { }
+                }
+            }
+            function stopRestore() {
+                if (!restoring) return;
+                restoring = false;
+                document.removeEventListener('click', restoreHandler, true);
+                document.removeEventListener('keydown', restoreHandler, true);
+                hideTip();
+            }
+
             var tipTimer = null;
-            function showTip(html) {
+            function hideTip() {
+                var tip = document.getElementById('e7FsTip');
+                if (tip) tip.style.opacity = '0';
+                if (tipTimer) { clearTimeout(tipTimer); tipTimer = null; }
+            }
+            function showTip(html, sticky) {
                 var tip = document.getElementById('e7FsTip');
                 if (!tip) {
                     tip = document.createElement('div');
@@ -3847,15 +3924,17 @@
                 }
                 tip.innerHTML = html;
                 tip.style.opacity = '1';
-                if (tipTimer) clearTimeout(tipTimer);
-                tipTimer = setTimeout(function () { tip.style.opacity = '0'; }, 5000);
+                if (tipTimer) { clearTimeout(tipTimer); tipTimer = null; }
+                if (!sticky) tipTimer = setTimeout(function () { tip.style.opacity = '0'; }, 5000);
             }
 
             var KEY_STYLE = 'display:inline-block;padding:1px 7px;margin:0 2px;border-radius:5px;' +
                             'border:1px solid rgba(255,255,255,.5);font-weight:700;';
 
             btn.addEventListener('click', function () {
+                stopRestore();
                 if (apiFs()) {
+                    wantFs(false);
                     var exit = document.exitFullscreen || document.webkitExitFullscreen;
                     if (exit) { try { var p = exit.call(document); if (p && p['catch']) p['catch'](function () { }); } catch (e) { } }
                     return;
@@ -3872,17 +3951,18 @@
                     showTip('The browser blocked full screen (' + why + '). Press <span style="' + KEY_STYLE + '">F11</span> instead.');
                 };
                 if (!req || document.fullscreenEnabled === false) { blocked({ message: 'full screen is disabled for this page' }); return; }
-                showTip('Tip: press <span style="' + KEY_STYLE + '">F11</span> to keep full screen while moving between pages.');
                 try {
                     var r = req.call(el);
                     if (r && r['catch']) r['catch'](blocked);
                 } catch (e) { blocked(e); }
             });
 
-            document.addEventListener('fullscreenchange', setBtnState);
-            document.addEventListener('webkitfullscreenchange', setBtnState);
+            document.addEventListener('fullscreenchange', onFsChange);
+            document.addEventListener('webkitfullscreenchange', onFsChange);
             window.addEventListener('resize', setBtnState);
             setBtnState();
+            // Previous page was in full screen: re-enter on the first gesture here.
+            if (wantFs() && !apiFs() && !browserFs()) startRestore();
         })();
 
         // ── Live clock ticker (header live badge) ───────────────────
