@@ -2051,11 +2051,15 @@
         gap: 6px;
         overflow-x: auto;
         padding-bottom: 4px;
+        overscroll-behavior-x: contain;
     }
 
     #model3-wrap .class-tile {
         flex: 0 0 auto;
         width: 110px;
+        /* skip layout/paint for tiles scrolled out of view */
+        content-visibility: auto;
+        contain-intrinsic-size: 110px 92px;
         background: var(--bg-tertiary);
         border: 1px solid var(--border);
         border-radius: 8px;
@@ -7315,23 +7319,30 @@
                     }
 
                     const tileTime3 = t => t.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' ' + t.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                    // Each sparkline is a single inline-SVG polyline rather than its own
+                    // Plotly chart - one full Plotly DOM tree per op (hundreds/thousands
+                    // over a long range) made the strip's scrollbar drop frames. The plots
+                    // were already static (no hover/zoom), so the look is unchanged.
+                    const sparkSvg = (vals, color) => {
+                        const ys = (vals || []).map(Number).filter(v => isFinite(v));
+                        if (ys.length < 2) return '';
+                        let lo = Math.min(...ys), hi = Math.max(...ys);
+                        if (hi === lo) { hi += 1; lo -= 1; }
+                        const pad = (hi - lo) * 0.05;
+                        lo -= pad; hi += pad;
+                        const n = ys.length - 1;
+                        const pts = ys.map((v, k) => (k * 100 / n).toFixed(2) + ',' + ((hi - v) * 50 / (hi - lo)).toFixed(2)).join(' ');
+                        return `<svg viewBox="0 0 100 50" preserveAspectRatio="none" width="100%" height="50" style="display:block;"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+                    };
                     container.innerHTML = items.map((it, i) =>
                         `<div class="class-tile" data-idx="${i}">
                                                             <div class="class-tile-label" style="color:${it.color};">${escapeHtml(it.label)}</div>
-                                                            <div id="${elId}-plot-${i}" class="class-tile-plot"></div>
+                                                            <div id="${elId}-plot-${i}" class="class-tile-plot">${sparkSvg(it.op[curKey], it.color)}</div>
                                                             <div class="class-tile-time">${tileTime3(it.x)}</div>
                                                         </div>`
                     ).join('');
                     items.forEach((it, i) => {
-                        Plotly.newPlot(`${elId}-plot-${i}`, [{
-                            y: it.op[curKey] || [], mode: 'lines', type: 'scatter',
-                            line: { color: it.color, width: 1.4 }, hoverinfo: 'skip',
-                        }], {
-                            height: 50, margin: { l: 0, r: 0, t: 0, b: 0 },
-                            xaxis: { visible: false }, yaxis: { visible: false },
-                            paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)', showlegend: false,
-                        }, { staticPlot: true, responsive: false });
-                        const tile = container.querySelector(`[data-idx="${i}"]`);
+                        const tile = container.children[i];
                         if (tile) tile.onclick = () => {
                             const tp = TIMELINE_POINTS[side].find(t => t.op === it.op);
                             if (tp) renderDetail(tp, side === 'a' ? 'Machine A' : 'Machine B', side);
@@ -7390,17 +7401,31 @@
                     const el1 = document.getElementById(elId1);
                     const el2 = document.getElementById(elId2);
                     if (!el1 || !el2) return;
-                    let syncing = false;
-                    const sync = (src, dst) => {
-                        if (syncing || SUPPRESS_LINK_SYNC3) return;
-                        syncing = true;
-                        const maxSrc = src.scrollWidth - src.clientWidth;
-                        const maxDst = dst.scrollWidth - dst.clientWidth;
-                        dst.scrollLeft = maxSrc > 0 ? (src.scrollLeft / maxSrc) * maxDst : 0;
-                        syncing = false;
+                    // Scroll events fire asynchronously, so a plain "syncing" flag is
+                    // already cleared by the time the mirrored strip reports its own
+                    // scroll - that echo then got copied BACK onto the strip the user was
+                    // dragging (slightly off, due to the proportional mapping), fighting
+                    // the scrollbar and making it jitter. Instead, whichever strip scrolls
+                    // first becomes the "leader" until it has been idle for 150ms; scroll
+                    // events from the follower in that window are just echoes and ignored.
+                    // The follower update is batched to one write per animation frame.
+                    let leader = null, leaderTimer = 0, raf = 0;
+                    const onScroll = (src, dst) => {
+                        if (SUPPRESS_LINK_SYNC3) return;
+                        if (leader && leader !== src) return;
+                        leader = src;
+                        clearTimeout(leaderTimer);
+                        leaderTimer = setTimeout(() => { leader = null; }, 150);
+                        if (raf) return;
+                        raf = requestAnimationFrame(() => {
+                            raf = 0;
+                            const maxSrc = src.scrollWidth - src.clientWidth;
+                            const maxDst = dst.scrollWidth - dst.clientWidth;
+                            dst.scrollLeft = maxSrc > 0 ? (src.scrollLeft / maxSrc) * maxDst : 0;
+                        });
                     };
-                    el1.onscroll = () => sync(el1, el2);
-                    el2.onscroll = () => sync(el2, el1);
+                    el1.onscroll = () => onScroll(el1, el2);
+                    el2.onscroll = () => onScroll(el2, el1);
                 }
 
                 // One rect per band; the SELECTED band gets a visible border, extends

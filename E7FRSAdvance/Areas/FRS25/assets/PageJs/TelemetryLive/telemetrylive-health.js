@@ -225,18 +225,29 @@
        "ISIG RG" and "VSIG RG" always sit side by side. */
     var SIG_LAMPS = ['RG', 'DG', 'HG', 'HHG'];
     var SIG_LAMP_COL = { RG: '#EF4444', DG: '#22C55E', HG: '#F5B70A', HHG: '#F5B70A' };
-    function sigInfo(label) {
+    /* shunt: pass shunt=true (asset is a shunt signal) -- order is
+       ON, OFF, PILOT, HPR (last), each pair voltage first then current. */
+    function sigInfo(label, shunt) {
         var n = strip(label).toUpperCase().replace(/\s+/g, ' ');
         var q = 2, rest = n, m;
-        if ((m = /^([IV])(RO|CO)?SIG\b\s*(.*)$/.exec(n))) {           /* ISIG RG, IROSIG (BUG), VCOSIG HPR */
+        if ((m = /^([IV])(RO|CO|SH)?SIG\b\s*(.*)$/.exec(n))) {        /* ISIG RG, IROSIG (BUG), VCOSIG HPR, VSHSIG OFF */
             q = m[1] === 'I' ? 0 : 1;
-            rest = (m[2] ? m[2] + ' ' : '') + m[3];
+            if (m[2] === 'SH') { shunt = true; rest = m[3]; }
+            else rest = (m[2] ? m[2] + ' ' : '') + m[3];
         } else if ((m = /^(.+?)\s*\(?(MA|V)\)?$/.exec(n))) {          /* 616 names: RG mA, Co_Hg V */
             q = m[2] === 'MA' ? 0 : 1;
             rest = m[1];
         }
         var paren = (/\(([A-Z0-9_\- ]+)\)/.exec(rest) || [])[1] || '';
         var core = rest.replace(/\([^)]*\)/g, '').replace(/[_\-]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (shunt) {
+            var sq = q === 1 ? 0 : q === 0 ? 1 : 2;                   /* voltage before current */
+            var sc = core.replace(/^SH ?/, '');
+            if (/^ON( ASPECT)?$/.test(sc)) return { g: 'SHON', name: 'On aspect', col: '', o: 0, q: sq };
+            if (/^OFF( ASPECT)?$/.test(sc)) return { g: 'SHOFF', name: 'Off aspect', col: '', o: 1, q: sq };
+            if (/^PILOT/.test(sc)) return { g: 'PILOT', name: 'Pilot', col: '', o: 2, q: sq };
+            if (/PR$/.test(sc)) return { g: 'PR', name: 'Proving', col: '', o: 300, q: sq };
+        }
         var routeOf = function (s) { var r = /\b([A-E])U(G|PR)\b/.exec(s); return r ? r[1] : ''; };
         /* proving relays: DPR / HPR / HHPR, route HPR (xUPR), calling-on HPR, Sh-HPR */
         if (/PR$/.test(core) || /UPR$/.test(paren)) {
@@ -461,7 +472,9 @@
                 return ix - iy || x.label.localeCompare(y.label);
             });
         } else if (!pmm && isSignalType()) {
-            rows.forEach(function (x) { x.sg = sigInfo(x.label); });
+            var shuntAsset = /^\s*SH\b|^\s*SH[\s\-_]?\d/i.test(e.AssetName || '') ||
+                rows.some(function (x) { return /^\s*[IV]SHSIG/i.test(strip(x.label)); });
+            rows.forEach(function (x) { x.sg = sigInfo(x.label, shuntAsset); });
             rows.sort(sigCmp);
         } else if (!pmm) {
             rows.sort(function (x, y) { return x.label.localeCompare(y.label, undefined, { numeric: true }); });

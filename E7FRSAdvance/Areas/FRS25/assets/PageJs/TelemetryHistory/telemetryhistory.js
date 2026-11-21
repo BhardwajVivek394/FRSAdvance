@@ -25790,8 +25790,15 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                     filterMode: 'none',
                     startValue: _reqStart, endValue: _reqEnd,
                     minValueSpan: HG_MIN_ZOOM_SPAN_MS,
+                    realtime: true,
+                    throttle: 30,
+                    brushSelect: false,          // dragging the track pans, never redraws a new window
                     borderColor: _hgT.border,
+                    handleSize: '110%',
                     handleStyle: { color: _hgT.accent, borderColor: _hgT.accentInk },
+                    moveHandleSize: 6,
+                    moveHandleStyle: { color: _hgT.accent, opacity: 0.6 },
+                    emphasis: { moveHandleStyle: { color: _hgT.accent, opacity: 1 } },
                     fillerColor: _hgT.accentSoft,
                     textStyle: { fontSize: 11, color: _hgT.text2 },
                     labelFormatter: function (v) {
@@ -25807,7 +25814,10 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                     type: 'inside', filterMode: 'none',
                     startValue: _reqStart, endValue: _reqEnd,
                     minValueSpan: HG_MIN_ZOOM_SPAN_MS,
-                    zoomOnMouseWheel: true, moveOnMouseMove: true
+                    // wheel zoom via e7AttachWheelZoom (smooth, centred on the mouse);
+                    // drag on the plot still pans
+                    zoomOnMouseWheel: false, moveOnMouseWheel: false,
+                    moveOnMouseMove: true, preventDefaultMouseMove: true
                 }
             ],
             color: _hgGC,
@@ -26102,6 +26112,8 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
                 ]
             }, { lazyUpdate: true });
         }
+
+        if (window.e7AttachWheelZoom) window.e7AttachWheelZoom(historyEChart, HG_MIN_ZOOM_SPAN_MS);
 
         historyEChart.off('dataZoom');
         historyEChart.on('dataZoom', function () {
@@ -30507,3 +30519,146 @@ HGPM_IND_ORDER.forEach(function (attributeId) {
 
     })();
 
+
+// ── Mouse-centred wheel zoom for ECharts time graphs ─────────────────────
+// Shared by Telemetry Live and Telemetry History (defined in both files, first
+// one loaded wins). Every chart with an 'inside' dataZoom gets it automatically
+// (echarts.init is wrapped below), so the Historical Graph popup, its Stacked /
+// Individual views and all History graphs behave the same:
+//   - mouse wheel over a plot zooms in/out keeping the time under the cursor
+//     fixed; scales with the wheel delta, so it is smooth on mouse and trackpad
+//   - drag on the plot pans; the slider keeps its normal behaviour
+//   - double-click on a plot resets to the full range
+// ECharts' own wheel zoom is switched off on those charts (it jumps in coarse
+// steps and, in the Stacked/Individual views, only worked with Ctrl held).
+window.e7AttachWheelZoom = window.e7AttachWheelZoom || function (chart, minSpanMs) {
+    if (!chart || (chart.isDisposed && chart.isDisposed())) return;
+    var dom = chart.getDom();
+    if (!dom) return;
+    // capture phase: ECharts stops the wheel event on its canvas, so a normal
+    // (bubbling) listener on the container never sees a real mouse wheel
+    if (dom._e7WheelZoom) dom.removeEventListener('wheel', dom._e7WheelZoom, true);
+
+    var pending = 0, lastX = 0, lastRect = null, raf = 0;
+
+    function gridRectAt(x, y) {
+        var hit = null;
+        chart.getModel().eachComponent('grid', function (g) {
+            var r = g.coordinateSystem && g.coordinateSystem.getRect();
+            if (!hit && r && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) hit = r;
+        });
+        return hit;
+    }
+
+    // x-axis dataZooms only (never zoom a y-axis by accident)
+    function xZooms() {
+        var out = [];
+        var opt = chart.getOption();
+        (opt && opt.dataZoom || []).forEach(function (dz, i) {
+            var xs = dz.xAxisIndex, ys = dz.yAxisIndex;
+            var hasX = xs != null && (!Array.isArray(xs) || xs.length);
+            var hasY = ys != null && (!Array.isArray(ys) || ys.length);
+            if (hasX || !hasY) out.push({ i: i, dz: dz });
+        });
+        return out;
+    }
+
+    function apply() {
+        raf = 0;
+        if (chart.isDisposed && chart.isDisposed()) return;
+        var delta = pending; pending = 0;
+        var zs = xZooms();
+        if (!zs.length || !lastRect || !lastRect.width) return;
+        var dz = zs[0].dz;
+        var start = dz.start != null ? dz.start : 0;
+        var end = dz.end != null ? dz.end : 100;
+        var span = end - start;
+        if (!(span > 0)) return;
+
+        var frac = Math.min(1, Math.max(0, (lastX - lastRect.x) / lastRect.width));
+        var center = start + frac * span;          // % position under the cursor
+
+        var minPct = 0.05;
+        if (minSpanMs) {
+            var xa = chart.getModel().getComponent('xAxis', 0);
+            if (xa && xa.axis && xa.axis.type === 'time') {
+                var ext = xa.axis.scale.getExtent();   // visible window (ms)
+                var visMs = ext[1] - ext[0];
+                if (visMs > 0) minPct = Math.min(100, span * minSpanMs / visMs);
+            }
+        }
+        var newSpan = Math.min(100, Math.max(minPct, span * Math.pow(1.0015, delta)));
+        if (Math.abs(newSpan - span) < 1e-9) return;
+        var ns = Math.max(0, Math.min(100 - newSpan, center - frac * newSpan));
+        chart.dispatchAction({
+            type: 'dataZoom',
+            batch: zs.map(function (z) { return { dataZoomIndex: z.i, start: ns, end: ns + newSpan }; })
+        });
+    }
+
+    dom._e7WheelZoom = function (e) {
+        if (chart.isDisposed && chart.isDisposed()) return;
+        var r = dom.getBoundingClientRect();
+        var x = e.clientX - r.left, y = e.clientY - r.top;
+        var gr = gridRectAt(x, y);
+        if (!gr) return;                            // over slider / legend / gaps -> normal scroll
+        e.preventDefault();
+        e.stopPropagation();
+        var d = e.deltaY || e.deltaX || 0;
+        if (e.deltaMode === 1) d *= 33; else if (e.deltaMode === 2) d *= 400;
+        pending += Math.max(-300, Math.min(300, d));
+        lastX = x; lastRect = gr;
+        if (!raf) raf = requestAnimationFrame(apply);
+    };
+    dom.addEventListener('wheel', dom._e7WheelZoom, { passive: false, capture: true });
+
+    var zr = chart.getZr();
+    if (chart._e7DblReset) zr.off('dblclick', chart._e7DblReset);
+    chart._e7DblReset = function (ev) {
+        if (!gridRectAt(ev.offsetX, ev.offsetY)) return;
+        var zs = xZooms();
+        if (!zs.length) return;
+        chart.dispatchAction({ type: 'dataZoom', batch: zs.map(function (z) { return { dataZoomIndex: z.i, start: 0, end: 100 }; }) });
+    };
+    zr.on('dblclick', chart._e7DblReset);
+};
+
+// Auto-apply to every chart that has an 'inside' dataZoom: after each setOption,
+// turn ECharts' own wheel zoom off (drag-to-pan stays) and attach the helper.
+(function () {
+    var ec = window.echarts;
+    if (!ec || ec._e7WheelZoomWrapped) return;
+    ec._e7WheelZoomWrapped = true;
+    var origInit = ec.init;
+    ec.init = function () {
+        var chart = origInit.apply(this, arguments);
+        try {
+            var origSet = chart.setOption;
+            chart.setOption = function () {
+                var res = origSet.apply(this, arguments);
+                try {
+                    var opt = chart.getOption();
+                    var dzs = (opt && opt.dataZoom) || [];
+                    var patch = [], hasInside = false, minSpan = 0;
+                    dzs.forEach(function (dz) {
+                        if (dz.type === 'inside') {
+                            hasInside = true;
+                            if (dz.minValueSpan > minSpan) minSpan = dz.minValueSpan;
+                            patch.push(dz.zoomOnMouseWheel === false && dz.moveOnMouseWheel === false
+                                ? {} : { zoomOnMouseWheel: false, moveOnMouseWheel: false });
+                        } else {
+                            if (dz.type === 'slider' && dz.minValueSpan > minSpan) minSpan = dz.minValueSpan;
+                            patch.push({});
+                        }
+                    });
+                    if (hasInside) {
+                        if (patch.some(function (p) { return p.zoomOnMouseWheel === false; })) origSet.call(chart, { dataZoom: patch });
+                        if (!chart._e7WzOn) { chart._e7WzOn = true; window.e7AttachWheelZoom(chart, minSpan || 60 * 1000); }
+                    }
+                } catch (e2) { }
+                return res;
+            };
+        } catch (e1) { }
+        return chart;
+    };
+})();

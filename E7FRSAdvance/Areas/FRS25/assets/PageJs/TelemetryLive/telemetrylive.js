@@ -1364,25 +1364,41 @@ function formatAliasName(name) {
 
 
 // ===== DERIVED VALUES CALCULATION =====
-var TR_RES = 10; // Fallback TR Resistance for QTA2 = 10Ω (used when the site has no configured range)
+/* 616 parity: no fixed Track Relay resistance default -- VTC TR / RRAIL show —
+   when the asset has no configured "Track Relay resistance" average.
+   (TR_RES only feeds the unreachable legacy block after calculateDerivedValues' return.) */
+var TR_RES = null;
 
 // ===== Per-asset Track Relay resistance (source: /api/FRSAttributeRange/SiteId/{siteId}) =====
 // AssetId (string) -> AverageValue (Ohm) for rows where AttributeName === 'Track Relay resistance'.
 var frsTrackRelayResistanceByAsset = {};
 var frsAttrRangeLoadedSiteId = null;    // site this map was last loaded for (cache guard)
 var frsAttrRangeLoadingSiteId = null;   // in-flight guard (avoids duplicate fetches)
+var frsAttrRangePendingCallbacks = [];  // callers that arrived while the fetch was in flight
 
 // Load the FRS attribute-range table for a site and index Track Relay resistance averages.
-// Safe to call repeatedly: no-ops when already loaded / loading for the same site.
+// Safe to call repeatedly: no-ops when already loaded for the same site; while a fetch is
+// in flight the callback waits for it (VTC TR has no default resistance to fall back on).
 function loadFRSAttributeRange(siteId, callback) {
     siteId = $.trim(String(siteId || ''));
     if (!siteId || siteId === '0') { if (callback) callback(); return; }
-    if (String(frsAttrRangeLoadedSiteId) === siteId ||
-        String(frsAttrRangeLoadingSiteId) === siteId) {
+    if (String(frsAttrRangeLoadedSiteId) === siteId) {
         if (callback) callback();
         return;
     }
+    if (String(frsAttrRangeLoadingSiteId) === siteId) {
+        if (callback) frsAttrRangePendingCallbacks.push(callback);
+        return;
+    }
     frsAttrRangeLoadingSiteId = siteId;
+    frsAttrRangePendingCallbacks = callback ? [callback] : [];
+    function runPending() {
+        var cbs = frsAttrRangePendingCallbacks;
+        frsAttrRangePendingCallbacks = [];
+        for (var i = 0; i < cbs.length; i++) {
+            try { cbs[i](); } catch (e) { console.warn('[FRSRange] callback failed', e); }
+        }
+    }
     $.ajax({
         url: '/FRS25/Telemetry/GetFRSAttributeRangeBySiteId?siteId=' + encodeURIComponent(siteId),
         type: 'GET',
@@ -1396,7 +1412,7 @@ function loadFRSAttributeRange(siteId, callback) {
                     if (nm !== 'track relay resistance') continue;
                     if (r.AssetId === null || r.AssetId === undefined) continue;
                     var avg = parseFloat(r.AverageValue);
-                    if (isNaN(avg)) continue;   // null/blank average -> leave absent -> TR_RES default
+                    if (isNaN(avg)) continue;   // null/blank average -> leave absent -> VTC TR shows —
                     map[String(r.AssetId)] = avg;
                 }
             }
@@ -1405,13 +1421,13 @@ function loadFRSAttributeRange(siteId, callback) {
             frsAttrRangeLoadingSiteId = null;
             console.log('[FRSRange] Track Relay resistance loaded for site ' + siteId +
                 ' - ' + Object.keys(map).length + ' asset(s)');
-            if (callback) callback();
+            runPending();
         },
         error: function (xhr, st, err) {
             frsAttrRangeLoadingSiteId = null;
             console.warn('[FRSRange] load failed for site ' + siteId + ' - ' + (err || st) +
-                ' (TR_RES will default to ' + TR_RES + ' Ohm)');
-            if (callback) callback();
+                ' (VTC TR / RRAIL will show — until it loads)');
+            runPending();
         }
     });
 }
@@ -1431,13 +1447,14 @@ function resolveAssetIdFromAttrs(attrs, assetIdHint) {
     return null;
 }
 
-// Per-asset Track Relay resistance (Ohm); TR_RES fallback when asset/average is absent.
+// Per-asset Track Relay resistance (Ohm) from the FRS attribute range; null when the
+// asset (or a valid average) is absent -- no fixed default (616 parity).
 function getTrackRelayResistance(assetId) {
     if (assetId !== null && assetId !== undefined) {
         var v = frsTrackRelayResistanceByAsset[String(assetId)];
         if (v !== undefined && v !== null && !isNaN(v)) return v;
     }
-    return TR_RES;
+    return null;
 }
 
 function getAttrValue(attrs, name) {
@@ -1454,7 +1471,7 @@ function getAttrValue(attrs, name) {
 
 function calculateDerivedValues(attrs, assetIdHint) {
     // Track Relay resistance is per-asset (configured range), not a fixed 10Ω.
-    // Falls back to TR_RES when the site/asset has no configured average.
+    // null when the site/asset has no configured average -> VTC TR / RRAIL show — (616).
     var trRes = getTrackRelayResistance(resolveAssetIdFromAttrs(attrs, assetIdHint));
 
     // Build AttrId → value map as fallback (WS stores AttrId on every attr entry)
@@ -1520,7 +1537,7 @@ function calculateDerivedValues(attrs, assetIdHint) {
     derived.rtcVarRes = (derived.vtcVarRes === null || ifMa === null) ? null :
         (ifMa !== 0 ? (derived.vtcVarRes / ifMa) * 1000 : null);
     // 5. VTC TR (V) = Ir mA × Track Relay resistance / 1000
-    derived.vtcTr = safeCalc(function () { return (irMa * trRes) / 1000; }, [irMa]);
+    derived.vtcTr = safeCalc(function () { return (irMa * trRes) / 1000; }, [irMa, trRes]);
     // 6. IBALST (mA) = If mA − Ir mA
     derived.ibalst = safeCalc(function () { return ifMa - irMa; }, [ifMa, irMa]);
     // 7. RRAIL (Ω) = 2 × (Vf − VTC TR) / (If mA + Ir mA) × 1000
@@ -1575,7 +1592,7 @@ function getDerivedHeaders() {
         '<th class="derived-col" title="Charger OP V - Vf - Choke V">V<span class="alias-sub">TC VAR RES (V)</span></th>' +
         '<th class="derived-col" title="Choke V / If mA × 1000">R<span class="alias-sub">TC CH FEED END (Ω)</span></th>' +
         '<th class="derived-col" title="VTC VAR RES / If mA × 1000">R<span class="alias-sub">TC VAR RES (Ω)</span></th>' +
-        '<th class="derived-col" title="Ir mA × TR Res (10Ω)">V<span class="alias-sub">TC TR (V)</span></th>' +
+        '<th class="derived-col" title="Ir mA × Track Relay resistance (configured, per asset)">V<span class="alias-sub">TC TR (V)</span></th>' +
         '<th class="derived-col" title="If mA - Ir mA">I<span class="alias-sub">BALST (mA)</span></th>' +
         '<th class="derived-col" title="2×(Vf - VTC TR) / (If + Ir) × 1000">R<span class="alias-sub">RAIL (Ω)</span></th>';
 }
@@ -5435,9 +5452,15 @@ function processItems(items) {
 // ================================================================
 
 function connectWebSocket(siteId, assetTypeId, assetIds) {
-    // Preload per-asset Track Relay resistance averages for this site
-    // (TR_RES source for calculateDerivedValues; no-op when already cached).
-    loadFRSAttributeRange(siteId);
+    // Preload per-asset Track Relay resistance averages for this site (no-op if cached).
+    // Repaint once it arrives so VTC TR (V) / RRAIL (Ω) fill in immediately instead of
+    // waiting for each asset's next live tick (both show — until it loads). (616)
+    loadFRSAttributeRange(siteId, function () {
+        if ($('#drpView').val() === 'Table' && $('#wsLiveTable').length &&
+            parseInt(wsCurrentAssetTypeId, 10) === 1 && typeof renderWsTableFixed === 'function') {
+            renderWsTableFixed();
+        }
+    });
 
     // ── Idempotency guard: if already connected/connecting to the SAME URL, do nothing ──
     var newWsUrl = buildWebSocketUrl(siteId, assetTypeId, assetIds);
@@ -8417,6 +8440,14 @@ function fnBindCircuit() {
 }
 
 function connectCircuitWebSocket(siteId, assetTypeId, assetId) {
+    // Track Relay resistance for VTC TR / RRAIL -- the table loads it in connectWebSocket,
+    // but the circuit can be opened first. Redraw once it arrives (no-op if cached). (616)
+    loadFRSAttributeRange(siteId, function () {
+        if (circuitAssetId && String(circuitAssetId) === String(assetId) && wsLiveData[assetId]) {
+            updateCircuitFromWebSocket(assetId);
+        }
+    });
+
     // When MQTT (Paho) is the primary live data source for _Circuit.cshtml,
     // we do NOT open a parallel WebSocket (would corrupt parseJson).
     // HOWEVER for Point Machine we still need to push any WS data already
@@ -9736,8 +9767,11 @@ function fnGetAssetGraph(siteId, assetId) {
     // on the target element fire reliably even though the modal shell calls
     // event.stopPropagation(), which had been swallowing delegated/bound handlers.
 
-    // Default: show last 24 hours
-    loadHistoryGraphData(assetId, 24);
+    // Default: show last 24 hours -- after the Track Relay resistance is in, since graph
+    // VTC TR / RRAIL have no default resistance (616; no-op wait when cached).
+    loadFRSAttributeRange(siteId, function () {
+        if ($('#rdpmsGraphOverlay').length) loadHistoryGraphData(assetId, 24);
+    });
 }
 
 // PM Direction Graph - filters by Normal/Reverse indication IDs
@@ -10538,15 +10572,17 @@ function renderPmIndicationFromApi(data, filterIds, end, rangeStart, rangeEnd) {
                 filterMode: 'none',
                 minValueSpan: 60 * 1000,
                 throttle: 70,
-                zoomOnMouseWheel: true,
-                moveOnMouseMove: false,
-                moveOnMouseWheel: false
+                zoomOnMouseWheel: false,     // wheel zoom via e7AttachWheelZoom (mouse-centred)
+                moveOnMouseMove: true,       // drag on the plot pans
+                moveOnMouseWheel: false,
+                preventDefaultMouseMove: true
             }
         ],
         series: series
     });
 
     _pmTrackActualHover(chart);
+    if (window.e7AttachWheelZoom) window.e7AttachWheelZoom(chart, 60 * 1000);
 
     $(window).off('resize.pmIndChart').on('resize.pmIndChart', function () { chart.resize(); });
 
@@ -11289,8 +11325,6 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
     // Make the per-series points available to the carry-forward tooltip formatter.
     window._rdpmsTooltipSeries = tooltipSeries;
 
-    var leftAxisName = useDualAxis ? 'mA / Value' : (hasVoltageSeries ? 'V' : 'mA / Value');
-
     // Chart chrome follows the page theme tokens (light / dark)
     var gt = {
         surface: tlThemeVar('--e7-surface', tlTc('#0a1a2e', '#ffffff')),
@@ -11308,9 +11342,9 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
 
     var yAxisConfig = [
         {
+            // No axis name - the unit label ('mA / Value' / 'V') sat at the top-left
+            // and overlapped the series legend.
             type: 'value',
-            name: leftAxisName,
-            nameTextStyle: { fontSize: 12, color: gt.text3 },
             axisLabel: { fontSize: 11, color: gt.text3 },
             axisLine: { show: true, lineStyle: { color: gt.accent, width: 2 } },
             splitLine: { show: true, lineStyle: { color: gt.grid, type: 'dashed' } }
@@ -11446,29 +11480,51 @@ function renderHistoryChart(data, assetId, hours, startDate, endDate) {
         dataZoom: [
             {
                 type: 'slider',
-                height: 28,
-                bottom: 8,
+                height: 24,
+                bottom: 10,
                 start: 0,
                 end: 100,
                 filterMode: 'none',
+                minValueSpan: 60 * 1000,
+                realtime: true,
+                throttle: 30,
+                brushSelect: false,          // dragging the track pans, never redraws a new window
+                showDetail: true,
                 borderColor: gt.border,
                 backgroundColor: gt.surface3,
                 fillerColor: gt.accentSoft,
+                handleSize: '110%',
                 handleStyle: { color: gt.accent, borderColor: gt.accent },
-                moveHandleStyle: { color: gt.accent },
-                textStyle: { color: gt.text3 },
+                moveHandleSize: 6,           // was a thick bar sitting on top of the slider
+                moveHandleStyle: { color: gt.accent, opacity: 0.6 },
+                emphasis: { moveHandleStyle: { color: gt.accent, opacity: 1 } },
+                textStyle: { color: gt.text3, fontSize: 11 },
+                labelFormatter: function (v) {
+                    var d = new Date(v);
+                    return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + ' ' +
+                        String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+                },
                 dataBackground: {
                     lineStyle: { color: gt.border },
                     areaStyle: { color: gt.accentSoft }
                 }
             },
             {
+                // Drag on the plot pans; wheel zoom is handled by e7AttachWheelZoom
+                // (smooth, centred on the mouse) so ECharts' own wheel zoom is off.
                 type: 'inside',
-                filterMode: 'none'
+                filterMode: 'none',
+                minValueSpan: 60 * 1000,
+                zoomOnMouseWheel: false,
+                moveOnMouseWheel: false,
+                moveOnMouseMove: true,
+                preventDefaultMouseMove: true
             }
         ],
         series: finalSeries
     }, true);
+
+    if (window.e7AttachWheelZoom) window.e7AttachWheelZoom(rdpmsGraphChart, 60 * 1000);
 
     $(window).off('resize.rdpmsGraph').on('resize.rdpmsGraph', function () {
         if (rdpmsGraphChart) rdpmsGraphChart.resize();
@@ -26859,3 +26915,146 @@ function _stopSignalLinkIssueTimer() {
     if (_signalLinkIssueTimer) { clearInterval(_signalLinkIssueTimer); _signalLinkIssueTimer = null; }
 }
 try { if (typeof window !== 'undefined') { window._startSignalLinkIssueTimer = _startSignalLinkIssueTimer; window._stopSignalLinkIssueTimer = _stopSignalLinkIssueTimer; } } catch (e) { }
+
+// ── Mouse-centred wheel zoom for ECharts time graphs ─────────────────────
+// Shared by Telemetry Live and Telemetry History (defined in both files, first
+// one loaded wins). Every chart with an 'inside' dataZoom gets it automatically
+// (echarts.init is wrapped below), so the Historical Graph popup, its Stacked /
+// Individual views and all History graphs behave the same:
+//   - mouse wheel over a plot zooms in/out keeping the time under the cursor
+//     fixed; scales with the wheel delta, so it is smooth on mouse and trackpad
+//   - drag on the plot pans; the slider keeps its normal behaviour
+//   - double-click on a plot resets to the full range
+// ECharts' own wheel zoom is switched off on those charts (it jumps in coarse
+// steps and, in the Stacked/Individual views, only worked with Ctrl held).
+window.e7AttachWheelZoom = window.e7AttachWheelZoom || function (chart, minSpanMs) {
+    if (!chart || (chart.isDisposed && chart.isDisposed())) return;
+    var dom = chart.getDom();
+    if (!dom) return;
+    // capture phase: ECharts stops the wheel event on its canvas, so a normal
+    // (bubbling) listener on the container never sees a real mouse wheel
+    if (dom._e7WheelZoom) dom.removeEventListener('wheel', dom._e7WheelZoom, true);
+
+    var pending = 0, lastX = 0, lastRect = null, raf = 0;
+
+    function gridRectAt(x, y) {
+        var hit = null;
+        chart.getModel().eachComponent('grid', function (g) {
+            var r = g.coordinateSystem && g.coordinateSystem.getRect();
+            if (!hit && r && x >= r.x && x <= r.x + r.width && y >= r.y && y <= r.y + r.height) hit = r;
+        });
+        return hit;
+    }
+
+    // x-axis dataZooms only (never zoom a y-axis by accident)
+    function xZooms() {
+        var out = [];
+        var opt = chart.getOption();
+        (opt && opt.dataZoom || []).forEach(function (dz, i) {
+            var xs = dz.xAxisIndex, ys = dz.yAxisIndex;
+            var hasX = xs != null && (!Array.isArray(xs) || xs.length);
+            var hasY = ys != null && (!Array.isArray(ys) || ys.length);
+            if (hasX || !hasY) out.push({ i: i, dz: dz });
+        });
+        return out;
+    }
+
+    function apply() {
+        raf = 0;
+        if (chart.isDisposed && chart.isDisposed()) return;
+        var delta = pending; pending = 0;
+        var zs = xZooms();
+        if (!zs.length || !lastRect || !lastRect.width) return;
+        var dz = zs[0].dz;
+        var start = dz.start != null ? dz.start : 0;
+        var end = dz.end != null ? dz.end : 100;
+        var span = end - start;
+        if (!(span > 0)) return;
+
+        var frac = Math.min(1, Math.max(0, (lastX - lastRect.x) / lastRect.width));
+        var center = start + frac * span;          // % position under the cursor
+
+        var minPct = 0.05;
+        if (minSpanMs) {
+            var xa = chart.getModel().getComponent('xAxis', 0);
+            if (xa && xa.axis && xa.axis.type === 'time') {
+                var ext = xa.axis.scale.getExtent();   // visible window (ms)
+                var visMs = ext[1] - ext[0];
+                if (visMs > 0) minPct = Math.min(100, span * minSpanMs / visMs);
+            }
+        }
+        var newSpan = Math.min(100, Math.max(minPct, span * Math.pow(1.0015, delta)));
+        if (Math.abs(newSpan - span) < 1e-9) return;
+        var ns = Math.max(0, Math.min(100 - newSpan, center - frac * newSpan));
+        chart.dispatchAction({
+            type: 'dataZoom',
+            batch: zs.map(function (z) { return { dataZoomIndex: z.i, start: ns, end: ns + newSpan }; })
+        });
+    }
+
+    dom._e7WheelZoom = function (e) {
+        if (chart.isDisposed && chart.isDisposed()) return;
+        var r = dom.getBoundingClientRect();
+        var x = e.clientX - r.left, y = e.clientY - r.top;
+        var gr = gridRectAt(x, y);
+        if (!gr) return;                            // over slider / legend / gaps -> normal scroll
+        e.preventDefault();
+        e.stopPropagation();
+        var d = e.deltaY || e.deltaX || 0;
+        if (e.deltaMode === 1) d *= 33; else if (e.deltaMode === 2) d *= 400;
+        pending += Math.max(-300, Math.min(300, d));
+        lastX = x; lastRect = gr;
+        if (!raf) raf = requestAnimationFrame(apply);
+    };
+    dom.addEventListener('wheel', dom._e7WheelZoom, { passive: false, capture: true });
+
+    var zr = chart.getZr();
+    if (chart._e7DblReset) zr.off('dblclick', chart._e7DblReset);
+    chart._e7DblReset = function (ev) {
+        if (!gridRectAt(ev.offsetX, ev.offsetY)) return;
+        var zs = xZooms();
+        if (!zs.length) return;
+        chart.dispatchAction({ type: 'dataZoom', batch: zs.map(function (z) { return { dataZoomIndex: z.i, start: 0, end: 100 }; }) });
+    };
+    zr.on('dblclick', chart._e7DblReset);
+};
+
+// Auto-apply to every chart that has an 'inside' dataZoom: after each setOption,
+// turn ECharts' own wheel zoom off (drag-to-pan stays) and attach the helper.
+(function () {
+    var ec = window.echarts;
+    if (!ec || ec._e7WheelZoomWrapped) return;
+    ec._e7WheelZoomWrapped = true;
+    var origInit = ec.init;
+    ec.init = function () {
+        var chart = origInit.apply(this, arguments);
+        try {
+            var origSet = chart.setOption;
+            chart.setOption = function () {
+                var res = origSet.apply(this, arguments);
+                try {
+                    var opt = chart.getOption();
+                    var dzs = (opt && opt.dataZoom) || [];
+                    var patch = [], hasInside = false, minSpan = 0;
+                    dzs.forEach(function (dz) {
+                        if (dz.type === 'inside') {
+                            hasInside = true;
+                            if (dz.minValueSpan > minSpan) minSpan = dz.minValueSpan;
+                            patch.push(dz.zoomOnMouseWheel === false && dz.moveOnMouseWheel === false
+                                ? {} : { zoomOnMouseWheel: false, moveOnMouseWheel: false });
+                        } else {
+                            if (dz.type === 'slider' && dz.minValueSpan > minSpan) minSpan = dz.minValueSpan;
+                            patch.push({});
+                        }
+                    });
+                    if (hasInside) {
+                        if (patch.some(function (p) { return p.zoomOnMouseWheel === false; })) origSet.call(chart, { dataZoom: patch });
+                        if (!chart._e7WzOn) { chart._e7WzOn = true; window.e7AttachWheelZoom(chart, minSpan || 60 * 1000); }
+                    }
+                } catch (e2) { }
+                return res;
+            };
+        } catch (e1) { }
+        return chart;
+    };
+})();
