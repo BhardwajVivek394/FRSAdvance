@@ -4854,7 +4854,10 @@ function fnBindNetworkChart(d) {
   var ec=echarts.getInstanceByDom(el); if(ec) ec.dispose();
   var chart=echarts.init(el,null,{renderer:'svg'});
   var wH=d.WiredHealthy||0, wF=d.WiredFaulty||0, lH=d.WirelessHealthy||0, lF=d.WirelessFaulty||0;
-  function bar(v,c){ return { value:v, itemStyle:{ color:c, borderRadius:[4,4,0,0] }, label:{ show:true, position:'top', fontSize:11, fontWeight:700, color:c } }; }
+  // % of its own link type: Wired bars over wired total, Wireless bars over wireless total.
+  var wT=wH+wF, lT=lH+lF;
+  function pct(v,t){ return t>0 ? ((v/t)*100).toFixed(1) : '0.0'; }
+  function bar(v,c,t){ return { value:v, itemStyle:{ color:c, borderRadius:[4,4,0,0] }, label:{ show:true, position:'top', formatter:pct(v,t)+'%', fontSize:11, fontWeight:700, color:c } }; }
   chart.setOption({
     backgroundColor:'transparent',
     tooltip:{ trigger:'axis', axisPointer:{ type:'shadow' }, confine:true, backgroundColor:CLRS.tipBg, borderColor:CLRS.tipBorder, borderWidth:1, padding:[8,12], extraCssText:e7TipCss(), textStyle:{ color:CLRS.tipText, fontSize:12 } },
@@ -4863,8 +4866,8 @@ function fnBindNetworkChart(d) {
     xAxis:{ type:'category', data:['Wired','Wireless'], axisLabel:{ fontSize:11, color:CLRS.text, fontWeight:500 }, axisLine:{ lineStyle:{ color:CLRS.muted } }, axisTick:{ show:false } },
     yAxis:{ max:function(v){ return Math.ceil((v.max||1)*1.25); }, splitLine:{ lineStyle:{ color:CLRS.grid, type:'dashed' } }, axisLabel:{ fontSize:10, color:CLRS.muted } },
     series:[
-      { name:'Healthy', type:'bar', barMaxWidth:34, itemStyle:{ color:CLRS.green }, data:[bar(wH,CLRS.green), bar(lH,CLRS.green)] },
-      { name:'Faulty',  type:'bar', barMaxWidth:34, itemStyle:{ color:CLRS.red },   data:[bar(wF,CLRS.red),   bar(lF,CLRS.red)] }
+      { name:'Healthy', type:'bar', barMaxWidth:34, itemStyle:{ color:CLRS.green }, data:[bar(wH,CLRS.green,wT), bar(lH,CLRS.green,lT)] },
+      { name:'Faulty',  type:'bar', barMaxWidth:34, itemStyle:{ color:CLRS.red },   data:[bar(wF,CLRS.red,wT),   bar(lF,CLRS.red,lT)] }
     ]
   });
   setTimeout(function(){ chart.resize(); },100);
