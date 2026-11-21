@@ -69,7 +69,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             try
             {
                 if (mSiteLister.SearchCriteria.DivisionIds != null && mSiteLister.SearchCriteria.DivisionIds.Count() > 0)
-                    mSites = _siteService.GetSiteLister(mSiteLister);
+                    // Same per-division source as Telemetry Live; GetAllSiteLister dropped assigned stations
+                    mSites = Helper.FilterCacheHelper.GetSitesByDivisionIds(_siteService, mSiteLister.SearchCriteria.DivisionIds);
                 else
                     mSites = new List<Domain.Site>();
             }

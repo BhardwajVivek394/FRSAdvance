@@ -17,6 +17,11 @@ using System.Web.Mvc;
 namespace E7FRSAdvance.Areas.FRS25.Controllers
 {
     [E7FRSAdvance.Areas.FRS25.Filter.Authenticate]
+    // Read-only session: with the default (exclusive) lock ASP.NET runs one request per
+    // session at a time, so the Zone → Division lookup queued behind the dashboard's heavy
+    // load calls (GetAssetList, GetWithOutAcknowledgementAlert, GetIOTCount, GetSystemData).
+    // Nothing here writes the session — user preferences live in cookies.
+    [SessionState(System.Web.SessionState.SessionStateBehavior.ReadOnly)]
     public class HomeController : Controller
     {
         // GET: FRS25/Home
@@ -461,12 +466,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         //{
         //    return Json(_divisionService.GetByZoneId(zoneId), JsonRequestBehavior.AllowGet);
         //}
-        // Divisions for the selected zone(s), cached per role + zone set + user (500 s) so the
-        // Division dropdown's cascade doesn't re-hit the API (Division/GetAllDivisionLister plus,
-        // for non-admin roles, Site/GetAll) on every zone selection. Same data as before — only
-        // the repeat round-trips are removed.
-        private const int DivisionByZoneCacheSeconds = 500;
-
+        // Divisions for the selected zone(s). Live, not cached — 616 parity: 616's Dashboard
+        // calls AlertLive/GetDivisionByZoneId (GetDivisionList, no cache), so a division that
+        // just got its first assigned site shows at once. It stays quick because this
+        // controller's session is read-only (the request no longer queues behind the
+        // dashboard's load calls).
         public JsonResult GetDivisionByZoneId(DivisionLister mDivisionLister)
         {
             List<Division> mDivisions = new List<Division>();
@@ -476,22 +480,20 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                 && mDivisionLister.SearchCriteria.ZoneIds != null
                 && mDivisionLister.SearchCriteria.ZoneIds.Count() > 0)
             {
-                // Starts with "FRS25_" so FilterCacheHelper's prefix sweep can clear it
-                string cacheKey = "FRS25_DivByZoneIds_"
-                    + ClsHttpContent.LoginUser.RoleId
-                    + "_" + string.Join(",", mDivisionLister.SearchCriteria.ZoneIds.OrderBy(x => x))
-                    + "_" + ClsHttpContent.LoginUser.Id;
-
-                mDivisions = MemoryCache.Default.Get(cacheKey) as List<Division>;
-                if (mDivisions == null)
-                {
-                    mDivisions = _divisionService.GetDivisionList(mDivisionLister) ?? new List<Division>();
-                    if (mDivisions.Count > 0)
-                        MemoryCache.Default.Set(cacheKey, mDivisions, DateTimeOffset.UtcNow.AddSeconds(DivisionByZoneCacheSeconds));
-                }
+                mDivisions = _divisionService.GetDivisionList(mDivisionLister) ?? new List<Division>();
             }
 
             return Json(mDivisions, JsonRequestBehavior.AllowGet);
+        }
+
+        // 616 parity: the header "Sync Server" button (FRS25 _Layout) clears this user's cached
+        // Zone / Division / Station lists and Dashboard data, so a site assigned a moment ago
+        // shows on the next page load without waiting for the cache to expire.
+        [HttpPost]
+        public ActionResult ClearFilterCache()
+        {
+            Helper.FilterCacheHelper.ClearCacheForCurrentUser();
+            return Json(new { success = true, message = "Filter cache cleared." });
         }
 
         //public JsonResult GetSiteByDivisionId(int divisionId)
@@ -513,7 +515,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             try
             {
                 if (mSiteLister.SearchCriteria.DivisionIds != null && mSiteLister.SearchCriteria.DivisionIds.Count() > 0)
-                    mSites = _siteService.GetSiteLister(mSiteLister);
+                    // Same per-division source as Telemetry Live; GetAllSiteLister dropped assigned stations
+                    mSites = Helper.FilterCacheHelper.GetSitesByDivisionIds(_siteService, mSiteLister.SearchCriteria.DivisionIds);
                 else
                     mSites = new List<Domain.Site>();
             }
@@ -631,8 +634,8 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
                     userId = ClsHttpContent.LoginUser.Id.ToString();
                 }
 
-                // Save to Session
-                Session["UserPref_" + model.Key] = model.Value;
+                // Not saved to Session: this controller's session is read-only (see class
+                // attribute). The cookie below is the store GetUserPreferenceValue reads.
 
                 // Save to Cookie for persistence across sessions
                 // Using Response.Cookies directly (ASP.NET MVC way)
@@ -729,31 +732,13 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
         /// </summary>
         private string GetUserPreferenceValue(string key)
         {
-            // 1. First check Session (fastest)
-            if (Session != null)
-            {
-                object sessionValue = Session["UserPref_" + key];
-                if (sessionValue != null)
-                {
-                    string value = sessionValue.ToString();
-                    if (!string.IsNullOrEmpty(value))
-                    {
-                        return value;
-                    }
-                }
-            }
-
-            // 2. Then check Cookie (persists across sessions)
+            // Cookie only (persists across sessions). The session copy was dropped when this
+            // controller's session became read-only; it only mirrored the cookie anyway.
             if (Request != null && Request.Cookies != null)
             {
                 System.Web.HttpCookie cookie = Request.Cookies["FRS25_" + key];
                 if (cookie != null && !string.IsNullOrEmpty(cookie.Value))
                 {
-                    // Cache in session for faster subsequent access
-                    if (Session != null)
-                    {
-                        Session["UserPref_" + key] = cookie.Value;
-                    }
                     return cookie.Value;
                 }
             }

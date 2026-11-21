@@ -14,6 +14,15 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
         private static readonly ObjectCache _cache = MemoryCache.Default;
         private const int CacheTtlSeconds = 500;
 
+        // 616 parity: don't cache an empty list. It usually means the API call failed (or
+        // the user had no sites yet), and caching it would leave the Zone / Division /
+        // Station dropdowns blank for the full TTL.
+        private static void SetIfNotEmpty<T>(string key, List<T> data, DateTimeOffset expiry)
+        {
+            if (data != null && data.Count > 0)
+                _cache.Set(key, data, expiry);
+        }
+
         // ──────────────────────────────────────────────
         //  ALL Zones  (used by 12 controllers)
         // ──────────────────────────────────────────────
@@ -24,7 +33,7 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
             if (cached != null) return cached;
 
             var data = zoneService.GetAllZones() ?? new List<Zone>();
-            _cache.Set(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
+            SetIfNotEmpty(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
             return data;
         }
 
@@ -38,7 +47,7 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
             if (cached != null) return cached;
 
             var data = divisionService.GetAllDivisions() ?? new List<Division>();
-            _cache.Set(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
+            SetIfNotEmpty(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
             return data;
         }
 
@@ -52,7 +61,7 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
             if (cached != null) return cached;
 
             var data = siteService.GetAll() ?? new List<Site>();
-            _cache.Set(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
+            SetIfNotEmpty(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
             return data;
         }
 
@@ -61,7 +70,8 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
         // ──────────────────────────────────────────────
         public static List<Division> GetDivisionsByZoneId(IDivisionService divisionService, int zoneId)
         {
-            string key = "FRS25_DivByZone_" + zoneId + ClsHttpContent.LoginUser.Id;
+            // "_" between the ids: zone 1 + user 23 and zone 12 + user 3 used to share "…123"
+            string key = "FRS25_DivByZone_" + zoneId + "_" + ClsHttpContent.LoginUser.Id;
             var cached = _cache.Get(key) as List<Division>;
             if (cached != null) return cached;
 
@@ -69,7 +79,7 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
             var lister = new DivisionLister();
             lister.SearchCriteria.ZoneIds = new List<int> { zoneId };
             var data = divisionService.GetDivisionList(lister) ?? new List<Division>();
-            _cache.Set(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
+            SetIfNotEmpty(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
             return data;
         }
 
@@ -78,13 +88,42 @@ namespace E7FRSAdvance.Areas.FRS25.Helper
         // ──────────────────────────────────────────────
         public static List<Site> GetSitesByDivisionId(ISiteService siteService, int divisionId)
         {
-            string key = "FRS25_SiteByDiv_" + divisionId + ClsHttpContent.LoginUser.Id;
+            // "_" between the ids: division 1 + user 23 and division 12 + user 3 used to share "…123"
+            string key = "FRS25_SiteByDiv_" + divisionId + "_" + ClsHttpContent.LoginUser.Id;
             var cached = _cache.Get(key) as List<Site>;
             if (cached != null) return cached;
 
             var data = siteService.GetBy(divisionId) ?? new List<Site>();
-            _cache.Set(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
+            SetIfNotEmpty(key, data, DateTimeOffset.UtcNow.AddSeconds(CacheTtlSeconds));
             return data;
+        }
+
+        // ──────────────────────────────────────────────
+        //  Sites for several divisions (multi-select Division → Station cascade).
+        //  Same source as Telemetry Live (Site/GetSites/DivisionId + the user's
+        //  Site/GetSiteByUserId list), merged, de-duplicated and sorted by name.
+        //  Site/GetAllSiteLister was used here before and dropped some stations
+        //  that are assigned to the user and shown everywhere else.
+        //  NOT cached — 616 parity: 616's Division → Station call is live, so a site
+        //  assigned a moment ago shows as soon as its Division is ticked.
+        // ──────────────────────────────────────────────
+        public static List<Site> GetSitesByDivisionIds(ISiteService siteService, IEnumerable<int> divisionIds)
+        {
+            var result = new List<Site>();
+            if (divisionIds == null) return result;
+
+            var seen = new HashSet<int>();
+            foreach (var divisionId in divisionIds.Distinct())
+            {
+                var sites = siteService.GetBy(divisionId);
+                if (sites == null) continue;
+                foreach (var s in sites)
+                {
+                    if (s != null && seen.Add(s.Id))
+                        result.Add(s);
+                }
+            }
+            return result.OrderBy(s => s.Name).ToList();
         }
 
         // ──────────────────────────────────────────────

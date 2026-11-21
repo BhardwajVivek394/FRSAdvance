@@ -3623,6 +3623,17 @@
                     </button>
                     *@
 
+                    <!-- Sync Server (616 parity): clears this user's cached Zone / Division /
+                         Station lists so a newly assigned site shows on the next page load. -->
+                    <style>
+                        #syncServerBtn { cursor: pointer; }
+                        #syncServerIcon.spinning { animation: syncSpin 0.8s linear infinite; }
+                        @@keyframes syncSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                    </style>
+                    <button type="button" class="pill icon-btn" id="syncServerBtn" title="Sync Server" aria-label="Sync Server">
+                        <i class="fas fa-sync-alt" id="syncServerIcon" aria-hidden="true"></i>
+                    </button>
+
                     <!-- Notification bell (zip: .pill.icon-btn) -->
                     <div class="e7-notif-wrap" id="e7NotifWrap">
                         <button type="button" class="e7-notif-btn pill icon-btn" id="e7NotifBtn" title="Notifications">
@@ -4010,6 +4021,28 @@
 
         // ── Dark/light mode CSS fix ─────────────────────────────────
         $('#toggle-btn').click(function () { fnChangeCSSAfterChnageMode(); });
+
+        // ── Sync Server (ported from 616) ───────────────────────────
+        // Clears this user's server-side filter cache (Home/ClearFilterCache); reload the
+        // page afterwards to see a newly assigned site in the Zone / Division / Station lists.
+        $(document).on('click', '#syncServerBtn', function (e) {
+            e.preventDefault();
+            var $icon = $('#syncServerIcon');
+            if ($icon.hasClass('spinning')) return;   // a sync is already running
+            $icon.addClass('spinning');
+            $.ajax({
+                type: 'POST',
+                url: '@Url.Action("ClearFilterCache", "Home", new { area = "FRS25" })',
+                contentType: 'application/json; charset=utf-8',
+                dataType: 'json',
+                success: function (response) {
+                    if (response && response.success) showSuccess(response.message || 'Server cache synced successfully.', 'Sync Complete');
+                    else showError((response && response.message) || 'Sync failed.', 'Sync Error');
+                },
+                error: function () { showError('Unable to reach server. Please try again.', 'Sync Error'); },
+                complete: function () { setTimeout(function () { $icon.removeClass('spinning'); }, 600); }
+            });
+        });
 
         function fnChangeCSSAfterChnageMode() {
             try {
