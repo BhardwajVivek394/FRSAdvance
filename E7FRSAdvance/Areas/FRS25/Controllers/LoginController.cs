@@ -335,9 +335,11 @@ namespace E7FRSAdvance.Areas.FRS25.Controllers
             return Json(data);
         }
 
+        // Forgot password now lives inline on the login page (like 616).
+        // Old links/bookmarks land on Login/Index with the forgot panel open.
         public ActionResult ForgotPassword()
         {
-            return View(new Domain.Login());
+            return RedirectToAction("Index", "Login", new { area = "FRS25", fp = 1 });
         }
 
         // =====================================================

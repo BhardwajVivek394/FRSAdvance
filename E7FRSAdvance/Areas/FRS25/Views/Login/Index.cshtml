@@ -56,6 +56,22 @@
         .otp-input:disabled {
             opacity: 0.7;
         }
+
+        /* Forgot Password panels (inline, like 616) */
+        .fp-panel { display: none; }
+        .fp-panel.active { display: block; }
+        .fp-hidden { display: none !important; }
+        .fp-alert-box { display: none; }
+        body.e7l .e7l-back.fp-back-top { margin-top: 0; margin-bottom: 18px; }
+        /* Two OTP cards share the right panel: the hidden one must not take space, or the visible one is pushed off-centre */
+        #loginRight .otp-card:not(.visible) { position: absolute; }
+
+        .password-requirements { font-size: 12px; color: #6c757d; margin-top: 6px; }
+        .password-requirements .req-item { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+        .password-requirements .req-item.valid { color: #28a745; }
+        .password-match-msg { font-size: 12px; margin-top: 4px; display: none; }
+        .password-match-msg.match { color: #28a745; }
+        .password-match-msg.no-match { color: #dc3545; }
     </style>
 </head>
 <body class="e7l">
@@ -73,8 +89,8 @@
                 </span>
             </div>
 
-            <!-- Login Form -->
-            <div class="login-form-wrapper">
+            <!-- PANEL 1: Login (default) -->
+            <div class="login-form-wrapper fp-panel active" id="panelLogin">
                 <h1 class="login-title mb-2">Welcome back</h1>
                 <p class="login-subtitle mb-4">Sign in to the RDPMS workspace. A one-time code will be sent to your registered mobile number.</p>
 
@@ -103,11 +119,85 @@
                             <input type="checkbox" id="rememberMe">
                             <span>Keep me signed in for 30 days</span>
                         </label>
-                        <a href="@Url.Action("ForgotPassword", "Login", new { area = "FRS25" })" class="e7l-link">Forgot password?</a>
+                        <a href="javascript:void(0)" class="e7l-link" onclick="showForgotPassword()">Forgot password?</a>
                     </div>
 
                     <button type="submit" class="btn btn-primary-custom btn-block">Sign in</button>
                 }
+
+                <div class="e7l-foot">
+                    <span>Authorized personnel only. Access is logged under RDSO/SPN/257/2025.</span>
+                    <span>&copy; @DateTime.Now.Year Energy7</span>
+                </div>
+            </div>
+
+            <!-- PANEL 2: Forgot Password — phone number -->
+            <div class="login-form-wrapper fp-panel" id="panelForgotPhone">
+                <a href="javascript:void(0)" class="e7l-link e7l-back fp-back-top" onclick="showLoginPanel()"><i class="fa fa-arrow-left" aria-hidden="true"></i>Back to login</a>
+                <h1 class="login-title mb-2">Forgot password</h1>
+                <p class="login-subtitle mb-4">Enter your registered phone number. We'll send an OTP to verify your identity.</p>
+
+                <div class="e7l-alert fp-alert-box" id="fpPhoneAlert" role="alert"><i class="fa" aria-hidden="true"></i><span></span></div>
+
+                <div class="form-group">
+                    <label for="fpPhoneNumber" class="form-label">Phone number</label>
+                    <input type="text" class="form-control" id="fpPhoneNumber" placeholder="Enter phone number" maxlength="15" inputmode="numeric" autocomplete="tel" />
+                </div>
+
+                <button type="button" class="btn btn-primary-custom btn-block" id="btnFpSendOtp" onclick="fpSendOtp()">Send OTP</button>
+
+                <div class="e7l-foot">
+                    <span>Authorized personnel only. Access is logged under RDSO/SPN/257/2025.</span>
+                    <span>&copy; @DateTime.Now.Year Energy7</span>
+                </div>
+            </div>
+
+            <!-- PANEL 3: Change Password (after OTP verified) -->
+            <div class="login-form-wrapper fp-panel" id="panelChangePassword">
+                <a href="javascript:void(0)" class="e7l-link e7l-back fp-back-top" onclick="showLoginPanel()"><i class="fa fa-arrow-left" aria-hidden="true"></i>Back to login</a>
+                <h1 class="login-title mb-2">Set new password</h1>
+                <p class="login-subtitle mb-4">Your identity has been verified. Select the account and create a new password.</p>
+
+                <div class="e7l-alert fp-alert-box" id="fpPasswordAlert" role="alert"><i class="fa" aria-hidden="true"></i><span></span></div>
+
+                <div class="form-group">
+                    <label for="fpEmailDropdown" class="form-label">Email</label>
+                    <select class="form-control" id="fpEmailDropdown">
+                        <option value="">Select email</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="fpNewPassword" class="form-label">New password</label>
+                    <div class="password-wrapper position-relative">
+                        <input type="password" class="form-control" id="fpNewPassword" placeholder="New password" autocomplete="new-password" oninput="validatePasswordRequirements()" />
+                        <span class="password-toggle position-absolute" onclick="toggleFpPassword('fpNewPassword', 'fpEyeNew')">
+                            <svg id="fpEyeNew" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ADADAD" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="password-requirements" id="passwordRequirements">
+                        <div class="req-item invalid" id="reqLength"><span>&#9679;</span> At least 6 characters</div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="fpConfirmPassword" class="form-label">Confirm password</label>
+                    <div class="password-wrapper position-relative">
+                        <input type="password" class="form-control" id="fpConfirmPassword" placeholder="Confirm password" autocomplete="new-password" oninput="checkPasswordMatch()" />
+                        <span class="password-toggle position-absolute" onclick="toggleFpPassword('fpConfirmPassword', 'fpEyeConfirm')">
+                            <svg id="fpEyeConfirm" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ADADAD" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </span>
+                    </div>
+                    <p class="password-match-msg" id="passwordMatchMsg"></p>
+                </div>
+
+                <button type="button" class="btn btn-primary-custom btn-block" id="btnFpResetPassword" onclick="fpResetPassword()">Save Password</button>
 
                 <div class="e7l-foot">
                     <span>Authorized personnel only. Access is logged under RDSO/SPN/257/2025.</span>
@@ -154,7 +244,7 @@
                 <h2 class="otp-title mb-2">Enter code</h2>
                 <p class="otp-subtitle mb-4">We sent a code to <a href="#" class="text-white" id="displayMobile">@ViewBag.PhoneNumberMasked</a>.</p>
 
-                <div class="otp-inputs d-flex justify-content-center mb-3">
+                <div class="otp-inputs d-flex justify-content-center mb-3" id="loginOtpInputs">
                     <input type="text" class="otp-input text-center mx-1" maxlength="1" data-index="0">
                     <input type="text" class="otp-input text-center mx-1" maxlength="1" data-index="1">
                     <input type="text" class="otp-input text-center mx-1" maxlength="1" data-index="2">
@@ -176,11 +266,42 @@
                 </p>
                 <p class="resend-link mt-2">Didn't get a code? <a href="javascript:void(0)" class="text-white text-decoration-underline" id="btnResendLink" style="display:none;" onclick="resendOtp()">Click to resend</a></p>
             </div>
+
+            <!-- Forgot Password OTP Card -->
+            <div class="otp-card text-center" id="fpOtpCard">
+                <h2 class="otp-title mb-2">Verify your identity</h2>
+                <p class="otp-subtitle mb-4">We sent a code to <strong id="fpDisplayMobile"></strong>.</p>
+
+                <div class="otp-inputs d-flex justify-content-center mb-3" id="fpOtpInputs">
+                    <input type="text" class="otp-input text-center mx-1" maxlength="1" inputmode="numeric" data-index="0">
+                    <input type="text" class="otp-input text-center mx-1" maxlength="1" inputmode="numeric" data-index="1">
+                    <input type="text" class="otp-input text-center mx-1" maxlength="1" inputmode="numeric" data-index="2">
+                    <input type="text" class="otp-input text-center mx-1" maxlength="1" inputmode="numeric" data-index="3">
+                </div>
+
+                <p class="otp-message" id="fpOtpMessage"></p>
+
+                <div class="otp-loader" id="fpOtpLoader">
+                    <i class="fa fa-spinner fa-spin"></i> Verifying...
+                </div>
+
+                <p class="resend-link mb-0">
+                    <span id="fpTimerSection">Resend OTP in <strong id="fpCountdown">60</strong>s</span>
+                    <a href="javascript:void(0)" class="text-white text-decoration-underline fp-hidden" id="fpBtnResend" onclick="fpResendOtp()">Click to resend</a>
+                </p>
+                <p class="resend-link mt-2">Didn't get a code? <a href="javascript:void(0)" class="text-white text-decoration-underline fp-hidden" id="fpBtnResendLink" onclick="fpResendOtp()">Click to resend</a></p>
+                <!-- On mobile the left panel is hidden while an OTP card is open, so give a way back -->
+                <p class="resend-link mt-2"><a href="javascript:void(0)" class="text-white text-decoration-underline" onclick="showForgotPassword()">Change phone number</a></p>
+            </div>
         </div>
     </div>
 
     <!-- Hidden field for the pre-auth OTP session -->
     <input type="hidden" id="hdnOtpSessionId" value="@ViewBag.OtpSessionId" />
+
+    <!-- Hidden fields — Forgot Password -->
+    <input type="hidden" id="fpHdnPhoneNumber" value="" />
+    <input type="hidden" id="fpHdnResetToken" value="" />
 
     <!-- Use full jQuery (not slim) for AJAX support -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -206,14 +327,28 @@
                 showOtpCard();
             }
 
+            // Forgot Password: numbers only, Enter sends OTP, OTP auto-focus/paste
+            $('#fpPhoneNumber').on('input', function () {
+                this.value = this.value.replace(/[^0-9]/g, '');
+            });
+            $('#fpPhoneNumber').on('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); fpSendOtp(); }
+            });
+            initFpOtpInputs();
+
+            // Old /Login/ForgotPassword links land here with ?fp=1
+            if (/[?&]fp=1(&|$)/.test(window.location.search)) {
+                showForgotPassword();
+            }
+
             // OTP Input - Allow only numbers
-            $('.otp-input').on('input', function () {
+            $('#loginOtpInputs .otp-input').on('input', function () {
                 this.value = this.value.replace(/[^0-9]/g, '');
             });
 
             // OTP Input Auto-focus and Auto-verify
-            $('.otp-input').each(function (index) {
-                var inputs = $('.otp-input');
+            $('#loginOtpInputs .otp-input').each(function (index) {
+                var inputs = $('#loginOtpInputs .otp-input');
 
                 $(this).on('input', function () {
                     // Move to next input
@@ -265,7 +400,7 @@
         // Get OTP value from all inputs
         function getOtpValue() {
             var otp = '';
-            $('.otp-input').each(function () {
+            $('#loginOtpInputs .otp-input').each(function () {
                 otp = otp + $(this).val();
             });
             return otp;
@@ -278,7 +413,7 @@
             $('#otpMessage').hide();
 
             // Disable inputs
-            $('.otp-input').prop('disabled', true);
+            $('#loginOtpInputs .otp-input').prop('disabled', true);
 
             debugger;
             $.ajax({
@@ -293,7 +428,7 @@
                     debugger;
                     if (response.type == "success") {
                         // Success
-                        $('.otp-input').addClass('success').removeClass('error');
+                        $('#loginOtpInputs .otp-input').addClass('success').removeClass('error');
                         showOtpMessage(response.message, 'success');
                         // ── Pass password to AI sidebar immediately ──────────
                         if (window.E7AI) {
@@ -307,14 +442,14 @@
                         }, 1000);
                     } else {
                         // Error
-                        $('.otp-input').addClass('error').removeClass('success');
+                        $('#loginOtpInputs .otp-input').addClass('error').removeClass('success');
                         showOtpMessage(response.message, 'error');
 
                         // Clear inputs and enable
                         setTimeout(function () {
                             clearOtpInputs();
-                            $('.otp-input').prop('disabled', false).removeClass('error');
-                            $('.otp-input').first().focus();
+                            $('#loginOtpInputs .otp-input').prop('disabled', false).removeClass('error');
+                            $('#loginOtpInputs .otp-input').first().focus();
                         }, 1500);
                     }
                     if (window.E7AI) {
@@ -323,7 +458,7 @@
                 },
                 error: function () {
                     $('#otpLoader').hide();
-                    $('.otp-input').prop('disabled', false);
+                    $('#loginOtpInputs .otp-input').prop('disabled', false);
                     showOtpMessage('Error verifying OTP. Please try again.', 'error');
                 }
             });
@@ -344,8 +479,8 @@
                         debugger;
                         showOtpMessage(response.message, 'success');
                         clearOtpInputs();
-                        $('.otp-input').removeClass('error success');
-                        $('.otp-input').first().focus();
+                        $('#loginOtpInputs .otp-input').removeClass('error success');
+                        $('#loginOtpInputs .otp-input').first().focus();
                         startTimer('@ViewBag.OTPResendDelay');
                     } else {
                         showOtpMessage(response.message, 'error');
@@ -365,7 +500,7 @@
 
         // Clear OTP inputs
         function clearOtpInputs() {
-            $('.otp-input').val('');
+            $('#loginOtpInputs .otp-input').val('');
         }
 
         // Show OTP message
@@ -424,8 +559,377 @@
 
             // Focus on first OTP input
             setTimeout(function () {
-                $('.otp-input').first().focus();
+                $('#loginOtpInputs .otp-input').first().focus();
             }, 500);
+        }
+
+        // ============================================================
+        // FORGOT PASSWORD (inline, same flow as 616)
+        //   1) phone  -> ForgotPasswordSendOtp
+        //   2) OTP    -> ForgotPasswordVerifyOtp (returns ResetToken + Emails)
+        //   3) email + new password -> ResetPassword
+        // ============================================================
+        var fpTimerInterval;
+        var fpOtpResendDelay = 60;
+        var fpOtpSel = '#fpOtpInputs .otp-input';
+
+        function initFpOtpInputs() {
+            $(fpOtpSel).each(function (index) {
+                var inputs = $(fpOtpSel);
+                $(this).on('input', function () {
+                    this.value = this.value.replace(/[^0-9]/g, '');
+                    if (this.value.length === 1 && index < inputs.length - 1) {
+                        inputs.eq(index + 1).focus();
+                    }
+                    fpCheckAndVerifyOtp();
+                });
+                $(this).on('keydown', function (e) {
+                    if (e.key === 'Backspace' && this.value === '' && index > 0) {
+                        inputs.eq(index - 1).focus();
+                    }
+                });
+                $(this).on('paste', function (e) {
+                    e.preventDefault();
+                    var pastedData = (e.originalEvent.clipboardData || window.clipboardData).getData('text');
+                    pastedData = pastedData.replace(/[^0-9]/g, '').substring(0, 4);
+                    if (pastedData.length > 0) {
+                        for (var i = 0; i < pastedData.length && i < 4; i++) {
+                            inputs.eq(i).val(pastedData[i]);
+                        }
+                        if (pastedData.length >= 4) {
+                            inputs.eq(3).focus();
+                            fpCheckAndVerifyOtp();
+                        } else {
+                            inputs.eq(pastedData.length).focus();
+                        }
+                    }
+                });
+            });
+        }
+
+        // -- Panel navigation --
+
+        function hideFpOtpCard() {
+            $('#fpOtpCard').removeClass('visible');
+            $('#loginRight').removeClass('blurred');
+            clearInterval(fpTimerInterval);
+        }
+
+        function showForgotPassword() {
+            // Hide both OTP cards
+            $('#otpCard').removeClass('visible');
+            hideFpOtpCard();
+
+            $('.fp-panel').removeClass('active');
+            $('#panelForgotPhone').addClass('active');
+
+            $('#fpPhoneNumber').val('');
+            $('#fpHdnPhoneNumber').val('');
+            hideFpAlert('fpPhoneAlert');
+            $('#fpPhoneNumber').focus();
+        }
+
+        function showLoginPanel() {
+            hideFpOtpCard();
+            $('.fp-panel').removeClass('active');
+            $('#panelLogin').addClass('active');
+
+            // Clear all forgot password state
+            $('#fpPhoneNumber').val('');
+            $('#fpNewPassword').val('');
+            $('#fpConfirmPassword').val('');
+            $('#fpEmailDropdown').html('<option value="">Select email</option>');
+            $('#fpHdnPhoneNumber').val('');
+            $('#fpHdnResetToken').val('');
+            $(fpOtpSel).val('').removeClass('error success').prop('disabled', false);
+            hideFpAlert('fpPhoneAlert');
+            hideFpAlert('fpPasswordAlert');
+            $('#passwordMatchMsg').text('').hide();
+            $('#reqLength').removeClass('valid').addClass('invalid');
+        }
+
+        function showChangePasswordPanel(emails) {
+            hideFpOtpCard();
+            $('.fp-panel').removeClass('active');
+            $('#panelChangePassword').addClass('active');
+
+            var $dropdown = $('#fpEmailDropdown');
+            $dropdown.html('<option value="">Select email</option>');
+            if (emails && emails.length > 0) {
+                for (var i = 0; i < emails.length; i++) {
+                    $dropdown.append($('<option></option>').val(emails[i]).text(emails[i]));
+                }
+                if (emails.length === 1) {
+                    $dropdown.val(emails[0]);
+                }
+            }
+
+            $('#fpNewPassword').val('');
+            $('#fpConfirmPassword').val('');
+            hideFpAlert('fpPasswordAlert');
+            $('#passwordMatchMsg').text('').hide();
+            $('#reqLength').removeClass('valid').addClass('invalid');
+            $dropdown.focus();
+        }
+
+        // -- Alerts (617 e7l-alert style) --
+
+        function showFpAlert(elementId, message, type) {
+            var $a = $('#' + elementId);
+            $a.removeClass('is-ok is-bad').addClass(type === 'success' ? 'is-ok' : 'is-bad');
+            $a.find('i').attr('class', 'fa ' + (type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'));
+            $a.find('span').text(message || '');
+            $a.css('display', 'flex');
+        }
+
+        function hideFpAlert(elementId) {
+            var $a = $('#' + elementId);
+            $a.hide();
+            $a.find('span').text('');
+        }
+
+        // -- STEP 1: send OTP --
+
+        function fpSendOtp() {
+            var phone = $.trim($('#fpPhoneNumber').val());
+            if (!phone) {
+                showFpAlert('fpPhoneAlert', 'Please enter your phone number.', 'error');
+                return;
+            }
+            if (phone.length < 10) {
+                showFpAlert('fpPhoneAlert', 'Please enter a valid phone number.', 'error');
+                return;
+            }
+            hideFpAlert('fpPhoneAlert');
+
+            var $btn = $('#btnFpSendOtp');
+            $btn.prop('disabled', true).text('Sending...');
+
+            $.ajax({
+                url: '@Url.Action("ForgotPasswordSendOtp", "Login", new { area = "FRS25" })',
+                type: 'POST',
+                data: { phoneNumber: phone },
+                success: function (response) {
+                    $btn.prop('disabled', false).text('Send OTP');
+                    if (response.type === 'success') {
+                        var confirmedPhone = response.phoneNumber || phone;
+                        $('#fpHdnPhoneNumber').val(confirmedPhone);
+                        $('#fpDisplayMobile').text(maskPhoneNumber(confirmedPhone));
+                        showFpOtpCard();
+                        showFpAlert('fpPhoneAlert', 'OTP sent to your phone number.', 'success');
+                    } else {
+                        showFpAlert('fpPhoneAlert', response.message, 'error');
+                    }
+                },
+                error: function () {
+                    $btn.prop('disabled', false).text('Send OTP');
+                    showFpAlert('fpPhoneAlert', 'Something went wrong. Please try again.', 'error');
+                }
+            });
+        }
+
+        function maskPhoneNumber(phone) {
+            if (!phone || phone.length < 4) return phone;
+            return '******' + phone.slice(-4);
+        }
+
+        function showFpOtpCard() {
+            $('#otpCard').removeClass('visible');
+            $('#loginRight').addClass('blurred');
+            $('#fpOtpCard').addClass('visible');
+            $(fpOtpSel).val('').removeClass('error success').prop('disabled', false);
+            $('#fpOtpMessage').hide();
+            fpStartTimer(fpOtpResendDelay);
+            setTimeout(function () { $(fpOtpSel).first().focus(); }, 500);
+        }
+
+        // -- STEP 2: verify OTP --
+
+        function fpCheckAndVerifyOtp() {
+            var otp = '';
+            $(fpOtpSel).each(function () { otp = otp + $(this).val(); });
+            if (otp.length === 4) {
+                fpVerifyOtp(otp);
+            }
+        }
+
+        function fpVerifyOtp(otp) {
+            $('#fpOtpLoader').show();
+            $('#fpOtpMessage').hide();
+            $(fpOtpSel).prop('disabled', true);
+
+            $.ajax({
+                url: '@Url.Action("ForgotPasswordVerifyOtp", "Login", new { area = "FRS25" })',
+                type: 'POST',
+                data: { mobileNumber: $('#fpHdnPhoneNumber').val(), otp: otp },
+                success: function (response) {
+                    $('#fpOtpLoader').hide();
+                    if (response.Success) {
+                        $(fpOtpSel).addClass('success').removeClass('error');
+                        showFpOtpMessage(response.Message || 'Verified successfully!', 'success');
+                        $('#fpHdnResetToken').val(response.ResetToken);
+                        setTimeout(function () { showChangePasswordPanel(response.Emails); }, 1000);
+                    } else {
+                        $(fpOtpSel).addClass('error').removeClass('success');
+                        showFpOtpMessage(response.Message || 'Invalid OTP.', 'error');
+                        setTimeout(function () {
+                            $(fpOtpSel).val('').prop('disabled', false).removeClass('error');
+                            $(fpOtpSel).first().focus();
+                        }, 1500);
+                    }
+                },
+                error: function () {
+                    $('#fpOtpLoader').hide();
+                    $(fpOtpSel).prop('disabled', false);
+                    showFpOtpMessage('Error verifying OTP. Please try again.', 'error');
+                }
+            });
+        }
+
+        function showFpOtpMessage(message, type) {
+            $('#fpOtpMessage').removeClass('success error').addClass(type).text(message).show();
+        }
+
+        function fpResendOtp() {
+            $('#fpBtnResend').addClass('fp-hidden');
+            $('#fpBtnResendLink').addClass('fp-hidden');
+            $('#fpTimerSection').removeClass('fp-hidden');
+
+            $.ajax({
+                url: '@Url.Action("ForgotPasswordResendOtp", "Login", new { area = "FRS25" })',
+                type: 'POST',
+                data: { mobileNumber: $('#fpHdnPhoneNumber').val() },
+                success: function (response) {
+                    if (response.type === 'success') {
+                        showFpOtpMessage('OTP sent successfully.', 'success');
+                        $(fpOtpSel).val('').removeClass('error success').prop('disabled', false);
+                        $(fpOtpSel).first().focus();
+                        fpStartTimer(fpOtpResendDelay);
+                    } else {
+                        showFpOtpMessage(response.message, 'error');
+                        $('#fpBtnResend').removeClass('fp-hidden');
+                        $('#fpBtnResendLink').removeClass('fp-hidden');
+                        $('#fpTimerSection').addClass('fp-hidden');
+                    }
+                },
+                error: function () {
+                    showFpOtpMessage('Error resending OTP.', 'error');
+                    $('#fpBtnResend').removeClass('fp-hidden');
+                    $('#fpBtnResendLink').removeClass('fp-hidden');
+                    $('#fpTimerSection').addClass('fp-hidden');
+                }
+            });
+        }
+
+        function fpStartTimer(seconds) {
+            clearInterval(fpTimerInterval);
+            $('#fpCountdown').text(seconds);
+            $('#fpTimerSection').removeClass('fp-hidden');
+            $('#fpBtnResend').addClass('fp-hidden');
+            $('#fpBtnResendLink').addClass('fp-hidden');
+
+            fpTimerInterval = setInterval(function () {
+                seconds--;
+                $('#fpCountdown').text(seconds);
+                if (seconds <= 0) {
+                    clearInterval(fpTimerInterval);
+                    $('#fpTimerSection').addClass('fp-hidden');
+                    $('#fpBtnResend').removeClass('fp-hidden');
+                    $('#fpBtnResendLink').removeClass('fp-hidden');
+                }
+            }, 1000);
+        }
+
+        // -- STEP 3: reset password --
+
+        function fpResetPassword() {
+            var selectedEmail = $('#fpEmailDropdown').val();
+            var newPwd = $('#fpNewPassword').val();
+            var confirmPwd = $('#fpConfirmPassword').val();
+
+            hideFpAlert('fpPasswordAlert');
+
+            if (!selectedEmail) {
+                showFpAlert('fpPasswordAlert', 'Please select an email address.', 'error');
+                return;
+            }
+            if (!newPwd || !confirmPwd) {
+                showFpAlert('fpPasswordAlert', 'Please fill in both password fields.', 'error');
+                return;
+            }
+            if (newPwd.length < 6) {
+                showFpAlert('fpPasswordAlert', 'Password must be at least 6 characters.', 'error');
+                return;
+            }
+            if (newPwd !== confirmPwd) {
+                showFpAlert('fpPasswordAlert', 'Passwords do not match.', 'error');
+                return;
+            }
+
+            var $btn = $('#btnFpResetPassword');
+            $btn.prop('disabled', true).text('Saving...');
+
+            $.ajax({
+                url: '@Url.Action("ResetPassword", "Login", new { area = "FRS25" })',
+                type: 'POST',
+                data: {
+                    emailAddress: selectedEmail,
+                    newPassword: newPwd,
+                    confirmPassword: confirmPwd,
+                    resetToken: $('#fpHdnResetToken').val(),
+                    phoneNumber: $('#fpHdnPhoneNumber').val()
+                },
+                success: function (response) {
+                    $btn.prop('disabled', false).text('Save Password');
+                    if (response.type === 'success') {
+                        showFpAlert('fpPasswordAlert', response.message || 'Password changed successfully!', 'success');
+                        setTimeout(function () {
+                            showLoginPanel();
+                            $('#EmailAddress').val(selectedEmail);
+                            $('#Password').val('').focus();
+                            alert('Password changed successfully. Please login with your new password.');
+                        }, 1500);
+                    } else {
+                        showFpAlert('fpPasswordAlert', response.message, 'error');
+                    }
+                },
+                error: function () {
+                    $btn.prop('disabled', false).text('Save Password');
+                    showFpAlert('fpPasswordAlert', 'Something went wrong. Please try again.', 'error');
+                }
+            });
+        }
+
+        // -- Password helpers --
+
+        function validatePasswordRequirements() {
+            var pwd = $('#fpNewPassword').val();
+            $('#reqLength').toggleClass('valid', pwd.length >= 6).toggleClass('invalid', pwd.length < 6);
+            checkPasswordMatch();
+        }
+
+        function checkPasswordMatch() {
+            var newPwd = $('#fpNewPassword').val();
+            var confirmPwd = $('#fpConfirmPassword').val();
+            var $msg = $('#passwordMatchMsg');
+            if (!confirmPwd) { $msg.text('').hide(); return; }
+            if (newPwd === confirmPwd) {
+                $msg.text('Passwords match').removeClass('no-match').addClass('match').show();
+            } else {
+                $msg.text('Passwords do not match').removeClass('match').addClass('no-match').show();
+            }
+        }
+
+        function toggleFpPassword(inputId, iconId) {
+            var input = document.getElementById(inputId);
+            var icon = document.getElementById(iconId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.innerHTML = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>';
+            } else {
+                input.type = 'password';
+                icon.innerHTML = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>';
+            }
         }
     </script>
 </body>
