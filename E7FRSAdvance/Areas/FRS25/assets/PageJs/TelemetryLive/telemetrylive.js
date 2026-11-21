@@ -1469,10 +1469,51 @@ function getAttrValue(attrs, name) {
     return null;
 }
 
+// Make sure the Track Relay resistance table is loaded for the asset's site.
+// connectWebSocket() used to preload it, but the [WS-StableFix] replacement of
+// connectWebSocket (further down) never calls the original, so the table was
+// never fetched and VTC TR / RRAIL stayed "—" in the table, cards, Health view,
+// drawer and circuit. Every derived-value calculation now asks for it instead:
+// one fetch per site, retried at most once a minute after a failure, and the
+// live table repaints when it arrives (the drawer / cards pick it up on their
+// next live tick).
+var _trResLastTry = {};
+function tlEnsureTrackRelayResistance(assetId, attrs) {
+    var sid = '';
+    if (attrs) {
+        for (var k in attrs) {
+            var a = attrs[k];
+            if (a && a.SiteId !== undefined && a.SiteId !== null && String(a.SiteId) !== '') { sid = String(a.SiteId); break; }
+        }
+    }
+    if (!sid && assetId) {
+        var e = (window.wsLiveData || {})[assetId];
+        var b = (typeof bulkAssetMap !== 'undefined' && bulkAssetMap) ? bulkAssetMap[assetId] : null;
+        var s = window.sipMetaAll && window.sipMetaAll.assets ? window.sipMetaAll.assets[assetId] : null;
+        sid = String((e && e.SiteId) || (b && b.SiteId) || (s && s.SiteId) || '');
+    }
+    if (!sid) sid = String($('#drpSite').val() || '');
+    if (!sid || sid === '0') return;
+    if (String(frsAttrRangeLoadedSiteId) === sid || String(frsAttrRangeLoadingSiteId) === sid) return;
+    var now = Date.now();
+    if (_trResLastTry[sid] && now - _trResLastTry[sid] < 60000) return;
+    _trResLastTry[sid] = now;
+    loadFRSAttributeRange(sid, function () {
+        if (String(frsAttrRangeLoadedSiteId) !== sid) return;
+        if ($('#drpView').val() === 'Table' && $('#wsLiveTable').length &&
+            typeof tlIsAssetTypeKind === 'function' && tlIsAssetTypeKind(wsCurrentAssetTypeId, 'track') &&
+            typeof renderWsTableFixed === 'function') {
+            try { renderWsTableFixed(); } catch (e) { }
+        }
+    });
+}
+
 function calculateDerivedValues(attrs, assetIdHint) {
     // Track Relay resistance is per-asset (configured range), not a fixed 10Ω.
     // null when the site/asset has no configured average -> VTC TR / RRAIL show — (616).
-    var trRes = getTrackRelayResistance(resolveAssetIdFromAttrs(attrs, assetIdHint));
+    var _trAid = resolveAssetIdFromAttrs(attrs, assetIdHint);
+    var trRes = getTrackRelayResistance(_trAid);
+    if (trRes === null) { try { tlEnsureTrackRelayResistance(_trAid, attrs); } catch (e) { } }
 
     // Build AttrId → value map as fallback (WS stores AttrId on every attr entry)
     var byId = {};
